@@ -1796,24 +1796,34 @@
   const isStandalone = () => window.navigator.standalone === true ||
     window.matchMedia('(display-mode: standalone)').matches;
 
+  /** Einheitliche Linien-Icons (24er Raster, Strichstärke per CSS). */
+  const svgI = (body) => '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">' + body + '</svg>';
   const ICON = {
-    back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 4.6 8 12l7.4 7.4-1.4 1.4L5.2 12 14 3.2z"/></svg>',
-    more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
-    trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 2h4v2H4V5h4zM6 9h12l-1 12H7zm4 2v8h1.5v-8zm2.5 0v8H14v-8z"/></svg>',
-    up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7.2 19 14l-1.4 1.4L12 10l-5.6 5.4L5 14z"/></svg>',
-    down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16.8 5 10l1.4-1.4L12 14l5.6-5.4L19 10z"/></svg>',
-    grip: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
-    check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 16.2-4.2-4.2-1.4 1.4 5.6 5.6 11-11-1.4-1.4z"/></svg>',
-    plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>',
-    sets: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v3H4zm0 5.5h16v3H4zM4 16h16v3H4z"/></svg>',
-    target: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14zm0 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg>',
-    pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v2l-3 1v6l3 3v2h-6v5l-1 1-1-1v-5H5v-2l3-3V6L5 5z"/></svg>',
-    share: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6 16.7 7.3l-1.4 1.4L13 6.4V15h-2V6.4L8.7 8.7 7.3 7.3zM5 10h3v2H7v8h10v-8h-1v-2h3v12H5z"/></svg>',
-    cal: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h2v2h6V2h2v2h3v18H4V4h3zm-1 8v10h12V10zm0-4v2h12V6z"/></svg>',
-    clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14zm-1 2v5.4l4.3 2.6 1-1.7-3.3-2V7z"/></svg>',
-    edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17.2V20h2.8l8.3-8.3-2.8-2.8zM19.7 7.1a1 1 0 0 0 0-1.4l-1.4-1.4a1 1 0 0 0-1.4 0l-1.2 1.2 2.8 2.8z"/></svg>',
-    play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
-    chevron: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 19.4 16 12 8.6 4.6 10 3.2l8.8 8.8-8.8 8.8z"/></svg>',
+    back: svgI('<path d="M15 5l-7 7 7 7"/>'),
+    more: svgI('<path d="M5.5 12h.01M12 12h.01M18.5 12h.01" stroke-width="3"/>'),
+    trash: svgI('<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10.2 11v5.5M13.8 11v5.5"/>'),
+    up: svgI('<path d="M6 15l6-6 6 6"/>'),
+    down: svgI('<path d="M6 9l6 6 6-6"/>'),
+    grip: svgI('<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="3"/>'),
+    check: svgI('<path d="M5.5 12.5l4 4 9-9" pathLength="1"/>'),
+    plus: svgI('<path d="M12 5v14M5 12h14"/>'),
+    sets: svgI('<path d="M5 7h14M5 12h14M5 17h14"/>'),
+    target: svgI('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/>'),
+    pin: svgI('<path d="M9 3.5h6M10 3.5v4.5l-3.5 4h11L14 8V3.5M12 12v8.5"/>'),
+    share: svgI('<path d="M12 3.5v11M7.5 8L12 3.5 16.5 8M7 11H5.5v9.5h13V11H17"/>'),
+    cal: svgI('<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M8.5 3v4M15.5 3v4"/>'),
+    clock: svgI('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+    edit: svgI('<path d="M4.5 19.5h4l10.5-10.5-4-4L4.5 15.5zM13.5 6.5l4 4"/>'),
+    play: svgI('<path class="fill" d="M8 5.5v13l10-6.5z"/>'),
+    chevron: svgI('<path d="M9 5l7 7-7 7"/>'),
+    flame: svgI('<path d="M12 21c3.6 0 6-2.4 6-5.8 0-3.7-2.8-5.6-3.6-8.7-.3 1.6-1 2.8-2.2 3.6C12.5 7.3 11 4.7 8.6 3c.4 3.3-2.6 5.8-2.6 10.2C6 18.6 8.4 21 12 21z"/>'),
+    bulb: svgI('<path d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>'),
+    warn: svgI('<path d="M12 4 2.8 19.5h18.4zM12 10v4.5M12 17.2h.01"/>'),
+    trophy: svgI('<path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H5v1.5a3 3 0 0 0 3 3M16 6h3v1.5a3 3 0 0 1-3 3M12 13v4M8.5 20.5h7M10 17h4v3.5h-4z"/>'),
+    done: svgI('<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16.5 9.5"/>'),
+    inbox: svgI('<path d="M12 4v10M8 10l4 4 4-4M4.5 15v3.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V15"/>'),
+    close: svgI('<path d="M6 6l12 12M18 6 6 18"/>'),
+    reload: svgI('<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/>'),
   };
 
   /* ---------- Speicher ---------- */
@@ -2079,6 +2089,7 @@
       const s = db.settings;
       if (withSound && s.sound) Sound.alarm();
       if (withSound && s.vibrate && navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
+      if (withSound && isIOS) Haptics.tap(); // wirkt nur, wenn iOS es ohne Berührung zulässt
       if (document.visibilityState !== 'visible' && !this.swScheduled) {
         Notify.show('Pause vorbei 💪', this.state && this.state.label ? 'Nächster Satz: ' + this.state.label : '');
       }
@@ -2088,8 +2099,12 @@
       const bar = $('#timer-bar');
       const t = this.state;
       document.body.classList.toggle('timer-on', !!t);
-      if (!t) { bar.hidden = true; return; }
+      // Die Leiste fährt per CSS-Übergang ein und aus (statt hart zu erscheinen)
       bar.hidden = false;
+      bar.classList.toggle('show', !!t);
+      bar.inert = !t;
+      bar.setAttribute('aria-hidden', String(!t));
+      if (!t) return;
       const now = Date.now();
       const done = TimerCore.isDone(t, now);
       bar.classList.toggle('done', done);
@@ -2101,19 +2116,254 @@
     },
   };
 
-  /* ---------- Toast ---------- */
+  /* ---------- Bewegung & Haptik ---------- */
+
+  const reduceMQ = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const reduced = () => reduceMQ.matches;
+  const EASE = {
+    out: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    in: 'cubic-bezier(0.4, 0, 1, 1)',
+    sheet: 'cubic-bezier(0.32, 0.72, 0, 1)',
+  };
+  // Leichte Feder für WAAPI (fällt auf eine Bezier-Kurve zurück, wo linear() fehlt)
+  EASE.spring = (window.CSS && CSS.supports && CSS.supports('transition-timing-function', 'linear(0, 1)'))
+    ? 'linear(0, 0.063, 0.237, 0.459, 0.662 15.5%, 0.81, 0.909, 0.974 29.4%, 1.012, 1.032 38.5%, 1.037 43%, 1.033 48.6%, 1.01 62.1%, 0.998 76.3%, 1)'
+    : 'cubic-bezier(0.3, 1.35, 0.5, 1)';
+
+  /** Web Animations API mit Absicherung (ältere Browser: einfach nichts animieren). */
+  function anim(el, frames, opts) {
+    try { if (el && el.animate) return el.animate(frames, opts); } catch (e) { /* ignorieren */ }
+    return null;
+  }
+
+  /** Zahl weich hoch-/runterzählen (nur Text, kein Layout). */
+  function countUp(el, from, to, fmt, dur) {
+    if (!el) return;
+    if (reduced() || from === to || !Number.isFinite(from)) { el.textContent = fmt(to); return; }
+    el.textContent = fmt(from);
+    const t0 = performance.now();
+    const d = dur || 650;
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / d);
+      const e = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(from + (to - from) * e);
+      if (p < 1 && el.isConnected) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  /**
+   * Leichtes haptisches Feedback.
+   * iPhone: Safari kennt navigator.vibrate nicht – ein unsichtbarer iOS-Schalter
+   * (<input type="checkbox" switch>) löst beim Umschalten ein kurzes „Tick“ aus (iOS 18+,
+   * nur direkt nach einer Berührung). Sonst navigator.vibrate. Wirft nie einen Fehler.
+   */
+  const Haptics = {
+    tap() {
+      try {
+        if (!db || !db.settings.vibrate) return;
+        if (isIOS) {
+          const label = document.createElement('label');
+          label.setAttribute('aria-hidden', 'true');
+          label.style.display = 'none';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.setAttribute('switch', '');
+          input.tabIndex = -1;
+          label.appendChild(input);
+          document.head.appendChild(label);
+          label.click();
+          label.remove();
+        } else if (navigator.vibrate) {
+          navigator.vibrate(12);
+        }
+      } catch (e) { /* nie stören */ }
+    },
+  };
+
+  /* ---------- Toast (optional mit Aktion, z. B. „Rückgängig“) ---------- */
 
   let toastTimer = null;
-  function toast(msg) {
+  let toastHide = null;
+  function toast(msg, opts) {
+    const o = opts || {};
     const el = $('#toast');
-    el.textContent = msg;
-    el.hidden = false;
-    requestAnimationFrame(() => el.classList.add('show'));
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
+    clearTimeout(toastHide);
+    el.innerHTML = '<span class="toast-msg"></span>' + (o.action ? '<button type="button" class="toast-btn">' + esc(o.action) + '</button>' : '');
+    el.firstChild.textContent = msg;
+    el.classList.toggle('has-action', !!o.action);
+    const wasHidden = el.hidden;
+    el.hidden = false;
+    if (wasHidden) { el.classList.remove('show'); void el.offsetWidth; }
+    el.classList.add('show');
+    const hide = () => {
       el.classList.remove('show');
-      setTimeout(() => { el.hidden = true; }, 250);
-    }, 2600);
+      toastHide = setTimeout(() => { el.hidden = true; el.classList.remove('has-action'); }, 220);
+    };
+    if (o.action) {
+      el.querySelector('.toast-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        clearTimeout(toastTimer);
+        hide();
+        Haptics.tap();
+        o.onAction();
+      }, { once: true });
+    }
+    toastTimer = setTimeout(hide, o.action ? 5000 : 2600);
+  }
+
+  /* ---------- Bottom Sheets: folgen dem Finger, Wischen nach unten schließt ---------- */
+
+  const openSheets = new Set();
+  function syncModalClass() { document.body.classList.toggle('modal-open', openSheets.size > 0); }
+
+  /** Gummiband-Effekt (wie iOS) für Bewegungen über die Grenze hinaus. */
+  const rubber = (x, dim) => (1 - 1 / (x * 0.55 / dim + 1)) * dim;
+
+  /**
+   * Macht aus einem .modal ein interaktives Sheet.
+   * onDismiss: wird beim Wegwischen aufgerufen (der Aufrufer schließt dann wie gewohnt).
+   * Rückgabe: { hide(done) } – animiert von der aktuellen Position aus nach unten.
+   */
+  function presentSheet(wrap, onDismiss, opts) {
+    const o = opts || {};
+    const card = wrap.querySelector('.modal-card');
+    const backdrop = wrap.querySelector('.modal-backdrop');
+    const desktop = window.matchMedia('(min-width: 700px)').matches;
+    let y = 0;
+    let closing = false;
+    let running = [];
+    openSheets.add(wrap);
+    syncModalClass();
+
+    if (!o.fullscreen) {
+      const g = document.createElement('div');
+      g.className = 'sheet-grabber';
+      g.setAttribute('aria-hidden', 'true');
+      card.prepend(g);
+    }
+    const markScroll = () => card.classList.toggle('scrolls', card.scrollHeight > card.clientHeight + 1);
+    requestAnimationFrame(markScroll);
+    card.addEventListener('input', () => requestAnimationFrame(markScroll));
+
+    const stopRunning = () => { running.forEach((a) => { if (a) a.cancel(); }); running = []; };
+    const setY = (v) => {
+      y = v;
+      card.style.transform = v ? 'translateY(' + v + 'px)' : '';
+      if (backdrop) backdrop.style.opacity = String(Math.max(0, Math.min(1, 1 - v / Math.max(1, card.offsetHeight))));
+    };
+
+    // Einblenden (Einblenden etwas langsamer als Ausblenden)
+    if (o.handoff) {
+      running.push(anim(card, [{ opacity: 0.5 }, { opacity: 1 }], { duration: 220, easing: EASE.out }));
+    } else if (reduced()) {
+      running.push(anim(wrap, [{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'linear' }));
+    } else if (o.fullscreen) {
+      running.push(anim(card, [{ opacity: 0, transform: 'scale(1.04)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: EASE.out }));
+    } else if (desktop) {
+      running.push(anim(card, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], { duration: 340, easing: EASE.spring }));
+      if (backdrop) running.push(anim(backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: EASE.out }));
+    } else {
+      running.push(anim(card, [{ transform: 'translateY(100%)' }, { transform: 'none' }], { duration: 460, easing: EASE.sheet }));
+      if (backdrop) running.push(anim(backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: EASE.out }));
+    }
+
+    // Ziehen per Pointer Events (die Karte hat touch-action: none, der Griff immer)
+    let start = null, dragging = false, samples = [], raf = 0, pendingY = 0, swallow = false;
+    if (!o.fullscreen && !desktop) {
+      card.addEventListener('pointerdown', (e) => {
+        if (closing || (e.button !== undefined && e.button > 0) || !e.isPrimary) return;
+        if (e.target.closest('input, textarea, select, .scroll-list, video, .filter-chips')) return;
+        const inGrab = !!e.target.closest('.sheet-grabber') || e.clientY - card.getBoundingClientRect().top < 30;
+        if (card.classList.contains('scrolls') && !inGrab) return; // scrollbarer Inhalt: nur am Griff ziehen
+        start = { x: e.clientX, y: e.clientY, id: e.pointerId };
+        dragging = false;
+        samples = [{ y: e.clientY, t: e.timeStamp }];
+      });
+      card.addEventListener('pointermove', (e) => {
+        if (!start || e.pointerId !== start.id) return;
+        const dy = e.clientY - start.y, dx = e.clientX - start.x;
+        if (!dragging) {
+          if (Math.abs(dy) < 6 && Math.abs(dx) < 6) return;
+          if (Math.abs(dx) > Math.abs(dy)) { start = null; return; }
+          dragging = true;
+          stopRunning();
+          try { card.setPointerCapture(e.pointerId); } catch (err) { /* */ }
+          card.classList.add('dragging');
+          card.style.willChange = 'transform';
+          const a = document.activeElement;
+          if (a && card.contains(a) && a.blur) a.blur();
+        }
+        samples.push({ y: e.clientY, t: e.timeStamp });
+        if (samples.length > 6) samples.shift();
+        pendingY = dy >= 0 ? dy : -rubber(-dy, 70);
+        if (!raf) raf = requestAnimationFrame(() => { raf = 0; setY(pendingY); });
+      });
+      const end = (e) => {
+        if (!start || e.pointerId !== start.id) return;
+        start = null;
+        if (!dragging) return;
+        dragging = false;
+        swallow = true;
+        setTimeout(() => { swallow = false; }, 350);
+        cancelAnimationFrame(raf); raf = 0;
+        setY(pendingY);
+        card.classList.remove('dragging');
+        card.style.willChange = '';
+        const a = samples[0], b = samples[samples.length - 1];
+        const v = b && a && b.t > a.t ? (b.y - a.y) / (b.t - a.t) : 0; // px/ms
+        if (e.type !== 'pointercancel' && (y > card.offsetHeight * 0.3 || (v > 0.55 && y > 10))) {
+          sheet.velocity = v;
+          onDismiss();
+        } else {
+          // zurückschnappen mit leichter Feder
+          const from = y;
+          const bd = backdrop ? Number(backdrop.style.opacity || 1) : 1;
+          setY(0);
+          running.push(anim(card, [{ transform: 'translateY(' + from + 'px)' }, { transform: 'none' }], { duration: 440, easing: EASE.spring }));
+          if (backdrop) running.push(anim(backdrop, [{ opacity: bd }, { opacity: 1 }], { duration: 260, easing: EASE.out }));
+        }
+      };
+      card.addEventListener('pointerup', end);
+      card.addEventListener('pointercancel', end);
+      // Nach dem Ziehen keinen Klick auslösen
+      wrap.addEventListener('click', (e) => { if (swallow) { e.stopPropagation(); e.preventDefault(); swallow = false; } }, true);
+    }
+
+    const sheet = {
+      velocity: 0,
+      get closing() { return closing; },
+      hide(done) {
+        if (closing) return;
+        closing = true;
+        openSheets.delete(wrap);
+        syncModalClass();
+        stopRunning();
+        wrap.style.pointerEvents = 'none';
+        const finish = () => { if (done) done(); };
+        let a;
+        if (reduced()) {
+          a = anim(wrap, [{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'linear', fill: 'forwards' });
+        } else if (o.fullscreen) {
+          a = anim(card, [{ opacity: 1 }, { opacity: 0, transform: 'scale(1.03)' }], { duration: 220, easing: EASE.in, fill: 'forwards' });
+        } else if (desktop) {
+          a = anim(card, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.97)' }], { duration: 180, easing: EASE.in, fill: 'forwards' });
+        } else {
+          const h = card.offsetHeight || 400;
+          const remaining = Math.max(0, h - y);
+          const v = Math.max(sheet.velocity, 0);
+          const dur = Math.round(Math.max(170, Math.min(300, v > 0.05 ? remaining / (v * 1.3) : 280)));
+          a = anim(card, [{ transform: 'translateY(' + y + 'px)' }, { transform: 'translateY(' + (h + 24) + 'px)' }],
+            { duration: dur, easing: v > 0.3 ? EASE.out : EASE.sheet, fill: 'forwards' });
+        }
+        if (backdrop && !reduced()) {
+          anim(backdrop, [{ opacity: Number(backdrop.style.opacity || 1) }, { opacity: 0 }], { duration: 200, easing: EASE.in, fill: 'forwards' });
+        }
+        if (a) a.onfinish = finish; else finish();
+      },
+    };
+    return sheet;
   }
 
   /* ---------- Dialoge (als Bottom Sheet, gut mit einer Hand bedienbar) ---------- */
@@ -2140,7 +2390,7 @@
           ${inp}
           ${chips ? `<div class="chips">${chips.map((c) => `<button type="button" class="chip" data-chip="${esc(c.value)}">${esc(c.label)}</button>`).join('')}</div>` : ''}
           <div class="modal-actions ${buttons.length > 2 ? 'stack' : ''}">
-            ${buttons.map((b, i) => `<button type="button" class="btn ${b.style || ''}" data-idx="${i}">${esc(b.label)}</button>`).join('')}
+            ${buttons.map((b, i) => `<button type="button" class="btn ${b.style || ''}" data-idx="${i}">${b.icon || ''}${esc(b.label)}</button>`).join('')}
           </div>
         </div>`;
       const field = $('#dlg-input', wrap);
@@ -2152,10 +2402,14 @@
           if (sub) close(field.value);
         }
       };
+      let closed = false;
+      let sheet = null;
       function close(val) {
+        if (closed) return;
+        closed = true;
         document.removeEventListener('keydown', onKey);
         wrap.classList.add('closing');
-        setTimeout(() => wrap.remove(), 180);
+        if (sheet) sheet.hide(() => wrap.remove()); else wrap.remove();
         resolve(val);
       }
       wrap.addEventListener('click', (e) => {
@@ -2170,6 +2424,7 @@
       });
       document.addEventListener('keydown', onKey);
       $('#modal-root').appendChild(wrap);
+      sheet = presentSheet(wrap, () => close(null));
       if (field) {
         field.focus(); // synchron im Klick-Handler → iOS öffnet die Tastatur
         if (input.select !== false) field.select();
@@ -2201,7 +2456,7 @@
   function actionSheet(title, items) {
     return openDialog({
       title,
-      buttons: items.map((it) => ({ label: it.label, value: it.value, style: it.danger ? 'danger-soft' : 'soft' }))
+      buttons: items.map((it) => ({ label: it.label, value: it.value, icon: it.icon, style: it.danger ? 'danger-soft' : 'soft' }))
         .concat([{ label: 'Abbrechen', style: 'ghost' }]),
     });
   }
@@ -2238,6 +2493,14 @@
     isAdmin: false,          // wird von cloud.js gesetzt (Prüfung über die Firestore-Regeln)
     admin: { users: null, loading: false, error: null, filter: '', stats: {} },
     blocked: null,           // Sperr-Info, falls sie während des Anmeldens eintrifft
+    // Oberfläche / Übergänge
+    hdr: { title: '', back: null, large: false, eyebrow: '', set: false },
+    lastTab: null,
+    navDir: null,
+    scrollMem: {},           // Scrollposition je Seite (für Zurück & Tab-Wechsel)
+    fadeContent: null,       // Inhalt unterhalb dieses Elements beim nächsten Zeichnen einblenden
+    foodFx: null,            // letzte Werte des Kalorienrings (für Zähl-Animation)
+    popSet: null,            // gerade abgehakter Satz (Haken-Animation)
   };
 
   function parseRoute() {
@@ -2269,19 +2532,206 @@
     else location.hash = hash;
   }
 
-  function setHeader({ title, back, actions, large, hidden }) {
+  function setHeader({ title, back, actions, large, hidden, eyebrow }) {
     const h = $('#header');
     h.hidden = !!hidden;
     h.className = 'app-header' + (large ? ' large' : '');
     h.innerHTML = `
+      <div class="hdr-bg" aria-hidden="true"></div>
       <div class="hdr-side">${back ? `<a class="hdr-btn" href="${back}" aria-label="Zurück">${ICON.back}<span>Zurück</span></a>` : ''}</div>
       <h1 class="hdr-title">${esc(title)}</h1>
       <div class="hdr-side right">${actions || ''}</div>`;
+    ui.hdr = { title, back: back || null, large: !!large, eyebrow: eyebrow || '', set: true };
     document.title = title === 'Training' || title === 'Gym Tracker' ? 'Gym Tracker' : title + ' · Gym Tracker';
   }
 
-  /** Zeichnet die aktuelle Ansicht neu. Bei gleicher Route bleibt die Scrollposition erhalten. */
+  /* ---------- Kopfzeile beim Scrollen (Hintergrund einblenden, großer Titel schrumpft) ---------- */
+
+  const HeaderFx = {
+    raf: 0,
+    last: '',
+    update() {
+      const h = $('#header');
+      if (!h || h.hidden) return;
+      const y = window.scrollY;
+      const bg = Math.max(0, Math.min(1, y / 16));
+      let title = 1;
+      const lt = $('#view > .large-title');
+      if (lt) {
+        const p = Math.max(0, Math.min(1, (y - 6) / 38));
+        title = p;
+        // Großer Titel: schrumpft leicht und blendet aus; beim Nachfedern (iOS) wächst er
+        const s = y < 0 ? Math.min(1.08, 1 + (-y) / 600) : 1 - 0.08 * p;
+        lt.style.transform = s === 1 ? '' : 'scale(' + s.toFixed(4) + ')';
+        lt.style.opacity = y > 0 ? String(1 - p) : '';
+      }
+      const key = bg.toFixed(3) + '|' + title.toFixed(3);
+      if (key === this.last) return;
+      this.last = key;
+      h.style.setProperty('--hdr-bg', bg.toFixed(3));
+      h.style.setProperty('--hdr-title', title.toFixed(3));
+    },
+    onScroll() {
+      if (HeaderFx.raf) return;
+      HeaderFx.raf = requestAnimationFrame(() => { HeaderFx.raf = 0; HeaderFx.update(); });
+    },
+  };
+
+  /* ---------- Navigation mit Übergängen ---------- */
+
+  const TAB_ROOT = { home: '#/', history: '#/history', food: '#/food', library: '#/library', settings: '#/settings' };
+  const navStack = [];
+
+  /** Richtung eines Seitenwechsels: push (tiefer), pop (zurück), tab (anderer Reiter). */
+  function navDirection(newKey, newRoute) {
+    const oldKey = ui.lastRoute;
+    const oldTab = ui.lastTab;
+    if (!oldKey) return null;
+    if (newRoute.tab !== oldTab) {
+      navStack.length = 0;
+      navStack.push(newKey);
+      return 'tab';
+    }
+    const isRoot = TAB_ROOT[newRoute.tab] === newKey || (newKey === '#/' && newRoute.name === 'home');
+    const prevIdx = navStack.lastIndexOf(newKey);
+    if (isRoot || newKey === ui.hdr.back || (prevIdx >= 0 && prevIdx === navStack.length - 2)) {
+      if (prevIdx >= 0) navStack.length = prevIdx + 1; else { navStack.length = 0; navStack.push(newKey); }
+      return 'pop';
+    }
+    if (!navStack.length) navStack.push(oldKey);
+    navStack.push(newKey);
+    return 'push';
+  }
+
+  let vtPending = false;
+
+  /**
+   * View Transitions API nur dort, wo sie stabil läuft. In WebKit (Safari, alle iPhone-Browser)
+   * hat sie im Test die Seite abstürzen lassen – dort übernimmt ein eigener Übergang
+   * mit gleichem Aussehen (Schnappschuss der alten Seite + Web Animations).
+   */
+  const ua = navigator.userAgent;
+  const isWebKitEngine = isIOS || (/AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg|OPR|Android/.test(ua));
+  const nativeVT = () => !!document.startViewTransition && !isWebKitEngine;
+
+  /** Führt fn mit View Transition aus. Rückgabe false = nicht möglich, fn wurde NICHT ausgeführt. */
+  function withTransition(kind, fn) {
+    const can = nativeVT() && document.visibilityState === 'visible' && !openSheets.size &&
+      !$('#modal-root').children.length;
+    if (!can) return false;
+    const root = document.documentElement;
+    const nav = reduced() ? 'fade' : kind;
+    root.dataset.nav = nav;
+    vtPending = true;
+    try {
+      const vt = document.startViewTransition(() => { vtPending = false; fn(); });
+      const clear = () => { if (root.dataset.nav === nav) delete root.dataset.nav; };
+      vt.finished.then(clear, clear);
+      vt.ready.catch(() => {});
+      vt.updateCallbackDone.catch(() => {});
+    } catch (e) {
+      vtPending = false;
+      delete root.dataset.nav;
+      fn();
+    }
+    return true;
+  }
+
+  /** Zeichnet die aktuelle Ansicht neu. Seitenwechsel werden animiert, gleiche Route behält die Scrollposition. */
   function render() {
+    if (vtPending) return; // der ausstehende Übergang zeichnet ohnehin den neuesten Stand
+    const key = location.hash || '#/';
+    if (ui.lastRoute && key !== ui.lastRoute && account) {
+      const route = parseRoute();
+      const dir = navDirection(key, route);
+      if (dir) {
+        ui.navDir = dir;
+        if (!withTransition(dir, renderNow)) GhostNav.run(dir, renderNow);
+        return;
+      }
+    }
+    GhostNav.clear();
+    renderNow();
+  }
+
+  /**
+   * Seitenübergang ohne View Transitions API: Die alte Seite wird als Schnappschuss (DOM-Kopie)
+   * fixiert, die neue sofort gezeichnet – dann gleiten beide per transform/opacity.
+   * push: neue Seite kommt von rechts, alte weicht nach links und dunkelt ab.
+   * pop:  alte Seite gleitet nach rechts weg, darunter kommt die vorige zurück.
+   * tab:  kurze Überblendung mit minimaler Verschiebung.
+   * Die neue Seite ist sofort bedienbar.
+   */
+  const GhostNav = {
+    active: null,
+    clear() {
+      const a = this.active;
+      if (!a) return;
+      this.active = null;
+      a.anims.forEach((x) => { if (x) x.cancel(); });
+      a.layer.remove();
+      if (a.hdr) a.hdr.remove();
+      document.body.classList.remove('navving', 'navving-pop');
+    },
+    snapshot(el) {
+      const c = el.cloneNode(true);
+      c.removeAttribute('id');
+      c.querySelectorAll('[id]').forEach((x) => x.removeAttribute('id'));
+      c.querySelectorAll('[data-action], [data-flip], [data-swipe]').forEach((x) => {
+        x.removeAttribute('data-action'); x.removeAttribute('data-flip'); x.removeAttribute('data-swipe');
+      });
+      c.setAttribute('aria-hidden', 'true');
+      c.inert = true;
+      return c;
+    },
+    run(dir, fn) {
+      this.clear();
+      const view = $('#view');
+      if (reduced() || document.visibilityState !== 'visible' || !view.animate) {
+        fn();
+        if (reduced()) anim(view, [{ opacity: 0 }, { opacity: 1 }], { duration: 150 });
+        return;
+      }
+      const r = view.getBoundingClientRect();
+      const layer = document.createElement('div');
+      layer.className = 'nav-ghost' + (dir === 'push' ? '' : ' over');
+      layer.setAttribute('aria-hidden', 'true');
+      const ghost = this.snapshot(view);
+      const startX = view.style.transform || ''; // z. B. nach Wischen vom Rand
+      Object.assign(ghost.style, { position: 'absolute', top: r.top + 'px', left: r.left + 'px', width: r.width + 'px', margin: '0', transform: '' });
+      layer.appendChild(ghost);
+      const header = $('#header');
+      const hdr = header.hidden ? null : this.snapshot(header);
+      if (hdr) hdr.classList.add('nav-ghost-hdr');
+
+      document.body.classList.add('navving');
+      if (dir !== 'push') document.body.classList.add('navving-pop');
+      fn();
+      document.body.appendChild(layer);
+      if (hdr) document.body.appendChild(hdr);
+
+      const anims = [];
+      let main;
+      if (dir === 'push') {
+        main = anim(view, [{ transform: 'translateX(100%)' }, { transform: 'none' }], { duration: 480, easing: EASE.sheet });
+        anims.push(anim(ghost, [{ transform: 'none', opacity: 1 }, { transform: 'translateX(-24%)', opacity: 0.35 }], { duration: 480, easing: EASE.sheet, fill: 'forwards' }));
+      } else if (dir === 'pop') {
+        main = anim(ghost, [{ transform: startX || 'none' }, { transform: 'translateX(100%)' }], { duration: 400, easing: EASE.sheet, fill: 'forwards' });
+        anims.push(anim(view, [{ transform: 'translateX(-24%)', opacity: 0.35 }, { transform: 'none', opacity: 1 }], { duration: 400, easing: EASE.sheet }));
+      } else {
+        main = anim(view, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: 40, easing: EASE.out, fill: 'backwards' });
+        anims.push(anim(layer, [{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: EASE.in, fill: 'forwards' }));
+      }
+      if (hdr) anims.push(anim(hdr, [{ opacity: 1 }, { opacity: 0 }], { duration: 170, easing: EASE.in, fill: 'forwards' }));
+      anims.push(main);
+      const state = { layer, hdr, anims };
+      this.active = state;
+      const done = () => { if (this.active === state) this.clear(); };
+      if (main) main.onfinish = done; else done();
+    },
+  };
+
+  function renderNow() {
     const route = parseRoute();
     // Noch nicht entschieden (Konto oder ohne Konto)? → Anmeldeseite
     if (!account && route.name !== 'login') {
@@ -2296,6 +2746,10 @@
     const sameRoute = key === ui.lastRoute;
     const scrollY = window.scrollY;
     const view = $('#view');
+    if (!sameRoute && ui.lastRoute) ui.scrollMem[ui.lastRoute] = scrollY;
+    const flip = sameRoute ? Flip.measure(view) : null;
+    view.style.transform = '';
+    ui.hdr.set = false;
 
     switch (route.name) {
       case 'day': renderDay(view, route.id); break;
@@ -2316,12 +2770,143 @@
       default: renderHome(view);
     }
 
+    // Großer iOS-Titel als erstes Element des Inhalts
+    if (ui.hdr.set && ui.hdr.large && !(view.firstElementChild && view.firstElementChild.classList.contains('large-title'))) {
+      view.insertAdjacentHTML('afterbegin', '<div class="large-title" aria-hidden="true">' +
+        (ui.hdr.eyebrow ? '<span class="large-eyebrow">' + esc(ui.hdr.eyebrow) + '</span>' : '') + esc(ui.hdr.title) + '</div>');
+    }
+
     $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === route.tab));
     $('#tab-dot').hidden = !db.activeSession;
     ui.lastRoute = key;
-    window.scrollTo(0, sameRoute ? scrollY : 0);
+    ui.lastTab = route.tab;
+    const dir = ui.navDir;
+    ui.navDir = null;
+    const y = sameRoute ? scrollY : (dir === 'pop' || dir === 'tab') ? (ui.scrollMem[key] || 0) : 0;
+    window.scrollTo(0, y);
+    HeaderFx.last = '';
+    HeaderFx.update();
+    enhanceView(view, sameRoute);
+    if (flip) Flip.play(flip, view);
   }
 
+  /* ---------- FLIP: Listenelemente gleiten an ihren neuen Platz ---------- */
+
+  /**
+   * Elemente mit data-flip="schlüssel" werden über Neuzeichnungen hinweg verfolgt:
+   * verschobene gleiten weich, neue blenden ein, entfernte blenden am alten Platz aus.
+   */
+  const Flip = {
+    measure(root) {
+      if (reduced()) return null;
+      const map = new Map();
+      const sy = window.scrollY;
+      const vh = window.innerHeight;
+      for (const el of root.querySelectorAll('[data-flip]')) {
+        const r = el.getBoundingClientRect();
+        const parent = el.parentElement && el.parentElement.closest('[data-flip]');
+        map.set(el.dataset.flip, {
+          el, top: r.top + sy, left: r.left, w: r.width, h: r.height,
+          off: r.bottom < -100 || r.top > vh + 100,
+          parent: parent ? parent.dataset.flip : null,
+        });
+      }
+      return map;
+    },
+    play(before, root) {
+      if (!before || !before.size) return;
+      const sy = window.scrollY;
+      const vh = window.innerHeight;
+      const now = new Map();
+      for (const el of root.querySelectorAll('[data-flip]')) {
+        const r = el.getBoundingClientRect();
+        const parent = el.parentElement && el.parentElement.closest('[data-flip]');
+        now.set(el.dataset.flip, { el, r, top: r.top + sy, parent: parent ? parent.dataset.flip : null });
+      }
+      const delta = new Map();
+      for (const [k, n] of now) {
+        const b = before.get(k);
+        if (b) delta.set(k, { dx: b.left - n.r.left, dy: b.top - n.top });
+      }
+      for (const [k, n] of now) {
+        if (n.r.bottom < 0 || n.r.top > vh) continue;
+        const d = delta.get(k);
+        if (!d) {
+          // neu: einblenden (nicht, wenn das umgebende Element selbst neu ist)
+          if (n.parent && !before.has(n.parent)) continue;
+          anim(n.el, [{ opacity: 0, transform: 'scale(0.97) translateY(-4px)' }, { opacity: 1, transform: 'none' }],
+            { duration: 320, delay: 60, easing: EASE.out, fill: 'backwards' });
+          continue;
+        }
+        // Bewegung relativ zum ebenfalls animierten Elternelement
+        const pd = n.parent && delta.get(n.parent);
+        const dx = d.dx - (pd ? pd.dx : 0), dy = d.dy - (pd ? pd.dy : 0);
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+        anim(n.el, [{ transform: 'translate(' + dx + 'px, ' + dy + 'px)' }, { transform: 'none' }],
+          { duration: 420, easing: EASE.sheet });
+      }
+      // Entfernt: am alten Platz kurz ausblenden
+      for (const [k, b] of before) {
+        if (now.has(k) || b.off || b.el.dataset.gone || (b.parent && !now.has(b.parent))) continue;
+        const g = b.el;
+        g.removeAttribute('data-flip');
+        Object.assign(g.style, {
+          position: 'absolute', top: b.top + 'px', left: (b.left + window.scrollX) + 'px', width: b.w + 'px', height: b.h + 'px',
+          margin: '0', pointerEvents: 'none', zIndex: '0', transform: '',
+        });
+        root.appendChild(g);
+        const a = anim(g, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.96)' }],
+          { duration: 200, easing: EASE.in, fill: 'forwards' });
+        if (a) a.onfinish = () => g.remove(); else g.remove();
+      }
+    },
+  };
+
+  /* ---------- Nach jedem Zeichnen: Segment-Daumen, Zähler, Einblendungen ---------- */
+
+  function enhanceView(view, sameRoute) {
+    Seg.enhance(view, sameRoute);
+    if (ui.fadeContent) {
+      const from = ui.fadeContent;
+      ui.fadeContent = null;
+      if (!reduced()) {
+        let on = false;
+        for (const el of view.children) {
+          if (el === from || (from.nodeType !== 1 && el.matches(from))) { on = true; continue; }
+          if (on) anim(el, [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE.out });
+        }
+      }
+    }
+    if (parseRoute().name === 'food') FoodFx.play(view, sameRoute);
+  }
+
+  /** Segment-Steuerungen: weiß gefüllter „Daumen“ gleitet zur Auswahl. */
+  const Seg = {
+    mem: {},
+    enhance(root, animate) {
+      $$('.segmented', root).forEach((seg, i) => {
+        const sel = seg.querySelector('[aria-selected="true"]');
+        if (!sel) return;
+        const first = seg.querySelector('[data-action]');
+        const key = (ui.lastRoute || '') + '|' + (first ? first.dataset.action : i);
+        const thumb = document.createElement('span');
+        thumb.className = 'seg-thumb';
+        seg.prepend(thumb);
+        seg.classList.add('has-thumb');
+        const left = sel.offsetLeft, width = sel.offsetWidth;
+        thumb.style.width = width + 'px';
+        thumb.style.transform = 'translateX(' + left + 'px)';
+        const prev = this.mem[key];
+        this.mem[key] = { left, width };
+        if (animate && prev && (prev.left !== left || prev.width !== width) && !reduced()) {
+          anim(thumb, [
+            { transform: 'translateX(' + prev.left + 'px) scaleX(' + (prev.width / width) + ')' },
+            { transform: 'translateX(' + left + 'px)' },
+          ], { duration: 420, easing: EASE.spring });
+        }
+      });
+    },
+  };
   /* ---------- Ansicht: Startseite (Trainingstage) ---------- */
 
   function renderHome(view) {
@@ -2331,8 +2916,8 @@
       location.replace('#/import/' + code);
       return;
     }
-    setHeader({ title: 'Training', large: true });
     const now = Date.now();
+    setHeader({ title: 'Training', large: true, eyebrow: new Date(now).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }) });
     const s = db.activeSession;
     const active = s ? `
       <a class="active-banner" href="#/workout">
@@ -2347,7 +2932,7 @@
       const isActive = s && s.dayId === d.id;
       const exNames = d.exercises.map((e) => e.name).join(' · ');
       return `
-        <div class="day-card ${isActive ? 'is-active' : ''}" data-action="preview-day" data-id="${esc(d.id)}" role="button" tabindex="0">
+        <div class="day-card ${isActive ? 'is-active' : ''}" data-flip="day-${esc(d.id)}" data-action="preview-day" data-id="${esc(d.id)}" role="button" tabindex="0">
           <div class="day-main">
             <div class="day-name">${esc(d.name)}</div>
             <div class="day-meta">${d.exercises.length} ${d.exercises.length === 1 ? 'Übung' : 'Übungen'} ·
@@ -2387,9 +2972,9 @@
     const inc = db.settings.increment;
     const p = Core.progression(prev, { min: ex.repMin, max: ex.repMax }, inc, ex.sets);
     if (!p || p.kind === 'first') return '';
-    if (p.kind === 'increase') return p.next !== null ? `💡 Heute steigern: ${fmtNum(p.next)} kg × ${ex.repMin}` : '💡 Heute steigern: Zusatzgewicht oder schwerere Variante';
-    if (p.kind === 'below') return '🎯 Gewicht halten, Untergrenze schaffen';
-    return '🎯 Gleiches Gewicht, je 1 Wdh. mehr';
+    if (p.kind === 'increase') return p.next !== null ? `${ICON.bulb}Heute steigern: ${fmtNum(p.next)} kg × ${ex.repMin}` : ICON.bulb + 'Heute steigern: Zusatzgewicht oder schwerere Variante';
+    if (p.kind === 'below') return ICON.target + 'Gewicht halten, Untergrenze schaffen';
+    return ICON.target + 'Gleiches Gewicht, je 1 Wdh. mehr';
   }
 
   function renderPreview(view, dayId) {
@@ -2454,7 +3039,7 @@
       <button class="week-card" data-action="open-calendar">
         <span class="week-dots" aria-hidden="true">${dots}</span>
         <span class="week-text"><strong>Diese Woche: ${w.thisWeek} von ${w.goal}</strong>
-          <small>${w.streak ? '🔥 ' + w.streak + (w.streak === 1 ? ' Woche' : ' Wochen') + ' in Folge geschafft' : 'Wochenziel: ' + w.goal + '× trainieren'}</small></span>
+          <small>${w.streak ? ICON.flame + w.streak + (w.streak === 1 ? ' Woche' : ' Wochen') + ' in Folge geschafft' : 'Wochenziel: ' + w.goal + '× trainieren'}</small></span>
         ${ICON.cal}
       </button>`;
   }
@@ -2471,7 +3056,7 @@
     });
 
     const rows = day.exercises.map((ex, i) => `
-      <li class="ex-row" data-id="${esc(ex.id)}" data-index="${i}">
+      <li class="ex-row" data-id="${esc(ex.id)}" data-index="${i}" data-flip="exr-${esc(ex.id)}" data-swipe="ex:${esc(ex.id)}">
         <button class="drag-handle" aria-label="Ziehen zum Sortieren">${ICON.grip}</button>
         <div class="ex-row-main">
           <button class="ex-row-name" data-action="ex-rename" data-id="${esc(ex.id)}">${esc(ex.name)}</button>
@@ -2494,9 +3079,9 @@
       <p class="section-label">Übungen</p>
       ${day.exercises.length ? `<ul class="ex-list" id="ex-list" data-day="${esc(day.id)}">${rows}</ul>`
         : '<div class="empty"><p class="muted">Noch keine Übungen. Füge die erste hinzu.</p></div>'}
-      <button class="btn soft block" data-action="ex-add" data-id="${esc(day.id)}">${ICON.plus} Übung hinzufügen</button>
-      <p class="hint">Tipp: Am Griff ${ICON.grip} ziehen oder die Pfeile nutzen, um die Reihenfolge zu ändern. Tippe auf den Namen zum Umbenennen und auf die Chips für Sätze, Ziel-Wiederholungen, Satzpause und eine dauerhafte Notiz (z. B. Sitzeinstellung).</p>
-      ${day.exercises.length ? `<button class="btn primary block lg" data-action="open-day" data-id="${esc(day.id)}">${ICON.play} ${isActive ? 'Zum laufenden Training' : 'Training starten'}</button>` : ''}`;
+      <button class="btn soft block" data-flip="ex-add" data-action="ex-add" data-id="${esc(day.id)}">${ICON.plus} Übung hinzufügen</button>
+      <p class="hint" data-flip="ex-hint">Tipp: Am Griff ${ICON.grip} ziehen oder die Pfeile nutzen, um die Reihenfolge zu ändern. Nach links wischen entfernt eine Übung. Tippe auf den Namen zum Umbenennen und auf die Chips für Sätze, Ziel-Wiederholungen, Satzpause und eine dauerhafte Notiz (z. B. Sitzeinstellung).</p>
+      ${day.exercises.length ? `<button class="btn primary block lg" data-flip="ex-start" data-action="open-day" data-id="${esc(day.id)}">${ICON.play} ${isActive ? 'Zum laufenden Training' : 'Training starten'}</button>` : ''}`;
 
     const list = $('#ex-list');
     if (list) enableDragSort(list, (from, to) => {
@@ -2509,26 +3094,34 @@
   /**
    * Drag & Drop per Pointer Events (funktioniert mit Finger und Maus).
    * Nur der Griff startet das Ziehen, damit normales Scrollen möglich bleibt.
+   * Das gezogene Element hebt sich an, die Nachbarn weichen weich aus und nach dem
+   * Loslassen gleitet alles per FLIP an den neuen Platz.
    */
   function enableDragSort(list, onDrop) {
     list.addEventListener('pointerdown', (e) => {
       const handle = e.target.closest('.drag-handle');
       if (!handle || (e.button !== undefined && e.button !== 0)) return;
       const item = handle.closest('.ex-row');
-      const items = [...list.children];
+      const items = [...list.children].filter((el) => el.classList.contains('ex-row'));
       const from = items.indexOf(item);
       const rects = items.map((el) => el.getBoundingClientRect());
       const step = items.length > 1 ? rects[1].top - rects[0].top : rects[0].height;
       const startY = e.clientY;
       let to = from;
+      let dy = 0;
+      let raf = 0;
       e.preventDefault();
       handle.setPointerCapture(e.pointerId);
       item.classList.add('dragging');
       list.classList.add('sorting');
+      item.style.willChange = 'transform';
+      const lift = () => { item.style.transform = 'translateY(' + dy + 'px) scale(1.03)'; };
+      if (!reduced()) anim(item, [{ transform: 'none' }, { transform: 'scale(1.03)' }], { duration: 220, easing: EASE.spring });
+      lift();
 
-      const move = (ev) => {
-        const dy = ev.clientY - startY;
-        item.style.transform = `translateY(${dy}px)`;
+      const frame = () => {
+        raf = 0;
+        lift();
         const center = rects[from].top + rects[from].height / 2 + dy;
         to = from;
         rects.forEach((r, i) => {
@@ -2544,14 +3137,27 @@
           el.style.transform = shift ? `translateY(${shift}px)` : '';
         });
       };
+      const move = (ev) => {
+        dy = ev.clientY - startY;
+        if (!raf) raf = requestAnimationFrame(frame);
+      };
       const end = (ev) => {
         handle.removeEventListener('pointermove', move);
         handle.removeEventListener('pointerup', end);
         handle.removeEventListener('pointercancel', end);
+        cancelAnimationFrame(raf);
+        item.style.willChange = '';
+        if (ev.type === 'pointerup' && to !== from) {
+          // Positionen bleiben stehen → render() misst sie und lässt alles an den neuen Platz gleiten
+          Haptics.tap();
+          onDrop(from, to);
+          return;
+        }
+        const cur = item.style.transform;
         items.forEach((el) => { el.style.transform = ''; });
         item.classList.remove('dragging');
         list.classList.remove('sorting');
-        if (ev.type === 'pointerup' && to !== from) onDrop(from, to);
+        anim(item, [{ transform: cur || 'none' }, { transform: 'none' }], { duration: 380, easing: EASE.spring });
       };
       handle.addEventListener('pointermove', move);
       handle.addEventListener('pointerup', end);
@@ -2623,8 +3229,8 @@
     if (p.kind === 'first') return `${ICON.target}<span>Ziel: <b>${range}</b> pro Satz – wähle ein Gewicht, mit dem du im Bereich bleibst.</span>`;
     if (p.kind === 'increase') {
       return p.next !== null
-        ? `💡<span>Alle Sätze mit ${ctx.target.max}+ Wdh. geschafft → heute <b>${fmtNum(p.next)} kg</b> (+${fmtNum(ctx.inc)}) für ${ctx.target.min} Wdh.</span>`
-        : `💡<span>Alle Sätze mit ${ctx.target.max}+ Wdh. geschafft → Zeit für Zusatzgewicht oder eine schwerere Variante.</span>`;
+        ? `${ICON.bulb}<span>Alle Sätze mit ${ctx.target.max}+ Wdh. geschafft → heute <b>${fmtNum(p.next)} kg</b> (+${fmtNum(ctx.inc)}) für ${ctx.target.min} Wdh.</span>`
+        : `${ICON.bulb}<span>Alle Sätze mit ${ctx.target.max}+ Wdh. geschafft → Zeit für Zusatzgewicht oder eine schwerere Variante.</span>`;
     }
     if (p.kind === 'below') return `${ICON.target}<span>Letztes Mal unter ${ctx.target.min} Wdh. – Gewicht halten und die Untergrenze schaffen.</span>`;
     return `${ICON.target}<span>Heute: gleiches Gewicht, je <b>1 Wdh. mehr</b> (Ziel ${range}).</span>`;
@@ -2647,7 +3253,7 @@
       const hint = progressionHint(ctx);
       if (se.skipped) {
         return `
-          <section class="card ex-card skipped" data-se="${esc(se.id)}">
+          <section class="card ex-card skipped" data-se="${esc(se.id)}" data-flip="se-${esc(se.id)}">
             <div class="ex-head">
               <h2>${esc(se.name)}</h2>
               <span class="count">übersprungen</span>
@@ -2676,7 +3282,7 @@
               <span></span>
             </div>` : '';
         return `
-          <div class="set ${st.done ? 'done' : ''}" data-se="${esc(se.id)}" data-set="${esc(st.id)}">
+          <div class="set ${st.done ? 'done' : ''}${ui.popSet && ui.popSet.id === st.id ? (st.done ? ' pop' : ' unpop') : ''}" data-se="${esc(se.id)}" data-set="${esc(st.id)}" data-flip="set-${esc(st.id)}" data-swipe="set:${esc(se.id)}:${esc(st.id)}">
             <div class="set-main">
               <span class="set-no">${i + 1}</span>
               <label class="field">
@@ -2689,7 +3295,7 @@
                   placeholder="${ph.reps === null ? '' : esc(ph.reps)}" value="${st.reps === null ? '' : esc(st.reps)}" aria-label="Wiederholungen Satz ${i + 1}">
                 <span class="unit">Wdh.</span>
               </label>
-              <button class="check" data-action="set-toggle" aria-pressed="${st.done}" aria-label="Satz ${i + 1} ${st.done ? 'nicht mehr erledigt' : 'erledigt'}">${ICON.check}</button>
+              <button class="check" data-action="set-toggle" aria-pressed="${st.done}" aria-label="Satz ${i + 1} ${st.done ? 'nicht mehr erledigt' : 'erledigt'}"><span class="check-c">${ICON.check}</span></button>
             </div>${steps}
             <div class="set-sub">
               <input class="in note" data-field="note" type="text" autocomplete="off" autocapitalize="sentences" enterkeyhint="done"
@@ -2703,7 +3309,7 @@
       }).join('');
 
       return `
-        <section class="card ex-card" data-se="${esc(se.id)}">
+        <section class="card ex-card" data-se="${esc(se.id)}" data-flip="se-${esc(se.id)}">
           <div class="ex-head">
             <h2>${esc(se.name)}</h2>
             <span class="count ${doneCount && doneCount === se.sets.length ? 'accent' : ''}">${doneCount}/${se.sets.length}</span>
@@ -2719,7 +3325,7 @@
           ${prevLine}
           ${hint ? `<div class="prog-hint ${ctx.prog.kind}">${hint}</div>` : ''}
           <div class="sets">${sets}</div>
-          <button class="btn soft block sm" data-action="set-add" data-se="${esc(se.id)}">${ICON.plus} Satz</button>
+          <button class="btn soft block sm" data-flip="add-${esc(se.id)}" data-action="set-add" data-se="${esc(se.id)}">${ICON.plus} Satz</button>
         </section>`;
     }).join('');
 
@@ -2730,9 +3336,9 @@
       <div class="wk-meta">Gestartet ${fmtTime(s.startedAt)} Uhr · <span id="elapsed">${fmtDuration(Date.now() - s.startedAt)}</span></div>
       ${wakeHint}
       ${cards || '<div class="empty"><p class="muted">Dieser Tag hat noch keine Übungen.</p></div>'}
-      <button class="btn soft block" data-action="w-add-ex">${ICON.plus} Übung hinzufügen</button>
-      <a class="btn ghost block" href="#/day/${encodeURIComponent(s.dayId || '')}">${ICON.edit} Plan bearbeiten</a>
-      <div class="wk-end">
+      <button class="btn soft block" data-flip="w-add" data-action="w-add-ex">${ICON.plus} Übung hinzufügen</button>
+      <a class="btn ghost block" data-flip="w-plan" href="#/day/${encodeURIComponent(s.dayId || '')}">${ICON.edit} Plan bearbeiten</a>
+      <div class="wk-end" data-flip="w-end">
         <button class="btn primary block lg" data-action="finish">Training beenden &amp; speichern</button>
         <button class="btn ghost block danger-text" data-action="discard">Training verwerfen</button>
       </div>`;
@@ -2819,7 +3425,7 @@
     return `
       <section class="card week-summary">
         <div><strong>${w.thisWeek}/${w.goal}</strong><small>diese Woche</small></div>
-        <div><strong>${w.streak ? '🔥 ' + w.streak : '–'}</strong><small>${w.streak === 1 ? 'Woche' : 'Wochen'} in Folge</small></div>
+        <div><strong>${w.streak ? ICON.flame + w.streak : '–'}</strong><small>${w.streak === 1 ? 'Woche' : 'Wochen'} in Folge</small></div>
         <div><strong>${monthCount}</strong><small>im ${month.toLocaleDateString('de-DE', { month: 'long' })}</small></div>
       </section>
       <section class="card cal">
@@ -2985,7 +3591,7 @@
     }
     view.innerHTML = `
       <div class="summary-hero">
-        <div class="hero-emoji" aria-hidden="true">📥</div>
+        <div class="hero-icon outline" aria-hidden="true">${ICON.inbox}</div>
         <h2>${esc(plan.name)}</h2>
         <p>Jemand hat diesen Trainingsplan mit dir geteilt.</p>
       </div>
@@ -3030,7 +3636,7 @@
     const val = (r, v) => (r.type === 'reps' ? v + ' Wdh.' : (r.type === 'e1rm' ? '≈ ' : '') + fmtNum(v) + ' kg');
     return `
       <section class="card records">
-        <h2 class="records-title">🏆 Neue Rekorde</h2>
+        <h2 class="records-title">${ICON.trophy} Neue Rekorde</h2>
         <ul>${recs.map((r) => `
           <li><strong>${esc(r.name)}</strong>
             <span>${label[r.type]}: <b>${val(r, r.value)}</b> <small>(vorher ${val(r, r.prev)})</small></span></li>`).join('')}
@@ -3065,7 +3671,7 @@
 
     view.innerHTML = `
       <div class="summary-hero">
-        <div class="hero-emoji" aria-hidden="true">${recs.length ? '🏆' : '🎉'}</div>
+        <div class="hero-icon" aria-hidden="true">${recs.length ? ICON.trophy : ICON.done}</div>
         <h2>${recs.length ? (recs.length === 1 ? 'Neuer Rekord!' : recs.length + ' neue Rekorde!') : 'Training geschafft!'}</h2>
         <p>${esc(s.dayName)} · ${fmtLongDate(s.finishedAt)}</p>
       </div>
@@ -3105,7 +3711,7 @@
     };
     let mode = ui.chartMode[key];
     if (!mode || !has[mode]) mode = has.e1rm ? 'e1rm' : has.weight ? 'weight' : 'reps';
-    const tabs = { e1rm: '1RM (geschätzt)', weight: 'Gewicht', reps: 'Wdh.' };
+    const tabs = { e1rm: '1RM (ca.)', weight: 'Gewicht', reps: 'Wdh.' };
     const labels = { e1rm: 'Bestes geschätztes 1RM', weight: 'Bestes Gewicht', reps: 'Beste Wdh.' };
     const unit = mode === 'reps' ? 'Wdh.' : 'kg';
     const points = hist.filter((h) => h.best[mode] !== null).map((h) => ({ x: h.date, y: h.best[mode] }));
@@ -3159,7 +3765,7 @@
         <defs><linearGradient id="c-fill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" class="c-stop1"/><stop offset="1" class="c-stop2"/></linearGradient></defs>
         ${grid}
-        ${pts.length > 1 ? `<path d="${area}" fill="url(#c-fill)"/><path d="${line}" class="c-line"/>` : ''}
+        ${pts.length > 1 ? `<path d="${area}" fill="url(#c-fill)" class="c-area"/><path d="${line}" class="c-line" pathLength="1"/>` : ''}
         ${pts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" class="c-dot"/>`).join('')}
         <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="5.5" class="c-dot-last"/>
         <text x="${Math.min(last[0], W - P.r - 4).toFixed(1)}" y="${Math.max(last[1] - 11, 12).toFixed(1)}" class="c-value" text-anchor="end">${fmtNum(Math.round(lastP.y * 10) / 10)} ${esc(unit)}</text>
@@ -3485,7 +4091,7 @@
 
     if (!uid) {
       setHeader({ title: 'Nutzerverwaltung', back: '#/settings',
-        actions: `<button class="hdr-btn" data-action="admin-reload" aria-label="Neu laden">↻</button>` });
+        actions: `<button class="hdr-btn" data-action="admin-reload" aria-label="Neu laden">${ICON.reload}</button>` });
       if (a.error) {
         view.innerHTML = `<div class="notice warn"><strong>Laden fehlgeschlagen</strong>${esc(authErrorText(a.error))}</div>
           <button class="btn soft block" data-action="admin-reload">Erneut versuchen</button>`;
@@ -3499,7 +4105,7 @@
           <div><strong>${a.users.filter((u) => u.lastSeen && Date.now() - u.lastSeen < 7 * 86400000).length}</strong><small>aktiv (7 Tage)</small></div>
           <div><strong>${blocked}</strong><small>gesperrt</small></div>
         </div>
-        <input class="in" id="admin-search" type="search" placeholder="Nach E-Mail suchen" value="${esc(a.filter)}" autocomplete="off" autocapitalize="off">
+        <label class="search">${ICON.search}<input class="in" id="admin-search" type="search" placeholder="Nach E-Mail suchen" value="${esc(a.filter)}" autocomplete="off" autocapitalize="off"></label>
         <div class="list" id="admin-list" style="margin-top:10px">${adminListHTML()}</div>
         <p class="hint">Neue Nutzer erscheinen hier, sobald sie die App einmal geöffnet haben. Das Login selbst (E-Mail + Passwort) kannst du zusätzlich in der Firebase-Konsole unter Authentication → Nutzer endgültig löschen.</p>`;
       return;
@@ -3622,7 +4228,7 @@
           <span class="row-value">${fmtRest(st.defaultRest)} ${ICON.chevron}</span>
         </button>
         ${switchRow('sound', 'Signalton', 'Piept, wenn die Pause vorbei ist')}
-        ${switchRow('vibrate', 'Vibration', 'Nur wo unterstützt (nicht auf dem iPhone)')}
+        ${switchRow('vibrate', 'Vibration & Haptik', isIOS ? 'Leichtes Tippen beim Abhaken (iPhone ab iOS 18)' : 'Beim Abhaken und am Ende der Pause')}
         ${'audioSession' in navigator ? switchRow('loudMode', 'Ton trotz Lautlos-Schalter', 'Kann laufende Musik unterbrechen') : ''}
         <button class="row" data-action="test-sound">
           <span class="row-text"><span>Ton testen</span></span><span class="row-value">${ICON.play}</span>
@@ -3688,11 +4294,29 @@
    * ========================================================= */
 
   Object.assign(ICON, {
-    scan: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h4V3H3a2 2 0 0 0-2 2v4h2zm14-2v2h4v4h2V5a2 2 0 0 0-2-2zM5 15H3v4a2 2 0 0 0 2 2h4v-2H5zm16 0v4h-4v2h4a2 2 0 0 0 2-2v-4zM6 8h1v8H6zm2 0h2v8H8zm3 0h1v8h-1zm2 0h2v8h-2zm3 0h2v8h-2z"/></svg>',
-    star: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 17.3-6.2 3.7 1.6-7L2 9.2l7.1-.6L12 2l2.9 6.6 7.1.6-5.4 4.8 1.6 7z"/></svg>',
-    search: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>',
-    dumbbell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 8h-1V6.5a1.5 1.5 0 0 0-3 0V11H7.5V6.5a1.5 1.5 0 0 0-3 0V8h-1a1 1 0 0 0 0 2v4a1 1 0 0 0 0 2h1v1.5a1.5 1.5 0 0 0 3 0V13h9v4.5a1.5 1.5 0 0 0 3 0V16h1a1 1 0 0 0 0-2v-4a1 1 0 0 0 0-2z"/></svg>',
+    scan: svgI('<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M8 8.5v7M11 8.5v7M14 8.5v7M17 8.5v7"/>'),
+    star: svgI('<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'),
+    search: svgI('<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/>'),
+    dumbbell: svgI('<path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>'),
+    list: svgI('<path d="M9 6.5h11M9 12h11M9 17.5h11M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" />'),
+    pencil: svgI('<path d="M4.5 19.5h4l10.5-10.5-4-4L4.5 15.5z"/>'),
   });
+
+  /* Muskelgruppen als Linien-Icons (Bibliothek) */
+  const MUSCLE_ICON = {
+    'Brust': svgI('<path d="M12 7.5c-1.2-1.6-3-2.2-5-1.8-1.9.4-2.8 2-2.5 4 .3 2.2 1.6 4.3 4 4.8 1.4.3 2.6-.2 3.5-1.2.9 1 2.1 1.5 3.5 1.2 2.4-.5 3.7-2.6 4-4.8.3-2-.6-3.6-2.5-4-2-.4-3.8.2-5 1.8zM12 7.5v5"/>'),
+    'Rücken': svgI('<path d="M5 4.5l3 15h8l3-15M12 4.5v15M8 9.5c1.5.8 2.7 1.2 4 1.2s2.5-.4 4-1.2"/>'),
+    'Schultern': svgI('<path d="M3.5 15c0-4.4 3.8-7.5 8.5-7.5s8.5 3.1 8.5 7.5M8.5 8.4a3.5 3.5 0 0 1 7 0M3.5 15h3.5M17 15h3.5"/>'),
+    'Bizeps': svgI('<path d="M5 19.5c0-5 1.3-9.5 4.5-12l2.2 3c-1 1-1 3 0 4 2-2 6-2.2 8 .8v4.2z"/>'),
+    'Trizeps': svgI('<path d="M8 3.5v10a4 4 0 0 0 8 0v-10M12 3.5v6"/>'),
+    'Beine': svgI('<path d="M8 3.5 7 12l1 8.5M16 3.5l1 8.5-1 8.5M8 3.5h8M12 3.5v6"/>'),
+    'Gesäß': svgI('<path d="M4 10.5C4 7.5 7 5.5 12 7c5-1.5 8 .5 8 3.5 0 5-3.5 8-8 8s-8-3-8-8zM12 7v11.5"/>'),
+    'Waden': svgI('<path d="M9.5 3.5c-3 5-3 10.5 0 17M14.5 3.5c3 5 3 10.5 0 17M9.5 20.5h5"/>'),
+    'Bauch': svgI('<rect x="7.5" y="3.5" width="9" height="17" rx="3"/><path d="M7.5 9h9M7.5 14.5h9M12 3.5v17"/>'),
+    'Unterarme': svgI('<path d="M3.5 17.5l9.5-6.5M13 11l2.8-1 3 2-.8 3-3 1.2-2-2.2M3.5 17.5l2 2.5 9.5-6"/>'),
+    'Ganzkörper': svgI('<circle cx="12" cy="4.8" r="2"/><path d="M12 7.5v7M6.5 10.5h11M12 14.5l-3.5 6M12 14.5l3.5 6"/>'),
+  };
+  const muscleIcon = (m) => MUSCLE_ICON[m] || ICON.dumbbell;
 
   const MEAL_LABEL = { breakfast: 'Frühstück', lunch: 'Mittag', dinner: 'Abend', snack: 'Snacks' };
 
@@ -3720,22 +4344,54 @@
 
   /* ---------- Allgemeine Modal-Hülle für interaktive Formulare ---------- */
 
+  /**
+   * Übergabe zwischen zwei Sheets (z. B. Lade-Skeleton → Ergebnis): Das nächste
+   * customModal ersetzt das wartende Sheet an Ort und Stelle, ohne neu hochzufahren.
+   */
+  let sheetHandoff = null;
+
   function customModal(inner, opts) {
     const o = opts || {};
     const wrap = document.createElement('div');
-    wrap.className = 'modal' + (o.full ? ' modal-full' : '');
+    wrap.className = 'modal' + (o.full ? ' modal-full' : '') + (o.scanner ? ' modal-scanner' : '');
     wrap.innerHTML = '<div class="modal-backdrop" data-close></div><div class="modal-card" role="dialog" aria-modal="true">' + inner + '</div>';
     const onKey = (e) => { if (e.key === 'Escape') close(); };
+    let closed = false;
+    let sheet = null;
     function close() {
+      if (closed) return;
+      closed = true;
       document.removeEventListener('keydown', onKey);
       wrap.classList.add('closing');
-      setTimeout(() => wrap.remove(), 180);
+      if (sheet) sheet.hide(() => wrap.remove()); else wrap.remove();
       if (o.onClose) o.onClose();
     }
     wrap.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) close(); });
     document.addEventListener('keydown', onKey);
+    const prev = !o.scanner && sheetHandoff && !sheetHandoff.isClosed() ? sheetHandoff : null;
+    sheetHandoff = null;
     $('#modal-root').appendChild(wrap);
-    return { wrap, card: wrap.querySelector('.modal-card'), close };
+    if (prev) prev.dispose();
+    sheet = presentSheet(wrap, close, { fullscreen: !!o.scanner, handoff: !!prev });
+    return { wrap, card: wrap.querySelector('.modal-card'), close, isClosed: () => closed };
+  }
+
+  /** Lade-Sheet mit Skeleton, das vom nächsten customModal nahtlos ersetzt wird. */
+  function loadingSheet(title) {
+    const m = customModal(
+      '<h2 class="modal-title">' + esc(title) + '</h2>' +
+      '<div class="sk sk-line" style="width:40%;margin:6px 0 16px"></div>' +
+      '<div class="pn-grid">' + '<div class="sk" style="height:58px"></div>'.repeat(4) + '</div>' +
+      '<div class="sk" style="height:48px;margin-bottom:12px"></div>' +
+      '<div class="sk" style="height:48px;margin-bottom:16px"></div>' +
+      '<div class="modal-actions"><button class="btn ghost" data-close>Abbrechen</button><div class="btn sk" style="flex:1"></div></div>');
+    let disposed = false;
+    const handle = {
+      isClosed: () => disposed || m.isClosed(),
+      dispose() { disposed = true; openSheets.delete(m.wrap); syncModalClass(); m.wrap.remove(); },
+    };
+    sheetHandoff = handle;
+    return handle;
   }
 
   /* ---------- Ansicht: Ernährung ---------- */
@@ -3749,8 +4405,24 @@
   function macroBar(label, value, goal, cls) {
     const pct = goal ? Math.min(100, Math.round((value / goal) * 100)) : 0;
     return '<div class="macro">' +
-      '<div class="macro-head"><span>' + label + '</span><span>' + fmtNum(Math.round(value)) + (goal ? ' / ' + goal : '') + ' g</span></div>' +
-      '<div class="macro-track"><div class="macro-fill ' + cls + '" style="width:' + pct + '%"></div></div></div>';
+      '<div class="macro-head"><span>' + label + '</span><span><b class="count-up" data-to="' + Math.round(value) + '" style="font-weight:600">' + fmtNum(Math.round(value)) + '</b>' + (goal ? ' / ' + goal : '') + ' g</span></div>' +
+      '<div class="macro-track"><div class="macro-fill ' + cls + '" data-pct="' + pct + '" style="transform:translateX(' + (pct - 100) + '%)"></div></div></div>';
+  }
+
+  /** Streifen der letzten 14 Tage (Scroll-Snap) – Tippen wählt den Tag. */
+  function dateStripHTML(sel, today) {
+    const withData = new Set(db.nutrition.map((n) => n.date));
+    let html = '';
+    for (let i = 13; i >= 0; i--) {
+      const k = shiftDayKey(today, -i);
+      const p = k.split('-').map(Number);
+      const d = new Date(p[0], p[1] - 1, p[2], 12);
+      html += '<button class="strip-day' + (k === sel ? ' sel' : '') + (k === today ? ' today' : '') + '" data-action="food-date" data-key="' + k + '"' +
+        ' aria-label="' + esc(fmtLongDate(d.getTime())) + '"' + (k === sel ? ' aria-current="date"' : '') + '>' +
+        '<small>' + d.toLocaleDateString('de-DE', { weekday: 'short' }).replace('.', '') + '</small><b>' + d.getDate() + '</b>' +
+        (withData.has(k) ? '<i></i>' : '') + '</button>';
+    }
+    return '<div class="date-strip" id="date-strip">' + html + '</div>';
   }
 
   function renderFood(view) {
@@ -3768,26 +4440,26 @@
     const R = 52, C = 2 * Math.PI * R;
     const ring = '<svg class="cal-ring" viewBox="0 0 120 120" role="img" aria-label="Kalorien heute">' +
       '<circle cx="60" cy="60" r="' + R + '" class="ring-bg"/>' +
-      '<circle cx="60" cy="60" r="' + R + '" class="ring-fg" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - pct)).toFixed(1) + '" transform="rotate(-90 60 60)"/>' +
-      '<text x="60" y="56" class="ring-num">' + fmtInt(Math.round(t.kcal)) + '</text>' +
-      '<text x="60" y="74" class="ring-sub">' + (goal ? '/ ' + fmtInt(goal) + ' kcal' : 'kcal') + '</text></svg>';
+      '<circle cx="60" cy="60" r="' + R + '" class="ring-fg" id="ring-fg" data-off="' + (C * (1 - pct)).toFixed(1) + '" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - pct)).toFixed(1) + '" transform="rotate(-90 60 60)"/>' +
+      '<text x="60" y="58" class="ring-num count-up" data-to="' + Math.round(t.kcal) + '">' + fmtInt(Math.round(t.kcal)) + '</text>' +
+      '<text x="60" y="76" class="ring-sub">' + (goal ? '/ ' + fmtInt(goal) + ' kcal' : 'kcal') + '</text></svg>';
     const remaining = goal ? goal - t.kcal : null;
 
     const meals = MEALS.map((meal) => {
       const entries = Core.nutritionForDay(db, key).filter((n) => n.meal === meal);
       const sum = entries.reduce((a, n) => a + (n.kcal || 0), 0);
       const rows = entries.map((n) => '' +
-        '<div class="food-row" data-action="food-edit" data-id="' + esc(n.id) + '" role="button" tabindex="0">' +
+        '<div class="food-row" data-action="food-edit" data-id="' + esc(n.id) + '" data-flip="n-' + esc(n.id) + '" data-swipe="food:' + esc(n.id) + '" role="button" tabindex="0">' +
           '<div class="fr-main"><div class="fr-name">' + esc(n.name || 'Eintrag') + '</div>' +
           '<div class="fr-sub">' + (n.grams !== null ? fmtNum(n.grams) + ' g · ' : '') +
             [n.protein !== null ? 'E ' + fmtNum(n.protein) : '', n.carbs !== null ? 'K ' + fmtNum(n.carbs) : '', n.fat !== null ? 'F ' + fmtNum(n.fat) : ''].filter(Boolean).join(' · ') + '</div></div>' +
           '<div class="fr-kcal">' + (n.kcal !== null ? fmtInt(Math.round(n.kcal)) + ' kcal' : '–') + '</div>' +
           '<button class="icon-btn sm danger" data-action="food-del" data-id="' + esc(n.id) + '" aria-label="Eintrag löschen">' + ICON.trash + '</button>' +
         '</div>').join('');
-      return '<section class="card meal">' +
+      return '<section class="card meal" data-flip="meal-' + meal + '">' +
         '<div class="meal-head"><h2>' + MEAL_LABEL[meal] + '</h2><span class="meal-sum">' + (sum ? fmtInt(Math.round(sum)) + ' kcal' : '') + '</span></div>' +
         (rows || '<p class="meal-empty">Noch nichts eingetragen.</p>') +
-        '<button class="btn soft block sm" data-action="food-add" data-meal="' + meal + '">' + ICON.plus + ' Hinzufügen</button>' +
+        '<button class="btn soft block sm" data-flip="madd-' + meal + '" data-action="food-add" data-meal="' + meal + '">' + ICON.plus + ' Hinzufügen</button>' +
       '</section>';
     }).join('');
 
@@ -3797,27 +4469,77 @@
         '<button class="date-label" data-action="food-today">' + dLabel + '</button>' +
         '<button class="icon-btn" data-action="food-next" aria-label="Nächster Tag" ' + (key >= today ? 'disabled' : '') + '>' + ICON.chevron + '</button>' +
       '</div>' +
+      dateStripHTML(key, today) +
       '<section class="card cal-card">' +
         ring +
         '<div class="cal-side">' +
-          (goal ? '<div class="cal-remain ' + (remaining < 0 ? 'over' : '') + '"><strong>' + fmtInt(Math.abs(Math.round(remaining))) + '</strong><small>kcal ' + (remaining < 0 ? 'drüber' : 'übrig') + '</small></div>' : '<div class="cal-remain"><strong>' + fmtInt(Math.round(t.kcal)) + '</strong><small>kcal heute</small></div>') +
+          (goal ? '<div class="cal-remain ' + (remaining < 0 ? 'over' : '') + '"><strong class="count-up" data-to="' + Math.abs(Math.round(remaining)) + '">' + fmtInt(Math.abs(Math.round(remaining))) + '</strong><small>kcal ' + (remaining < 0 ? 'drüber' : 'übrig') + '</small></div>' : '<div class="cal-remain"><strong class="count-up" data-to="' + Math.round(t.kcal) + '">' + fmtInt(Math.round(t.kcal)) + '</strong><small>kcal heute</small></div>') +
           macroBar('Protein', t.protein, db.settings.proteinGoal, 'p') +
           macroBar('Kohlenhydrate', t.carbs, db.settings.carbGoal, 'c') +
           macroBar('Fett', t.fat, db.settings.fatGoal, 'f') +
         '</div>' +
       '</section>' +
       meals +
-      '<p class="hint center">Ziele änderst du in den Einstellungen. Barcode scannen über „Hinzufügen“ bei einer Mahlzeit.</p>';
+      '<p class="hint center" data-flip="food-hint">Ziele änderst du in den Einstellungen. Barcode scannen über „Hinzufügen“ bei einer Mahlzeit. Einträge nach links wischen zum Löschen.</p>';
   }
 
+  /**
+   * Kalorienring & Makros: Ring füllt sich weich (stroke-dashoffset), Balken gleiten
+   * per transform, Zahlen zählen hoch/runter – ausgehend vom zuletzt gezeigten Stand.
+   */
+  const FoodFx = {
+    play(view, sameRoute) {
+      const ring = $('#ring-fg', view);
+      if (!ring) return;
+      const nums = $$('.count-up', view);
+      const fills = $$('.macro-fill', view);
+      const cur = {
+        date: ui.foodDate,
+        off: Number(ring.dataset.off),
+        nums: nums.map((el) => Number(el.dataset.to)),
+        pcts: fills.map((el) => Number(el.dataset.pct)),
+      };
+      const prev = ui.foodFx;
+      ui.foodFx = cur;
+      // Streifen: gewählten Tag sichtbar halten, ohne zu springen
+      const strip = $('#date-strip', view);
+      if (strip) {
+        if (sameRoute && ui.stripScroll !== undefined) strip.scrollLeft = ui.stripScroll;
+        else strip.scrollLeft = strip.scrollWidth;
+        const sel = strip.querySelector('.sel');
+        if (sel) {
+          const l = sel.offsetLeft - strip.offsetLeft, r = l + sel.offsetWidth;
+          if (l < strip.scrollLeft + 16 || r > strip.scrollLeft + strip.clientWidth - 16) {
+            strip.scrollTo({ left: l - strip.clientWidth / 2 + sel.offsetWidth / 2, behavior: reduced() || !sameRoute ? 'auto' : 'smooth' });
+          }
+        }
+        strip.addEventListener('scroll', () => { ui.stripScroll = strip.scrollLeft; }, { passive: true });
+        ui.stripScroll = strip.scrollLeft;
+      }
+      if (reduced()) return;
+      const C = Number(ring.getAttribute('stroke-dasharray'));
+      // Beim Öffnen der Seite von leer aus füllen, sonst vom vorherigen Stand
+      const from = sameRoute && prev ? prev : { off: C, nums: cur.nums.map(() => 0), pcts: cur.pcts.map(() => 0) };
+      if (from.off !== cur.off) anim(ring, [{ strokeDashoffset: from.off }, { strokeDashoffset: cur.off }], { duration: 900, easing: EASE.out });
+      nums.forEach((el, i) => {
+        const to = cur.nums[i];
+        const f = from.nums[i] !== undefined ? from.nums[i] : 0;
+        countUp(el, f, to, (v) => fmtInt(Math.round(v)), 800);
+      });
+      fills.forEach((el, i) => {
+        const f = from.pcts[i] !== undefined ? from.pcts[i] : 0;
+        if (f !== cur.pcts[i]) anim(el, [{ transform: 'translateX(' + (f - 100) + '%)' }, { transform: 'translateX(' + (cur.pcts[i] - 100) + '%)' }], { duration: 800, easing: EASE.out });
+      });
+    },
+  };
   /* ---------- Ernährung: Eintrag hinzufügen ---------- */
 
   async function chooseAddMethod(meal) {
     const c = await actionSheet('Zu ' + MEAL_LABEL[meal] + ' hinzufügen', [
-      { label: '📷 Barcode scannen', value: 'scan' },
-      { label: '🔎 Aus meinen Lebensmitteln', value: 'search' },
-      { label: '✏️ Schnelleingabe (nur kcal)', value: 'quick' },
-      { label: '➕ Lebensmittel manuell anlegen', value: 'manual' },
+      { label: 'Barcode scannen', value: 'scan', icon: ICON.scan },
+      { label: 'Aus meinen Lebensmitteln', value: 'search', icon: ICON.search },
+      { label: 'Schnelleingabe (nur kcal)', value: 'quick', icon: ICON.pencil },
+      { label: 'Lebensmittel manuell anlegen', value: 'manual', icon: ICON.plus },
     ]);
     if (c === 'scan') openScanner((code) => onScanned(code, meal));
     else if (c === 'search') openFoodSearch(meal);
@@ -3850,14 +4572,17 @@
       manualBarcode(onCode);
       return;
     }
+    let stopFn = () => {};
     const m = customModal(
-      '<h2 class="modal-title">Barcode scannen</h2>' +
-      '<div class="scanner"><video id="scan-video" playsinline muted autoplay></video><div class="scan-frame"></div></div>' +
-      '<p class="scan-hint" id="scan-hint">Halte den Strichcode in den Rahmen.</p>' +
-      '<div class="modal-actions stack">' +
-        '<button class="btn soft" data-manual>Barcode von Hand eingeben</button>' +
-        '<button class="btn ghost" data-stop data-close>Abbrechen</button>' +
-      '</div>');
+      '<div class="scanner"><video id="scan-video" playsinline muted autoplay></video>' +
+        '<div class="scan-frame" id="scan-frame"><i></i><i></i><i></i><i></i></div>' +
+        '<div class="scan-top"><h2 class="scan-title">Barcode scannen</h2>' +
+        '<p class="scan-hint" id="scan-hint">Halte den Strichcode in den Rahmen.</p></div>' +
+      '</div>' +
+      '<div class="scan-bar">' +
+        '<button class="btn soft" data-manual>' + ICON.pencil + ' Eingeben</button>' +
+        '<button class="btn primary" data-stop data-close>Abbrechen</button>' +
+      '</div>', { scanner: true, onClose: () => stopFn() });
     const video = m.card.querySelector('#scan-video');
     const reader = new ZXing.BrowserMultiFormatReader();
     let done = false;
@@ -3866,7 +4591,14 @@
       const s = video && video.srcObject;
       if (s && s.getTracks) s.getTracks().forEach((t) => t.stop());
     };
-    const finish = (code) => { if (done) return; done = true; stop(); m.close(); onCode(code); };
+    stopFn = stop;
+    const finish = (code) => {
+      if (done) return;
+      done = true;
+      const frame = m.card.querySelector('#scan-frame');
+      if (frame) frame.classList.add('hit');
+      stop(); m.close(); onCode(code);
+    };
     m.wrap.addEventListener('click', (e) => {
       if (e.target.closest('[data-stop]')) stop();
       if (e.target.closest('[data-manual]')) { stop(); m.close(); manualBarcode(onCode); }
@@ -3914,7 +4646,7 @@
     if (!barcode) return;
     const local = Core.findFoodByBarcode(db, barcode);
     if (local) { openPortion(local, meal); return; }
-    toast('Suche Produkt …');
+    loadingSheet('Suche Produkt …');
     fetchOFF(barcode).then((food) => {
       if (food && food.name) {
         const saved = Core.saveFood(db, { ...food, barcode });
@@ -3947,7 +4679,7 @@
   function openFoodSearch(meal) {
     const m = customModal(
       '<h2 class="modal-title">Meine Lebensmittel</h2>' +
-      '<input class="in" id="food-q" type="search" placeholder="Suchen" autocomplete="off" autocapitalize="off">' +
+      '<label class="search">' + ICON.search + '<input class="in" id="food-q" type="search" placeholder="Suchen" autocomplete="off" autocapitalize="off"></label>' +
       '<div class="list scroll-list" id="food-list">' + foodListHTML('') + '</div>' +
       '<div class="modal-actions"><button class="btn ghost" data-close>Schließen</button></div>');
     const q = m.card.querySelector('#food-q');
@@ -3955,7 +4687,14 @@
     q.addEventListener('input', () => { listEl.innerHTML = foodListHTML(q.value); });
     m.card.addEventListener('click', (e) => {
       const fav = e.target.closest('[data-fav]');
-      if (fav) { e.stopPropagation(); Core.toggleFoodFavorite(db, fav.dataset.fav); save(); listEl.innerHTML = foodListHTML(q.value); return; }
+      if (fav) {
+        e.stopPropagation();
+        const id = fav.dataset.fav;
+        Core.toggleFoodFavorite(db, id); save(); Haptics.tap();
+        listEl.innerHTML = foodListHTML(q.value);
+        popStar([...listEl.querySelectorAll('[data-fav]')].find((b) => b.dataset.fav === id));
+        return;
+      }
       const pick = e.target.closest('[data-pick]');
       if (pick) { const f = Core.foodById(db, pick.dataset.pick); m.close(); if (f) openPortion(f, meal); }
     });
@@ -4077,10 +4816,11 @@
 
   function libItemHTML(ex) {
     return '<a class="list-item" href="#/library/ex/' + encodeURIComponent(ex.id) + '">' +
-      '<button class="fav-btn ' + (Core.libFav(db, ex.id) ? 'on' : '') + '" data-libfav="' + esc(ex.id) + '" aria-label="Favorit">' + ICON.star + '</button>' +
+      '<span class="lib-ic" aria-hidden="true">' + muscleIcon(ex.muscle) + '</span>' +
       '<div class="li-main"><div class="li-title">' + esc(ex.name) + (ex.custom ? ' <span class="badge">eigen</span>' : '') + '</div>' +
       '<div class="li-sub">' + esc(ex.muscle) + ' · ' + esc(ex.equipment) + ' · ' + esc(ex.type) + '</div></div>' +
-      ICON.chevron + '</a>';
+      '<button class="fav-btn ' + (Core.libFav(db, ex.id) ? 'on' : '') + '" data-libfav="' + esc(ex.id) + '" aria-label="Favorit" aria-pressed="' + Core.libFav(db, ex.id) + '">' + ICON.star + '</button>' +
+      '</a>';
   }
 
   function chip(label, active, action, value) {
@@ -4093,17 +4833,21 @@
     const recent = allExercises().filter((e) => Core.libUsed(db, e.id)).sort((a, b) => Core.libUsed(db, b.id) - Core.libUsed(db, a.id)).slice(0, 5);
     const list = filteredExercises();
     const anyFilter = f.q || f.muscle.size || f.equip.size || f.fav || f.custom;
+    const skeleton = '<div class="sk-item"><div class="sk sk-circle"></div><div class="sk-lines"><div class="sk sk-line" style="width:70%"></div><div class="sk sk-line" style="width:45%"></div></div></div>';
+    const listHTML = !libLoaded ? skeleton.repeat(7)
+      : list.length ? list.map(libItemHTML).join('') : '<p class="hint center">Keine Übung gefunden.</p>';
     view.innerHTML =
-      '<input class="in" id="lib-q" type="search" placeholder="Übung suchen (deutsch oder englisch)" value="' + esc(f.q) + '" autocomplete="off" autocapitalize="off">' +
+      '<label class="search">' + ICON.search + '<input class="in" id="lib-q" type="search" placeholder="Übung suchen (deutsch oder englisch)" value="' + esc(f.q) + '" autocomplete="off" autocapitalize="off" enterkeyhint="search"></label>' +
       '<div class="chips filter-chips">' +
-        chip('★ Favoriten', f.fav, 'lib-fav') + chip('Eigene', f.custom, 'lib-custom') +
+        chip('Favoriten', f.fav, 'lib-fav') + chip('Eigene', f.custom, 'lib-custom') +
       '</div>' +
       '<div class="chips filter-chips">' + MUSCLES.map((mu) => chip(mu, f.muscle.has(mu), 'lib-muscle', mu)).join('') + '</div>' +
       '<div class="chips filter-chips">' + EQUIPMENT.map((eq) => chip(eq, f.equip.has(eq), 'lib-equip', eq)).join('') + '</div>' +
       (!anyFilter && recent.length ? '<p class="section-label">Zuletzt verwendet</p><div class="list">' + recent.map(libItemHTML).join('') + '</div>' : '') +
-      '<p class="section-label">' + (anyFilter ? list.length + ' Treffer' : 'Alle Übungen (' + list.length + ')') + '</p>' +
-      '<div class="list" id="lib-list">' + (list.length ? list.map(libItemHTML).join('') : '<p class="hint center">Keine Übung gefunden.</p>') + '</div>' +
+      '<p class="section-label">' + (!libLoaded ? 'Übungen werden geladen …' : anyFilter ? list.length + ' Treffer' : 'Alle Übungen (' + list.length + ')') + '</p>' +
+      '<div class="list' + (ui.libWasLoading && libLoaded ? ' fade-in' : '') + '" id="lib-list">' + listHTML + '</div>' +
       '<button class="btn soft block" data-action="lib-new">' + ICON.plus + ' Eigene Übung anlegen</button>';
+    ui.libWasLoading = !libLoaded;
     const q = view.querySelector('#lib-q');
     q.addEventListener('input', () => {
       f.q = q.value;
@@ -4117,12 +4861,14 @@
     const ex = libById(id);
     if (!ex) { go('#/library'); return; }
     setHeader({ title: ex.name, back: '#/library',
-      actions: '<button class="hdr-btn" data-action="lib-fav-toggle" data-id="' + esc(ex.id) + '" aria-label="Favorit">' + (Core.libFav(db, ex.id) ? '★' : '☆') + '</button>' });
+      actions: '<button class="hdr-btn fav-btn' + (Core.libFav(db, ex.id) ? ' on' : '') + '" data-action="lib-fav-toggle" data-id="' + esc(ex.id) + '" aria-label="Favorit" aria-pressed="' + Core.libFav(db, ex.id) + '">' + ICON.star + '</button>' });
     const hist = Core.exerciseHistory(db, normName(ex.name));
     const best = hist.reduce((b, h) => Math.max(b, h.best.weight || 0), 0);
     const points = hist.filter((h) => h.best.e1rm !== null).map((h) => ({ x: h.date, y: h.best.e1rm }));
     view.innerHTML =
       '<section class="card">' +
+        '<div class="lib-hero"><span class="lib-ic" aria-hidden="true">' + muscleIcon(ex.muscle) + '</span>' +
+          '<div><div class="li-title">' + esc(ex.muscle) + '</div><div class="li-sub">' + esc(ex.equipment) + ' · ' + esc(ex.type) + '</div></div></div>' +
         '<div class="ex-tags">' +
           '<span class="tag">' + esc(ex.muscle) + '</span>' +
           (ex.secondary || []).map((sMx) => '<span class="tag ghost">' + esc(sMx) + '</span>').join('') +
@@ -4188,7 +4934,7 @@
     };
     const m = customModal(
       '<h2 class="modal-title">Übungen hinzufügen</h2>' +
-      '<input class="in" id="pick-q" type="search" placeholder="Suchen oder neue Übung tippen" autocomplete="off" autocapitalize="sentences">' +
+      '<label class="search">' + ICON.search + '<input class="in" id="pick-q" type="search" placeholder="Suchen oder neue Übung tippen" autocomplete="off" autocapitalize="sentences"></label>' +
       '<div class="list scroll-list" id="pick-list">' + pickList('') + '</div>' +
       '<div class="modal-actions"><button class="btn ghost" data-close>Abbrechen</button><button class="btn primary" data-add>Hinzufügen</button></div>', { full: true });
     const q = m.card.querySelector('#pick-q');
@@ -4239,6 +4985,12 @@
 
   function toggleSet(set, v) { if (set.has(v)) set.delete(v); else set.add(v); }
 
+  /** Kleiner Feder-Hüpfer für einen Favoriten-Stern. */
+  function popStar(btn) {
+    if (!btn || reduced()) return;
+    anim(btn.querySelector('svg'), [{ transform: 'scale(0.6)' }, { transform: 'none' }], { duration: 480, easing: EASE.spring });
+  }
+
   function editNutrition(id) {
     const n = db.nutrition.find((x) => x.id === id);
     if (!n) return;
@@ -4282,7 +5034,10 @@
     const t = db.settings.theme;
     const dark = t === 'dark' || (t === 'system' && darkQuery.matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    $('meta[name="theme-color"]').setAttribute('content', dark ? '#0b0d10' : '#f4f5f7');
+    $('meta[name="theme-color"]').setAttribute('content', dark ? '#000000' : '#ffffff');
+    // Statusleiste der Home-Bildschirm-App (wirkt ab dem nächsten Start der App)
+    const bar = $('meta[name="apple-mobile-web-app-status-bar-style"]');
+    if (bar) bar.setAttribute('content', dark ? 'black-translucent' : 'default');
   }
 
   /* ---------- Backup: Export & Import ---------- */
@@ -4443,6 +5198,282 @@
     save(); render();
   }
 
+  /* ---------- Gesten ---------- */
+
+  /**
+   * Nach links wischen zum Löschen (Mahlzeit-Einträge, Plan-Übungen, Sätze).
+   * Die Aktion wird hinter der Zeile sichtbar; danach gibt es ein paar Sekunden „Rückgängig“.
+   * Löschen per Mülleimer-Symbol funktioniert unverändert (mit Rückfrage).
+   */
+  const SwipeDelete = {
+    /** Führt das Löschen aus und liefert eine Funktion zum Wiederherstellen (oder null). */
+    remove(spec) {
+      const [type, a, b] = spec.split(':');
+      if (type === 'food') {
+        const i = db.nutrition.findIndex((n) => n.id === a);
+        if (i < 0) return null;
+        const entry = db.nutrition[i];
+        Core.deleteNutrition(db, a);
+        return { label: 'Eintrag gelöscht', undo: () => { if (!db.nutrition.some((n) => n.id === entry.id)) db.nutrition.splice(Math.min(i, db.nutrition.length), 0, entry); } };
+      }
+      if (type === 'ex') {
+        const dayId = parseRoute().id;
+        const day = Core.findDay(db, dayId);
+        const i = day ? day.exercises.findIndex((e) => e.id === a) : -1;
+        if (i < 0) return null;
+        const ex = day.exercises[i];
+        const s = db.activeSession;
+        const snap = s && s.dayId === dayId ? { id: s.id, exercises: JSON.parse(JSON.stringify(s.exercises)) } : null;
+        Core.removeExercise(db, dayId, a);
+        return {
+          label: '„' + ex.name + '“ entfernt',
+          undo: () => {
+            const d = Core.findDay(db, dayId);
+            if (!d || d.exercises.some((e) => e.id === ex.id)) return;
+            d.exercises.splice(Math.min(i, d.exercises.length), 0, ex);
+            const cur = db.activeSession;
+            if (snap && cur && cur.id === snap.id) cur.exercises = snap.exercises;
+            else Core.syncSession(db);
+          },
+        };
+      }
+      if (type === 'set') {
+        const se = Core.findSessionExercise(db, a);
+        const i = se ? se.sets.findIndex((x) => x.id === b) : -1;
+        if (i < 0) return null;
+        const st = se.sets[i];
+        Core.removeSet(db, a, b);
+        return {
+          label: 'Satz gelöscht',
+          undo: () => {
+            const cur = Core.findSessionExercise(db, a);
+            if (cur && !cur.sets.some((x) => x.id === st.id)) cur.sets.splice(Math.min(i, cur.sets.length), 0, st);
+          },
+        };
+      }
+      return null;
+    },
+
+    init() {
+      let g = null;
+      const reset = () => { g = null; };
+      document.addEventListener('pointerdown', (e) => {
+        if (g || !e.isPrimary || (e.button !== undefined && e.button > 0)) return;
+        const row = e.target.closest('[data-swipe]');
+        if (!row || e.target.closest('.drag-handle, .check, .step')) return;
+        if (e.target.matches('input:focus, textarea:focus')) return;
+        if (row.closest('.ex-list.sorting')) return;
+        g = { row, id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, active: false, samples: [], raf: 0, bg: null };
+      }, { passive: true });
+
+      document.addEventListener('pointermove', (e) => {
+        if (!g || e.pointerId !== g.id) return;
+        const dx = e.clientX - g.x, dy = e.clientY - g.y;
+        if (!g.active) {
+          if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+          if (dx > -10 || Math.abs(dx) < Math.abs(dy) * 1.3) { reset(); return; }
+          g.active = true;
+          const row = g.row;
+          try { row.setPointerCapture(e.pointerId); } catch (err) { /* */ }
+          const bg = document.createElement('div');
+          bg.className = 'swipe-bg';
+          bg.innerHTML = ICON.trash + '<span>Löschen</span>';
+          const par = row.offsetParent || row.parentElement;
+          const r = row.getBoundingClientRect(), pr = par.getBoundingClientRect();
+          Object.assign(bg.style, {
+            top: (r.top - pr.top + par.scrollTop - par.clientTop) + 'px',
+            left: (r.left - pr.left - par.clientLeft) + 'px',
+            width: r.width + 'px', height: r.height + 'px',
+            borderRadius: getComputedStyle(row).borderRadius,
+          });
+          par.insertBefore(bg, row);
+          row.classList.add('swiping');
+          row.style.willChange = 'transform';
+          g.bg = bg;
+          g.w = r.width;
+          const a = document.activeElement;
+          if (a && a.blur && row.contains(a)) a.blur();
+        }
+        g.samples.push({ x: e.clientX, t: e.timeStamp });
+        if (g.samples.length > 6) g.samples.shift();
+        g.dx = dx < 0 ? dx : rubber(dx, 40);
+        if (!g.raf) {
+          g.raf = requestAnimationFrame(() => {
+            if (!g) return;
+            g.raf = 0;
+            g.row.style.transform = 'translateX(' + g.dx + 'px)';
+            const p = Math.min(1, -g.dx / (g.w * 0.4));
+            g.bg.style.opacity = String(Math.max(0, Math.min(1, p * 1.4)));
+            g.bg.classList.toggle('armed', -g.dx > g.w * 0.4);
+          });
+        }
+      }, { passive: true });
+
+      const end = (e) => {
+        if (!g || e.pointerId !== g.id) return;
+        const s = g;
+        g = null;
+        if (!s.active) return;
+        cancelAnimationFrame(s.raf);
+        // Klick nach dem Wischen unterdrücken
+        const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+        document.addEventListener('click', swallow, true);
+        setTimeout(() => document.removeEventListener('click', swallow, true), 350);
+        const a = s.samples[0], b = s.samples[s.samples.length - 1];
+        const v = a && b && b.t > a.t ? (b.x - a.x) / (b.t - a.t) : 0;
+        const commit = e.type === 'pointerup' && (-s.dx > s.w * 0.4 || (v < -0.6 && s.dx < -30));
+        if (!commit) {
+          const from = s.dx;
+          s.row.style.transform = '';
+          const an = anim(s.row, [{ transform: 'translateX(' + from + 'px)' }, { transform: 'none' }], { duration: 420, easing: EASE.spring });
+          const done = () => { s.bg.remove(); s.row.classList.remove('swiping'); s.row.style.willChange = ''; };
+          if (an) { anim(s.bg, [{ opacity: Number(s.bg.style.opacity || 0) }, { opacity: 0 }], { duration: 200, fill: 'forwards' }); an.onfinish = done; } else done();
+          return;
+        }
+        Haptics.tap();
+        const out = anim(s.row, [{ transform: 'translateX(' + s.dx + 'px)' }, { transform: 'translateX(' + (-s.w - 20) + 'px)' }],
+          { duration: 200, easing: EASE.in, fill: 'forwards' });
+        const finish = () => {
+          anim(s.bg, [{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: EASE.in, fill: 'forwards' });
+          s.row.dataset.gone = '1';
+          const res = SwipeDelete.remove(s.row.dataset.swipe);
+          if (!res) { s.bg.remove(); render(); return; }
+          save();
+          render();
+          setTimeout(() => s.bg.remove(), 200);
+          toast(res.label, {
+            action: 'Rückgängig',
+            onAction: () => { res.undo(); save(); render(); },
+          });
+        };
+        if (out) out.onfinish = finish; else finish();
+      };
+      document.addEventListener('pointerup', end);
+      document.addEventListener('pointercancel', end);
+    },
+  };
+
+  /** +/− gedrückt halten: wiederholt mit steigendem Tempo. */
+  const StepRepeat = {
+    t: null,
+    el: null,
+    fired: false,
+    init() {
+      const stop = () => {
+        clearTimeout(this.t);
+        this.t = null;
+        if (this.el) this.el.classList.remove('repeating');
+      };
+      document.addEventListener('pointerdown', (e) => {
+        const b = e.target.closest('.step[data-action="set-step"]');
+        stop();
+        this.fired = false;
+        this.el = b;
+        if (!b) return;
+        let n = 0;
+        const x0 = e.clientX, y0 = e.clientY;
+        const tick = () => {
+          if (!this.el || !this.el.isConnected) return stop();
+          this.fired = true;
+          this.el.classList.add('repeating');
+          actions['set-step'](this.el);
+          n++;
+          this.t = setTimeout(tick, Math.max(45, Math.round(180 * Math.pow(0.86, n))));
+        };
+        this.t = setTimeout(tick, 420);
+        const mv = (ev) => { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 12) stop(); };
+        document.addEventListener('pointermove', mv, { passive: true });
+        const up = () => {
+          stop();
+          document.removeEventListener('pointermove', mv);
+          document.removeEventListener('pointerup', up);
+          document.removeEventListener('pointercancel', up);
+        };
+        document.addEventListener('pointerup', up);
+        document.addEventListener('pointercancel', up);
+      }, { passive: true });
+      // Langes Drücken soll kein Kontextmenü öffnen
+      document.addEventListener('contextmenu', (e) => { if (e.target.closest('.step')) e.preventDefault(); });
+    },
+    /** Nach einer Wiederholungs-Serie den folgenden Klick nicht zusätzlich zählen. */
+    consumeClick(el) {
+      if (this.fired && el === this.el) { this.fired = false; return true; }
+      return false;
+    },
+  };
+
+  /** Als Home-Bildschirm-App: vom linken Rand nach rechts wischen = zurück. */
+  const EdgeBack = {
+    init() {
+      let g = null;
+      document.addEventListener('touchstart', (e) => {
+        g = null;
+        if (!isStandalone() || e.touches.length !== 1 || openSheets.size || !ui.hdr.back) return;
+        const t = e.touches[0];
+        if (t.clientX > 22) return;
+        g = { x: t.clientX, y: t.clientY, dx: 0, active: false, t0: e.timeStamp, raf: 0 };
+      }, { passive: true });
+      document.addEventListener('touchmove', (e) => {
+        if (!g) return;
+        const t = e.touches[0];
+        const dx = t.clientX - g.x, dy = t.clientY - g.y;
+        if (!g.active) {
+          if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+          if (dx <= 0 || Math.abs(dy) > Math.abs(dx)) { g = null; return; }
+          g.active = true;
+        }
+        e.preventDefault();
+        g.dx = Math.max(0, dx);
+        if (!g.raf) g.raf = requestAnimationFrame(() => { if (g) { g.raf = 0; $('#view').style.transform = 'translateX(' + g.dx + 'px)'; } });
+      }, { passive: false });
+      const end = (e) => {
+        if (!g) return;
+        const s = g;
+        g = null;
+        if (!s.active) return;
+        cancelAnimationFrame(s.raf);
+        const view = $('#view');
+        const v = s.dx / Math.max(1, e.timeStamp - s.t0);
+        if (e.type === 'touchend' && (s.dx > window.innerWidth * 0.35 || v > 0.5)) {
+          Haptics.tap();
+          location.hash = ui.hdr.back; // render() setzt die Verschiebung im Übergang zurück
+        } else {
+          const from = s.dx;
+          view.style.transform = '';
+          anim(view, [{ transform: 'translateX(' + from + 'px)' }, { transform: 'none' }], { duration: 380, easing: EASE.spring });
+        }
+      };
+      document.addEventListener('touchend', end, { passive: true });
+      document.addEventListener('touchcancel', end, { passive: true });
+    },
+  };
+
+  /** Bildschirmtastatur: Sheets rücken per visualViewport nach oben, nichts wird verdeckt. */
+  const Keyboard = {
+    init() {
+      const vv = window.visualViewport;
+      if (!vv) return;
+      let raf = 0;
+      const update = () => {
+        raf = 0;
+        const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+        const root = document.documentElement.style;
+        root.setProperty('--kb', (kb > 60 ? kb : 0) + 'px');
+        root.setProperty('--vvh', Math.round(vv.height) + 'px');
+        const a = document.activeElement;
+        if (kb > 60 && a && a.closest && a.closest('.modal-card')) {
+          setTimeout(() => { try { a.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }); } catch (e) { /* */ } }, 320);
+        }
+      };
+      const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
+      vv.addEventListener('resize', schedule);
+      vv.addEventListener('scroll', schedule);
+      update();
+    },
+  };
+
+
+
   /* ---------- Event-Handling (Delegation) ---------- */
 
   const actions = {
@@ -4520,11 +5551,11 @@
       const res = Core.toggleSet(db, row.dataset.se, row.dataset.set, Date.now());
       if (!res) return;
       save();
-      if (res.done) {
-        if (navigator.vibrate && db.settings.vibrate) navigator.vibrate(30);
-        if (res.rest > 0) Timer.start(res.rest, res.name);
-      }
+      Haptics.tap();
+      if (res.done && res.rest > 0) Timer.start(res.rest, res.name);
+      ui.popSet = { id: row.dataset.set };
       render();
+      ui.popSet = null;
     },
     'set-add': (el) => {
       Core.addSet(db, el.dataset.se);
@@ -4585,7 +5616,10 @@
       if (v === null) return;
       // Nur das Feld aktualisieren (kein Neuzeichnen → schnelles Mehrfach-Tippen)
       const input = row.querySelector(`[data-field="${field}"]`);
-      if (input) input.value = field === 'weight' ? fmtNum(v) : String(v);
+      if (input) {
+        input.value = field === 'weight' ? fmtNum(v) : String(v);
+        if (!reduced()) anim(input, [{ transform: 'scale(1.045)' }, { transform: 'none' }], { duration: 260, easing: EASE.spring });
+      }
       saveSoon();
     },
     'summary-done': () => go('#/'),
@@ -4653,7 +5687,7 @@
     'lib-muscle': (el) => { toggleSet(ui.lib.muscle, el.dataset.value); render(); },
     'lib-equip': (el) => { toggleSet(ui.lib.equip, el.dataset.value); render(); },
     'lib-new': () => openCustomExerciseForm(),
-    'lib-fav-toggle': (el) => { Core.toggleLibFav(db, el.dataset.id); save(); render(); },
+    'lib-fav-toggle': (el) => { Core.toggleLibFav(db, el.dataset.id); save(); Haptics.tap(); render(); popStar($('.hdr-btn.fav-btn')); },
     'lib-add-to-day': (el) => { const ex = libById(el.dataset.id); if (ex) addExerciseToDay(ex); },
     'lib-edit': (el) => { const ex = Core.customExerciseById(db, el.dataset.id); if (ex) openCustomExerciseForm(ex); },
     'lib-del': async (el) => {
@@ -4718,6 +5752,8 @@
       ui.calMonth = new Date(cur.getFullYear(), cur.getMonth() + Number(el.dataset.delta), 1).getTime();
       ui.calDay = null;
       render();
+      const grid = $('.cal-grid');
+      if (grid && !reduced()) anim(grid, [{ opacity: 0, transform: 'translateX(' + (Number(el.dataset.delta) * 16) + 'px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE.out });
     },
     'cal-day': (el) => { ui.calDay = ui.calDay === el.dataset.key ? null : el.dataset.key; render(); },
     'body-field': (el) => { ui.bodyField = el.dataset.key; render(); },
@@ -4732,7 +5768,7 @@
     'weekly-goal': async () => {
       const v = await promptText('Wochenziel', {
         value: String(db.settings.weeklyGoal), inputmode: 'numeric',
-        message: 'Wie oft pro Woche willst du trainieren? Schaffst du das Ziel mehrere Wochen am Stück, wächst deine Serie 🔥.',
+        message: 'Wie oft pro Woche willst du trainieren? Schaffst du das Ziel mehrere Wochen am Stück, wächst deine Serie.',
         chips: [1, 2, 3, 4, 5, 6].map((n) => ({ label: n + '×', value: String(n) })),
       });
       if (v === null) return;
@@ -4742,6 +5778,7 @@
       save(); render();
     },
     'effort': (el) => { db.settings.effort = el.dataset.value; save(); render(); },
+    'food-date': (el) => { ui.foodDate = el.dataset.key; render(); },
     'w-add-ex': () => addExercise(db.activeSession.dayId),
     'finish': async () => {
       const s = db.activeSession;
@@ -4774,7 +5811,7 @@
       go('#/');
     },
 
-    'hist-tab': (el) => { ui.historyTab = el.dataset.tab; render(); },
+    'hist-tab': (el) => { ui.historyTab = el.dataset.tab; ui.fadeContent = '.segmented'; render(); },
     'chart-mode': (el) => { ui.chartMode[el.dataset.key] = el.dataset.mode; render(); },
     'del-session': async (el) => {
       const s = db.sessions.find((x) => x.id === el.dataset.id);
@@ -4792,7 +5829,10 @@
     'toggle-setting': (el) => {
       const k = el.dataset.key;
       db.settings[k] = !db.settings[k];
-      save(); render();
+      save();
+      // Nur den Schalter umlegen (animiert), statt die Seite neu zu zeichnen
+      el.setAttribute('aria-checked', String(!!db.settings[k]));
+      Haptics.tap();
     },
     'increment': async () => {
       const v = await promptText('Gewichtsschritt', {
@@ -4831,14 +5871,25 @@
     },
     'theme': (el) => {
       db.settings.theme = el.dataset.value;
-      save(); applyTheme(); render();
+      save();
+      const swap = () => { applyTheme(); renderNow(); };
+      if (!withTransition('fade', swap)) {
+        // Weiche Farbüberblendung (nur für diesen Moment)
+        const root = document.documentElement;
+        root.classList.add('theme-anim');
+        swap();
+        setTimeout(() => root.classList.remove('theme-anim'), 420);
+      }
     },
     /* Konto */
     'auth-mode': (el) => {
       const email = $('#auth-form input[name="email"]');
       if (email) ui.authEmail = email.value.trim();
       ui.authMode = el.dataset.mode;
+      ui.fadeContent = '.auth';
       render();
+      const form = $('#auth-form');
+      if (form && !reduced()) anim(form, [{ opacity: 0.4, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE.out });
     },
     'auth-guest': async () => {
       if (window.GymCloud && window.GymCloud.currentUser()) { try { await window.GymCloud.signOut(); } catch (e) { /* */ } }
@@ -4929,8 +5980,24 @@
   }
 
   function onClick(e) {
+    // Aktiven Reiter nochmal antippen: sanft nach oben scrollen (wie iOS)
+    const tab = e.target.closest('.tab');
+    if (tab && tab.getAttribute('href') === (location.hash || '#/')) {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' });
+      return;
+    }
+    const stepEl = e.target.closest('.step');
+    if (stepEl && StepRepeat.consumeClick(stepEl)) { e.preventDefault(); return; }
     const favEl = e.target.closest('[data-libfav]');
-    if (favEl) { e.preventDefault(); Core.toggleLibFav(db, favEl.dataset.libfav); save(); render(); return; }
+    if (favEl) {
+      e.preventDefault();
+      const id = favEl.dataset.libfav;
+      Core.toggleLibFav(db, id);
+      save(); Haptics.tap(); render();
+      popStar($$('[data-libfav]').find((b) => b.dataset.libfav === id));
+      return;
+    }
     const el = e.target.closest('[data-action]');
     if (el && !el.disabled && actions[el.dataset.action]) {
       e.preventDefault();
@@ -5034,6 +6101,14 @@
 
     document.addEventListener('click', onClick);
     document.addEventListener('input', onInput);
+    // iOS Safari zeigt :active nur, wenn es einen touchstart-Listener gibt
+    document.addEventListener('touchstart', () => {}, { passive: true });
+    window.addEventListener('scroll', HeaderFx.onScroll, { passive: true });
+    window.addEventListener('resize', HeaderFx.onScroll, { passive: true });
+    SwipeDelete.init();
+    StepRepeat.init();
+    EdgeBack.init();
+    Keyboard.init();
     document.addEventListener('keydown', onKeydown);
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', save);
@@ -5064,6 +6139,7 @@
     }, 30000);
 
     Timer.restore();
+    Timer.render();
     Wake.update();
     render();
     loadLibrary();

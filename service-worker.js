@@ -6,7 +6,7 @@
 'use strict';
 
 // Bei jeder Änderung an den App-Dateien hochzählen, damit Nutzer die neue Version bekommen.
-const CACHE = 'gym-tracker-v5';
+const CACHE = 'gym-tracker-v6';
 const SDK_CACHE = 'gym-tracker-firebase-sdk';   // Firebase-Bibliothek (versionierte, unveränderliche URLs)
 const SDK_PREFIX = 'https://www.gstatic.com/firebasejs/';
 const ASSETS = [
@@ -20,6 +20,8 @@ const ASSETS = [
   './exercises.json',
   './vendor/zxing.min.js',
   './icons/icon.svg',
+  './icons/icon-152.png',
+  './icons/icon-167.png',
   './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png',

@@ -1,0 +1,59 @@
+rules_version = '2';
+
+// Sicherheitsregeln für den Gym Tracker
+//
+//   users/{uid}                 → Trainingstage, Einstellungen, laufendes Training
+//   users/{uid}/sessions/{id}   → abgeschlossene Einheiten
+//   users/{uid}/body/{id}       → Körpermessungen
+//   profiles/{uid}              → E-Mail, registriert, zuletzt aktiv (für die Nutzerverwaltung)
+//   blocked/{uid}               → gesperrte Konten (nur Administratoren dürfen schreiben)
+//
+// Jeder Nutzer darf nur seine eigenen Daten lesen und schreiben – solange er nicht gesperrt ist.
+// Administratoren dürfen alles lesen, schreiben und Konten sperren.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ▼▼▼ HIER die Nutzer-ID(s) der Administratoren eintragen ▼▼▼
+    // (App → Einstellungen → Konto → Nutzer-ID antippen = kopieren). Mehrere IDs mit Komma trennen.
+    function isAdmin() {
+      return request.auth != null && request.auth.uid in ['ADMIN-NUTZER-ID-HIER-EINTRAGEN'];
+    }
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isBlocked(uid) {
+      return exists(/databases/$(database)/documents/blocked/$(uid));
+    }
+
+    // eigene Daten (und nicht gesperrt) – oder Administrator
+    function canUse(uid) {
+      return isAdmin() || (isOwner(uid) && !isBlocked(uid));
+    }
+
+    match /users/{uid} {
+      allow read, write: if canUse(uid);
+
+      // alle Unter-Sammlungen des Kontos (sessions, body, …)
+      match /{collection}/{docId} {
+        allow read, write: if canUse(uid);
+      }
+    }
+
+    match /profiles/{uid} {
+      allow read: if isAdmin() || isOwner(uid);
+      allow write: if canUse(uid);
+    }
+
+    match /blocked/{uid} {
+      allow read: if isAdmin() || isOwner(uid);   // der Nutzer darf sehen, DASS er gesperrt ist
+      allow write: if isAdmin();
+    }
+
+    // nur zum Erkennen, ob jemand Administrator ist
+    match /admin/{docId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

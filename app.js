@@ -2523,6 +2523,8 @@
       case 'admin': return { name: 'admin', id: parts[1] || null, tab: 'settings' };
       case 'body': return { name: 'body', id: parts[1] || 'new', tab: 'history' };
       case 'login': return { name: 'login', tab: 'settings' };
+      case 'intro': return { name: 'intro', tab: 'settings' };
+      case 'setup': return { name: 'setup', tab: 'home' };
       default: return { name: 'home', tab: 'home' };
     }
   }
@@ -2664,7 +2666,7 @@
   function render() {
     if (vtPending) return; // der ausstehende Übergang zeichnet ohnehin den neuesten Stand
     const key = location.hash || '#/';
-    if (ui.lastRoute && key !== ui.lastRoute && account) {
+    if (ui.lastRoute && key !== ui.lastRoute && (account || ui.lastRoute === '#/intro')) {
       const route = parseRoute();
       const dir = navDirection(key, route);
       if (dir) {
@@ -2757,13 +2759,16 @@
   function renderNow() {
     const route = parseRoute();
     // Noch nicht entschieden (Konto oder ohne Konto)? → Anmeldeseite
-    if (!account && route.name !== 'login') {
+    if (!account && route.name !== 'login' && route.name !== 'intro') {
       if (route.name === 'import') ui.pendingImport = route.code; // nach dem Anmelden weitermachen
-      location.replace('#/login');
+      location.replace(introSeen() ? '#/login' : '#/intro');
       return;
     }
+    // Beim allerersten Öffnen zuerst die Einführung zeigen
+    if (!account && route.name === 'login' && !introSeen()) { location.replace('#/intro'); return; }
+    if (account && route.name === 'intro') { location.replace('#/'); return; }
     if (isUser() && route.name === 'login') { location.replace('#/'); return; }
-    document.body.classList.toggle('no-tabbar', !account);
+    document.body.classList.toggle('no-tabbar', !account || route.name === 'setup');
 
     const key = location.hash || '#/';
     const sameRoute = key === ui.lastRoute;
@@ -2790,6 +2795,8 @@
       case 'library': renderLibrary(view); break;
       case 'libex': renderLibEx(view, route.id); break;
       case 'login': renderLogin(view); break;
+      case 'intro': renderIntro(view); break;
+      case 'setup': renderSetup(view); break;
       default: renderHome(view);
     }
 
@@ -3798,7 +3805,229 @@
       </svg>`;
   }
 
+  /* ---------- Einführung beim ersten Öffnen ---------- */
+
+  const INTRO_KEY = 'gymtracker.intro.v1';   // nur ein Merker „Einführung gesehen“ auf diesem Gerät
+  const introSeen = () => lsGet(INTRO_KEY) === '1';
+
+  const INTRO_SLIDES = [
+    {
+      title: 'Willkommen bei Gym Tracker',
+      text: 'Plane dein Training, trage jeden Satz ein und sieh, wie du stärker wirst – schnell, übersichtlich und auch ohne Internet.',
+      art: '<div class="ia-logo"><img src="icons/icon.svg" alt=""></div>',
+    },
+    {
+      title: 'Jeder Satz zählt',
+      text: 'Gewicht und Wiederholungen eintragen, abhaken – fertig. Die Werte vom letzten Mal stehen schon da, und die App schlägt vor, wann du steigern kannst.',
+      art: '<div class="ia-card">' +
+        [['60 kg', '10'], ['60 kg', '9'], ['62,5 kg', '8']].map(([w, r], i) =>
+          '<div class="ia-set" style="--i:' + i + '"><span class="ia-no">' + (i + 1) + '</span><b>' + w + '</b><b>' + r + ' Wdh.</b>' +
+          '<span class="check-c">' + ICON.check + '</span></div>').join('') +
+        '<div class="ia-hint">' + ICON.bulb + '<span>Heute <b>+2,5 kg</b> versuchen</span></div></div>',
+    },
+    {
+      title: 'Pausen im Griff',
+      text: 'Nach jedem abgehakten Satz startet der Pausentimer automatisch – mit Signalton, Benachrichtigung und ±15 Sekunden auf Knopfdruck.',
+      art: '<div class="ia-timer"><div class="ia-timer-bar"><i></i></div><div class="ia-timer-row"><b class="ia-timer-time">1:30</b>' +
+        '<span class="ia-round">−15</span><span class="ia-round">+15</span><span class="ia-pill">Überspringen</span></div></div>',
+    },
+    {
+      title: 'Fortschritt sehen',
+      text: 'Diagramme, Kalender, Wochenziel und neue Rekorde – du siehst auf einen Blick, wie es vorangeht.',
+      art: '<div class="ia-card ia-chart"><svg viewBox="0 0 240 110" aria-hidden="true"><path class="ia-grid" d="M0 20h240M0 55h240M0 90h240"/>' +
+        '<path class="ia-line" pathLength="1" d="M8 92 C40 88 52 70 80 72 S120 50 140 52 S185 26 232 14"/><circle class="ia-dot" cx="232" cy="14" r="5"/></svg>' +
+        '<div class="ia-badge">' + ICON.trophy + '<span>Neuer Rekord: 85 kg</span></div></div>',
+    },
+    {
+      title: 'Ernährung & 200+ Übungen',
+      text: 'Kalorien und Makros per Barcode scannen und über 200 Übungen mit Anleitung entdecken – alles in einer App.',
+      art: '<div class="ia-card ia-food"><svg class="ia-ring" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" class="ia-ring-bg"/>' +
+        '<circle cx="60" cy="60" r="50" class="ia-ring-fg" pathLength="1" transform="rotate(-90 60 60)"/><text x="60" y="66">1.840</text></svg>' +
+        '<div class="ia-chips"><span>' + ICON.scan + ' Scannen</span><span>' + ICON.dumbbell + ' Bibliothek</span></div></div>',
+    },
+  ];
+
+  function renderIntro(view) {
+    setHeader({ title: 'Willkommen', hidden: true });
+    const n = INTRO_SLIDES.length;
+    view.innerHTML =
+      '<div class="intro">' +
+        '<button class="intro-skip" data-action="intro-done">Überspringen</button>' +
+        '<div class="intro-track" id="intro-track">' +
+          INTRO_SLIDES.map((s, i) => '<section class="intro-slide' + (i === 0 ? ' on' : '') + '" aria-label="' + (i + 1) + ' von ' + n + '">' +
+            '<div class="intro-art">' + s.art + '</div>' +
+            '<h1 class="intro-title">' + esc(s.title) + '</h1><p class="intro-text">' + esc(s.text) + '</p></section>').join('') +
+        '</div>' +
+        '<div class="intro-foot">' +
+          '<div class="intro-dots" aria-hidden="true">' + INTRO_SLIDES.map((_, i) => '<i class="' + (i === 0 ? 'on' : '') + '"></i>').join('') + '</div>' +
+          '<button class="btn primary block lg" id="intro-next" data-action="intro-next">Weiter</button>' +
+        '</div>' +
+      '</div>';
+    const track = $('#intro-track', view);
+    const slides = $$('.intro-slide', view);
+    const dots = $$('.intro-dots i', view);
+    const next = $('#intro-next', view);
+    let raf = 0, cur = 0;
+    const update = () => {
+      raf = 0;
+      const w = track.clientWidth || 1;
+      const pos = track.scrollLeft / w;
+      // Leichter Parallax-Effekt: Illustrationen bewegen sich langsamer als der Text
+      slides.forEach((s, i) => {
+        const d = i - pos;
+        const art = s.firstElementChild;
+        if (!reduced()) art.style.transform = Math.abs(d) < 1.2 ? 'translateX(' + (d * 38).toFixed(1) + '%) scale(' + (1 - Math.min(1, Math.abs(d)) * 0.12).toFixed(3) + ')' : '';
+        art.style.opacity = String(Math.max(0, 1 - Math.abs(d) * 1.2).toFixed(3));
+      });
+      const idx = Math.max(0, Math.min(slides.length - 1, Math.round(pos)));
+      if (idx !== cur) {
+        cur = idx;
+        slides.forEach((s, i) => s.classList.toggle('on', i === idx));
+        dots.forEach((d, i) => d.classList.toggle('on', i === idx));
+        next.textContent = idx === slides.length - 1 ? 'Los geht’s' : 'Weiter';
+      }
+    };
+    track.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(update); }, { passive: true });
+    update();
+  }
+
+  function finishIntro() {
+    lsSet(INTRO_KEY, '1');
+    location.replace('#/login');
+  }
+
+  /* ---------- Einrichtung nach dem Registrieren / „Ohne Konto“ ---------- */
+
+  const SETUP_STEPS = 4;
+
+  function startSetup() {
+    ui.setup = {
+      step: 0,
+      goal: db.settings.weeklyGoal || 3,
+      start: 'sample',
+      kcal: db.settings.calorieGoal || 2000,
+      dir: 1,
+    };
+    go('#/setup');
+  }
+
+  function renderSetup(view) {
+    if (!ui.setup) { ui.setup = { step: 0, goal: db.settings.weeklyGoal || 3, start: 'sample', kcal: db.settings.calorieGoal || 2000, dir: 1 }; }
+    const st = ui.setup;
+    setHeader({ title: 'Einrichtung', hidden: true });
+    const bar = Array.from({ length: SETUP_STEPS }, (_, i) => '<i class="' + (i <= st.step ? 'on' : '') + '"></i>').join('');
+    let body = '';
+    let cta = 'Weiter';
+    if (st.step === 0) {
+      body =
+        '<div class="setup-icon">' + ICON.cal + '</div>' +
+        '<h1 class="setup-title">Wie oft willst du trainieren?</h1>' +
+        '<p class="setup-text">Dein Wochenziel. Schaffst du es mehrere Wochen am Stück, wächst deine Serie. Du kannst es jederzeit ändern.</p>' +
+        '<div class="setup-goal">' + [1, 2, 3, 4, 5, 6, 7].map((n) =>
+          '<button class="goal-tile' + (st.goal === n ? ' on' : '') + '" data-action="setup-goal" data-value="' + n + '"><b>' + n + '×</b></button>').join('') + '</div>' +
+        '<p class="setup-note">' + (st.goal <= 2 ? 'Guter Einstieg – Hauptsache regelmäßig.' : st.goal <= 4 ? 'Ideal für die meisten Trainingspläne.' : 'Ambitioniert – plane genug Erholung ein.') + '</p>';
+    } else if (st.step === 1) {
+      const opt = (key, title, sub, icon) => '<button class="setup-opt' + (st.start === key ? ' on' : '') + '" data-action="setup-start" data-value="' + key + '">' +
+        '<span class="setup-opt-ic">' + icon + '</span><span class="setup-opt-text"><b>' + title + '</b><small>' + sub + '</small></span>' +
+        '<span class="setup-radio" aria-hidden="true"></span></button>';
+      body =
+        '<div class="setup-icon">' + ICON.dumbbell + '</div>' +
+        '<h1 class="setup-title">Womit startest du?</h1>' +
+        '<p class="setup-text">Du kannst alles später anpassen, umbenennen oder löschen.</p>' +
+        '<div class="setup-opts">' +
+          opt('sample', 'Push · Pull · Beine', 'Fertiger Plan mit 3 Trainingstagen', ICON.list) +
+          opt('own', 'Eigenen Plan erstellen', 'Du legst Tage und Übungen selbst an', ICON.edit) +
+          opt('import', 'Geteilten Plan einfügen', 'Link von Freunden übernehmen', ICON.share) +
+        '</div>';
+    } else if (st.step === 2) {
+      body =
+        '<div class="setup-icon">' + ICON.target + '</div>' +
+        '<h1 class="setup-title">Dein Kalorienziel</h1>' +
+        '<p class="setup-text">Für den Kalorienring in „Ernährung“. Keine Ahnung? Nimm erst mal 2.000 kcal – du kannst es jederzeit ändern.</p>' +
+        '<div class="setup-kcal"><b id="setup-kcal-val">' + fmtInt(st.kcal) + '</b><span>kcal pro Tag</span></div>' +
+        '<div class="setup-kcal-row">' +
+          '<button class="tbtn" data-action="setup-kcal" data-delta="-100" aria-label="100 kcal weniger">−100</button>' +
+          '<input class="setup-range" id="setup-range" type="range" min="1200" max="4000" step="50" value="' + st.kcal + '" aria-label="Kalorienziel">' +
+          '<button class="tbtn" data-action="setup-kcal" data-delta="100" aria-label="100 kcal mehr">+100</button>' +
+        '</div>' +
+        '<div class="chips setup-presets">' + [1800, 2000, 2200, 2500, 2800].map((k) =>
+          '<button class="chip' + (st.kcal === k ? ' on' : '') + '" data-action="setup-kcal-set" data-value="' + k + '">' + fmtInt(k) + '</button>').join('') + '</div>';
+    } else {
+      cta = 'Fertig';
+      const tips = [];
+      if (isIOS && !isStandalone()) {
+        tips.push('<div class="setup-tip"><span class="setup-opt-ic">' + ICON.share + '</span><span class="setup-opt-text"><b>Zum Home-Bildschirm hinzufügen</b>' +
+          '<small>In Safari auf <em>Teilen</em> → <em>Zum Home-Bildschirm</em>. Dann startet die App im Vollbild und der Pausentimer kann dich benachrichtigen.</small></span></div>');
+      }
+      if (Notify.supported && Notify.permission === 'default') {
+        tips.push('<button class="setup-tip setup-opt" data-action="setup-notif"><span class="setup-opt-ic">' + ICON.clock + '</span><span class="setup-opt-text"><b>Benachrichtigungen erlauben</b>' +
+          '<small>Damit du das Ende der Satzpause mitbekommst.</small></span>' + ICON.chevron + '</button>');
+      } else if (Notify.permission === 'granted') {
+        tips.push('<div class="setup-tip"><span class="setup-opt-ic">' + ICON.done + '</span><span class="setup-opt-text"><b>Benachrichtigungen sind an</b><small>Du wirst ans Pausenende erinnert.</small></span></div>');
+      }
+      tips.push('<div class="setup-tip"><span class="setup-opt-ic">' + ICON.check + '</span><span class="setup-opt-text"><b>So geht’s im Training</b>' +
+        '<small>Satz abhaken → Pause startet. +/− gedrückt halten zählt schneller. Nach links wischen löscht, mit „Rückgängig“.</small></span></div>');
+      body =
+        '<div class="setup-icon setup-icon-done">' + ICON.done + '</div>' +
+        '<h1 class="setup-title">Alles bereit!</h1>' +
+        '<p class="setup-text">Noch ein paar Tipps, damit alles rund läuft:</p>' +
+        '<div class="setup-opts">' + tips.join('') + '</div>';
+    }
+    view.innerHTML =
+      '<div class="setup">' +
+        '<div class="setup-top">' +
+          (st.step > 0 ? '<button class="hdr-btn" data-action="setup-back" aria-label="Zurück">' + ICON.back + '</button>' : '<span class="setup-top-sp"></span>') +
+          '<div class="setup-progress" aria-label="Schritt ' + (st.step + 1) + ' von ' + SETUP_STEPS + '">' + bar + '</div>' +
+          '<button class="setup-skip" data-action="setup-skip">Später</button>' +
+        '</div>' +
+        '<div class="setup-body" id="setup-body">' + body + '</div>' +
+        '<div class="setup-foot"><button class="btn primary block lg" data-action="setup-next">' + cta + '</button></div>' +
+      '</div>';
+    const range = $('#setup-range', view);
+    if (range) {
+      range.addEventListener('input', () => {
+        st.kcal = Number(range.value);
+        $('#setup-kcal-val').textContent = fmtInt(st.kcal);
+        $$('.setup-presets .chip', view).forEach((c) => c.classList.toggle('on', Number(c.dataset.value) === st.kcal));
+      });
+    }
+    if (st.animate && !reduced()) {
+      anim($('#setup-body', view), [{ opacity: 0, transform: 'translateX(' + (st.dir * 40) + 'px)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: EASE.sheet });
+    }
+    st.animate = false;
+  }
+
+  function setupStep(delta) {
+    const st = ui.setup;
+    st.dir = delta;
+    st.animate = true;
+    st.step = Math.max(0, Math.min(SETUP_STEPS - 1, st.step + delta));
+    Haptics.tap();
+    render();
+  }
+
+  /** Einrichtung übernehmen (nur bestehende Einstellungen + optional Beispielplan). */
+  function finishSetup(skip) {
+    const st = ui.setup;
+    ui.setup = null;
+    if (!skip && st) {
+      db.settings.weeklyGoal = st.goal;
+      db.settings.calorieGoal = st.kcal;
+      if (st.start === 'sample' && !db.days.length) db.days.push(...Core.sampleDays());
+      save();
+    }
+    location.replace('#/');
+    if (skip || !st) return;
+    if (st.start === 'sample') toast('Plan „Push · Pull · Beine“ angelegt');
+    else if (st.start === 'own') setTimeout(() => actions['add-day'](), 450);
+    else if (st.start === 'import') setTimeout(() => actions['import-paste'](), 450);
+  }
+
+  /** Nach Registrierung bzw. „Ohne Konto“: Einrichtung nur bei leerem Konto anbieten. */
+  const isFreshData = () => !db.days.length && !db.sessions.length;
+
   /* ---------- Ansicht: Anmelden / Konto erstellen ---------- */
+
 
   function renderLogin(view) {
     const reg = ui.authMode === 'register';
@@ -3825,10 +4054,14 @@
     view.innerHTML = `
       <div class="auth">
         <img class="auth-logo" src="icons/icon.svg" alt="">
-        <h1 class="auth-title">Gym Tracker</h1>
+        <h1 class="auth-title">${reg ? 'Konto erstellen' : 'Willkommen'}</h1>
         <p class="auth-sub">${reg
           ? 'Erstelle ein Konto – deine Trainings werden dann sicher in der Cloud gespeichert und sind auf all deinen Geräten verfügbar.'
           : 'Melde dich an, um deine Trainingsdaten zu laden und zu speichern.'}</p>
+        ${reg ? `<div class="auth-perks">
+          <div>${ICON.reload}<span><b>Auf allen Geräten</b>iPhone, iPad und Computer bleiben automatisch synchron.</span></div>
+          <div>${ICON.done}<span><b>Sicher gespeichert</b>Deine Trainings gehen nicht verloren, auch wenn Safari Daten löscht.</span></div>
+        </div>` : ''}
         <div class="segmented" role="tablist">
           <button role="tab" aria-selected="${!reg}" data-action="auth-mode" data-mode="login">Anmelden</button>
           <button role="tab" aria-selected="${reg}" data-action="auth-mode" data-mode="register">Konto erstellen</button>
@@ -3911,9 +4144,11 @@
     showAuthError('');
     try {
       // Nach Erfolg meldet Firebase den Nutzer über onAuthState → enterAccount()
+      ui.afterRegister = reg;
       if (reg) await window.GymCloud.signUp(email, pw);
       else await window.GymCloud.signIn(email, pw);
     } catch (e) {
+      ui.afterRegister = false;
       showAuthError(authErrorText(e));
       btn.disabled = false;
       btn.textContent = label;
@@ -3959,8 +4194,9 @@
       startSync();
       Wake.update();
       ui.authEmail = '';
-      go('#/');
-      toast('Angemeldet als ' + user.email);
+      if (ui.afterRegister && isFreshData()) startSetup();
+      else { go('#/'); toast('Angemeldet als ' + user.email); }
+      ui.afterRegister = false;
     } finally {
       entering = false;
     }
@@ -5919,7 +6155,29 @@
       if (window.GymCloud && window.GymCloud.currentUser()) { try { await window.GymCloud.signOut(); } catch (e) { /* */ } }
       account = { mode: 'guest' };
       saveAccount();
-      go('#/');
+      if (isFreshData()) startSetup(); else go('#/');
+    },
+    /* Einführung & Einrichtung */
+    'intro-next': () => {
+      const track = $('#intro-track');
+      if (!track) return;
+      const w = track.clientWidth || 1;
+      const idx = Math.round(track.scrollLeft / w);
+      if (idx >= INTRO_SLIDES.length - 1) { finishIntro(); return; }
+      track.scrollTo({ left: (idx + 1) * w, behavior: reduced() ? 'auto' : 'smooth' });
+    },
+    'intro-done': () => finishIntro(),
+    'setup-goal': (el) => { ui.setup.goal = Number(el.dataset.value); Haptics.tap(); render(); },
+    'setup-start': (el) => { ui.setup.start = el.dataset.value; Haptics.tap(); render(); },
+    'setup-kcal': (el) => { ui.setup.kcal = Math.max(1200, Math.min(4000, ui.setup.kcal + Number(el.dataset.delta))); render(); },
+    'setup-kcal-set': (el) => { ui.setup.kcal = Number(el.dataset.value); Haptics.tap(); render(); },
+    'setup-back': () => setupStep(-1),
+    'setup-next': () => { if (ui.setup.step >= SETUP_STEPS - 1) finishSetup(false); else setupStep(1); },
+    'setup-skip': () => finishSetup(true),
+    'setup-notif': async () => {
+      const p = await Notify.request();
+      toast(p === 'granted' ? 'Benachrichtigungen aktiviert ✓' : 'Benachrichtigungen nicht erlaubt');
+      render();
     },
     'open-login': () => { ui.authMode = 'login'; go('#/login'); },
     'auth-reset': async () => {

@@ -809,3 +809,18 @@ test('Export/Import: neue Daten sind enthalten und ueberstehen die Runde', () =>
   assert.deepEqual(back.libMeta, db.libMeta);
   assert.equal(back.days[0].exercises[0].libId, 'bankdruecken-lh');
 });
+
+test('Open Food Facts: kJ-Umrechnung, Portionswerte und deutsche Namen', () => {
+  // Nur kJ vorhanden -> kcal aus kJ (÷4.184)
+  const kj = Core.parseOFF({ status:1, product:{ code:'2', product_name:'Saft', nutriments:{ 'energy-kj_100g':180 } } });
+  assert.equal(kj.kcal, 43);
+  // Werte nur pro Portion -> auf 100 g hochgerechnet
+  const serv = Core.parseOFF({ status:1, product:{ code:'3', product_name:'Riegel', serving_size:'50 g', nutriments:{ 'energy-kcal_serving':200, 'proteins_serving':10 } } });
+  assert.equal(serv.serving, 50);
+  assert.equal(serv.kcal, 400);
+  assert.equal(serv.protein, 20);
+  // Deutscher Name bevorzugt; ml-Portion erkannt
+  const de = Core.parseOFF({ status:1, product:{ code:'4', product_name:'Milk', product_name_de:'Milch', serving_size:'250 ml', nutriments:{ 'energy-kcal_100g':47 } } });
+  assert.equal(de.name, 'Milch');
+  assert.equal(de.serving, 250);
+});

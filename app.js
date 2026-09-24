@@ -1138,16 +1138,28 @@
     if (!json || json.status === 0 || !p) return null;
     const nutr = p.nutriments || {};
     const num = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.round(n * 10) / 10 : null; };
-    const m = String(p.serving_size || '').match(/([\d.,]+)\s*g/i);
+    // Portionsgröße in g (auch aus ml; für Getränke ~1 ml = 1 g als Näherung)
+    const m = String(p.serving_size || '').match(/([\d.,]+)\s*(g|ml)/i);
+    const serving = m ? num(m[1].replace(',', '.')) : num(p.serving_quantity);
+    // pro 100 g: direkter Wert, sonst aus dem Portionswert hochgerechnet
+    const per = (k100, kServ) => {
+      let v = num(nutr[k100]);
+      if (v === null && serving && num(nutr[kServ]) !== null) v = Math.round(num(nutr[kServ]) / serving * 1000) / 10;
+      return v;
+    };
+    // Kalorien: kcal direkt, sonst aus kJ, sonst aus dem Portionswert
+    let kcal = num(nutr['energy-kcal_100g']);
+    if (kcal === null && num(nutr['energy-kj_100g']) !== null) kcal = Math.round(num(nutr['energy-kj_100g']) / 4.184 * 10) / 10;
+    if (kcal === null) kcal = per('energy-kcal', 'energy-kcal_serving');
     return {
       barcode: p.code ? String(p.code) : null,
-      name: String(p.product_name || p.product_name_de || '').trim(),
+      name: String(p.product_name_de || p.product_name || p.product_name_en || p.generic_name || '').trim(),
       brand: String(p.brands || '').split(',')[0].trim(),
-      kcal: num(nutr['energy-kcal_100g']),
-      protein: num(nutr['proteins_100g']),
-      carbs: num(nutr['carbohydrates_100g']),
-      fat: num(nutr['fat_100g']),
-      serving: m ? num(m[1].replace(',', '.')) : null,
+      kcal,
+      protein: per('proteins_100g', 'proteins_serving'),
+      carbs: per('carbohydrates_100g', 'carbohydrates_serving'),
+      fat: per('fat_100g', 'fat_serving'),
+      serving,
       custom: false,
     };
   };
@@ -3882,10 +3894,20 @@
     }
   }
 
+  // Open Food Facts (global) – die größte freie Lebensmittel-Barcode-Datenbank.
   function fetchOFF(barcode) {
-    return fetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(barcode) + '.json?fields=code,product_name,product_name_de,brands,serving_size,nutriments')
+    const code = encodeURIComponent(String(barcode).trim());
+    const base = 'https://world.openfoodfacts.org/api/';
+    const fields = 'code,product_name,product_name_de,product_name_en,generic_name,brands,serving_size,serving_quantity,nutriments';
+    return fetch(base + 'v2/product/' + code + '.json?fields=' + fields)
       .then((r) => r.json())
-      .then((json) => Core.parseOFF(json));
+      .then((json) => {
+        const food = Core.parseOFF(json);
+        if (food && food.name) return food;
+        // Fallback auf die ältere API-Version (findet gelegentlich weitere Produkte)
+        return fetch(base + 'v0/product/' + code + '.json')
+          .then((r) => r.json()).then((j) => Core.parseOFF(j) || food).catch(() => food);
+      });
   }
 
   function onScanned(barcode, meal) {

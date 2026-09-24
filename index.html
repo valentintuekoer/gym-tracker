@@ -33,7 +33,7 @@
         var t = m ? m[1] : 'dark';
         var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         d.setAttribute('data-theme', dark ? 'dark' : 'light');
-        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#000000' : '#ffffff');
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#000000' : '#f2f2f2');
         document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').setAttribute('content', dark ? 'black-translucent' : 'default');
         if (navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) d.classList.add('standalone');
       } catch (e) { /* Standard: dunkel */ }
@@ -71,6 +71,7 @@
   </section>
 
   <nav class="tabbar" id="tabbar" aria-label="Hauptnavigation">
+    <span class="tab-lens" id="tab-lens" aria-hidden="true"></span>
     <a href="#/" class="tab" data-tab="home">
       <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/></svg>
       <span>Training</span><i class="tab-dot" id="tab-dot" hidden></i>

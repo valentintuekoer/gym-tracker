@@ -2265,7 +2265,7 @@
       running.push(anim(card, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], { duration: 340, easing: EASE.spring }));
       if (backdrop) running.push(anim(backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: EASE.out }));
     } else {
-      running.push(anim(card, [{ transform: 'translateY(100%)' }, { transform: 'none' }], { duration: 460, easing: EASE.sheet }));
+      running.push(anim(card, [{ transform: 'translateY(calc(100% + 48px))' }, { transform: 'none' }], { duration: 480, easing: EASE.sheet }));
       if (backdrop) running.push(anim(backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: EASE.out }));
     }
 
@@ -2577,6 +2577,29 @@
     },
   };
 
+  /* ---------- Tab-Leiste: Glas-Linse gleitet zum aktiven Reiter (mit „flüssigem“ Dehnen) ---------- */
+
+  const TabLens = {
+    last: null,
+    update(noAnim) {
+      const lens = $('#tab-lens');
+      const tab = $('.tab.active');
+      if (!lens || !tab || document.body.classList.contains('no-tabbar')) return;
+      const x = tab.offsetLeft, w = tab.offsetWidth;
+      const prev = this.last;
+      this.last = { x, w };
+      lens.style.width = w + 'px';
+      lens.style.transform = 'translateX(' + x + 'px)';
+      if (noAnim || !prev || prev.x === x || reduced()) return;
+      const mid = (prev.x + x) / 2;
+      anim(lens, [
+        { transform: 'translateX(' + prev.x + 'px)' },
+        { transform: 'translateX(' + mid + 'px) scale(1.28, 0.86)', offset: 0.45 },
+        { transform: 'translateX(' + x + 'px)' },
+      ], { duration: 560, easing: EASE.out });
+    },
+  };
+
   /* ---------- Navigation mit Übergängen ---------- */
 
   const TAB_ROOT = { home: '#/', history: '#/history', food: '#/food', library: '#/library', settings: '#/settings' };
@@ -2777,6 +2800,7 @@
     }
 
     $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === route.tab));
+    TabLens.update();
     $('#tab-dot').hidden = !db.activeSession;
     ui.lastRoute = key;
     ui.lastTab = route.tab;
@@ -5034,7 +5058,7 @@
     const t = db.settings.theme;
     const dark = t === 'dark' || (t === 'system' && darkQuery.matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    $('meta[name="theme-color"]').setAttribute('content', dark ? '#000000' : '#ffffff');
+    $('meta[name="theme-color"]').setAttribute('content', dark ? '#000000' : '#f2f2f2');
     // Statusleiste der Home-Bildschirm-App (wirkt ab dem nächsten Start der App)
     const bar = $('meta[name="apple-mobile-web-app-status-bar-style"]');
     if (bar) bar.setAttribute('content', dark ? 'black-translucent' : 'default');
@@ -6105,6 +6129,7 @@
     document.addEventListener('touchstart', () => {}, { passive: true });
     window.addEventListener('scroll', HeaderFx.onScroll, { passive: true });
     window.addEventListener('resize', HeaderFx.onScroll, { passive: true });
+    window.addEventListener('resize', () => TabLens.update(true), { passive: true });
     SwipeDelete.init();
     StepRepeat.init();
     EdgeBack.init();

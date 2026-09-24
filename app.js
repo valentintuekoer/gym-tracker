@@ -2512,7 +2512,7 @@
         if (parts[1] === 'ex') return { name: 'history-ex', key: parts[2] || '', tab: 'history' };
         if (parts[1] === 'session') return { name: 'history-session', id: parts[2], tab: 'history' };
         return { name: 'history', tab: 'history' };
-      case 'settings': return { name: 'settings', tab: 'settings' };
+      case 'settings': return { name: 'settings', sub: parts[1] || null, tab: 'settings' };
       case 'food': return { name: 'food', tab: 'food' };
       case 'library':
         if (parts[1] === 'ex') return { name: 'libex', id: parts[2] || '', tab: 'library' };
@@ -2790,7 +2790,7 @@
       case 'preview': renderPreview(view, route.id); break;
       case 'admin': renderAdmin(view, route.id); break;
       case 'body': renderBodyForm(view, route.id); break;
-      case 'settings': renderSettings(view); break;
+      case 'settings': renderSettings(view, route.sub); break;
       case 'food': renderFood(view); break;
       case 'library': renderLibrary(view); break;
       case 'libex': renderLibEx(view, route.id); break;
@@ -2908,7 +2908,9 @@
         }
       }
     }
-    if (parseRoute().name === 'food') FoodFx.play(view, sameRoute);
+    const rn = parseRoute().name;
+    if (rn === 'food') FoodFx.play(view, sameRoute);
+    if (rn === 'workout') WorkoutPager.init(view); else WorkoutPager.stop();
   }
 
   /** Segment-Steuerungen: weiß gefüllter „Daumen“ gleitet zur Auswahl. */
@@ -3275,13 +3277,16 @@
       actions: `<button class="hdr-btn accent" data-action="finish">Beenden</button>`,
     });
 
-    const cards = s.exercises.map((se) => {
+    const cardList = s.exercises.map((se, idx) => {
       const ctx = Core.exerciseContext(db, se);
       const prev = ctx.prev;
       const plan = ctx.plan;
       const doneCount = se.sets.filter((st) => st.done).length;
       const activeIdx = se.sets.findIndex((st) => !st.done); // hier arbeitest du gerade → +/−-Buttons
       const hint = progressionHint(ctx);
+      const allDone = se.sets.length > 0 && activeIdx < 0;
+      const nextEx = s.exercises[idx + 1];
+      const everyDone = s.exercises.every((e) => e.skipped || (e.sets.length && e.sets.every((st) => st.done)));
       if (se.skipped) {
         return `
           <section class="card ex-card skipped" data-se="${esc(se.id)}" data-flip="se-${esc(se.id)}">
@@ -3313,7 +3318,7 @@
               <span></span>
             </div>` : '';
         return `
-          <div class="set ${st.done ? 'done' : ''}${ui.popSet && ui.popSet.id === st.id ? (st.done ? ' pop' : ' unpop') : ''}" data-se="${esc(se.id)}" data-set="${esc(st.id)}" data-flip="set-${esc(st.id)}" data-swipe="set:${esc(se.id)}:${esc(st.id)}">
+          <div class="set ${st.done ? 'done' : ''}${ui.popSet && ui.popSet.id === st.id ? (st.done ? ' pop' : ' unpop') : ''}" data-se="${esc(se.id)}" data-set="${esc(st.id)}" data-flip="set-${esc(st.id)}">
             <div class="set-main">
               <span class="set-no">${i + 1}</span>
               <label class="field">
@@ -3357,8 +3362,18 @@
           ${hint ? `<div class="prog-hint ${ctx.prog.kind}">${hint}</div>` : ''}
           <div class="sets">${sets}</div>
           <button class="btn soft block sm" data-flip="add-${esc(se.id)}" data-action="set-add" data-se="${esc(se.id)}">${ICON.plus} Satz</button>
+          ${allDone && nextEx ? `<button class="btn primary block wk-advance" data-flip="adv-${esc(se.id)}" data-action="wk-go" data-index="${idx + 1}">Weiter: ${esc(nextEx.name)} ${ICON.chevron}</button>` : ''}
+          ${allDone && !nextEx && everyDone ? `<button class="btn primary block wk-advance" data-flip="adv-${esc(se.id)}" data-action="finish">Training beenden</button>` : ''}
         </section>`;
-    }).join('');
+    });
+    const doneState = (se) => (se.skipped ? 'skipped' : se.sets.length && se.sets.every((st) => st.done) ? 'done' : '');
+    const cards = cardList.length ? `
+      <div class="wk-pager" id="wk-pager">
+        <div class="wk-pills">${s.exercises.map((se, i) => `<button class="wk-pill ${doneState(se)}" data-action="wk-go" data-index="${i}" aria-label="${i + 1}. ${esc(se.name)}"></button>`).join('')}</div>
+        <div class="wk-pager-row"><span id="wk-pos">Übung 1 von ${cardList.length}</span><button class="wk-next-link" id="wk-next" data-action="wk-go" data-index="1" hidden></button></div>
+      </div>
+      <div class="wk-track" id="wk-track">${cardList.map((c, i) => `<div class="wk-slide" data-se="${esc(s.exercises[i].id)}">${c}</div>`).join('')}</div>
+      <p class="hint center wk-swipe-hint">Nach links wischen für die nächste Übung</p>` : '';
 
     const wakeHint = !Wake.supported ? `
       <p class="hint warn">Dein Browser kann den Bildschirm nicht automatisch anlassen. Tipp: iPhone-Einstellungen → Anzeige &amp; Helligkeit → Automatische Sperre verlängern.</p>` : '';
@@ -3374,6 +3389,82 @@
         <button class="btn ghost block danger-text" data-action="discard">Training verwerfen</button>
       </div>`;
   }
+
+  /**
+   * Training: jede Übung als eigene Karte, per Wischen zur nächsten (Scroll-Snap).
+   * Die Höhe passt sich der sichtbaren Karte an, die Nachbarn treten leicht zurück.
+   */
+  const WorkoutPager = {
+    ro: null,
+    track: null,
+    stop() {
+      if (this.ro) { this.ro.disconnect(); this.ro = null; }
+      this.track = null;
+    },
+    init(view) {
+      this.stop();
+      const track = $('#wk-track', view);
+      const s = db.activeSession;
+      if (!track || !s) return;
+      this.track = track;
+      const slides = [...track.children];
+      const pills = $$('.wk-pill', view);
+      const pos = $('#wk-pos', view);
+      const nextBtn = $('#wk-next', view);
+      const width = () => track.clientWidth || 1;
+      let cur = slides.findIndex((sl) => sl.dataset.se === ui.wkSe);
+      if (cur < 0) cur = Math.max(0, s.exercises.findIndex((e) => !e.skipped && e.sets.some((st) => !st.done)));
+      const labels = (i) => {
+        ui.wkSe = slides[i] ? slides[i].dataset.se : null;
+        pills.forEach((p, k) => p.classList.toggle('on', k === i));
+        if (pos) pos.textContent = 'Übung ' + (i + 1) + ' von ' + slides.length;
+        const nx = s.exercises[i + 1];
+        if (nextBtn) {
+          nextBtn.hidden = !nx;
+          if (nx) { nextBtn.dataset.index = String(i + 1); nextBtn.innerHTML = '<span>Als Nächstes: ' + esc(nx.name) + '</span>' + ICON.chevron; }
+        }
+      };
+      const syncHeight = (animate) => {
+        const sl = slides[cur];
+        if (!sl || !track.isConnected) return;
+        track.style.transition = animate && !reduced() ? '' : 'none';
+        track.style.height = sl.offsetHeight + 'px';
+      };
+      track.scrollLeft = cur * width();
+      labels(cur);
+      syncHeight(false);
+      let raf = 0, settle = 0;
+      const frame = () => {
+        raf = 0;
+        const p = track.scrollLeft / width();
+        if (!reduced()) {
+          slides.forEach((sl, k) => {
+            const card = sl.firstElementChild;
+            if (!card) return;
+            const d = Math.min(1, Math.abs(k - p));
+            card.style.transform = d > 0.002 ? 'scale(' + (1 - d * 0.06).toFixed(4) + ')' : '';
+            card.style.opacity = d > 0.002 ? (1 - d * 0.55).toFixed(3) : '';
+          });
+        }
+        const i = Math.max(0, Math.min(slides.length - 1, Math.round(p)));
+        if (i !== cur) { cur = i; labels(i); }
+        clearTimeout(settle);
+        settle = setTimeout(() => syncHeight(true), 80);
+      };
+      track.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(frame); }, { passive: true });
+      if (window.ResizeObserver) {
+        this.ro = new ResizeObserver(() => syncHeight(true));
+        slides.forEach((sl) => this.ro.observe(sl));
+      }
+    },
+    go(i) {
+      const t = this.track;
+      if (!t || !t.isConnected) return;
+      const n = t.children.length;
+      const idx = Math.max(0, Math.min(n - 1, i));
+      t.scrollTo({ left: idx * t.clientWidth, behavior: reduced() ? 'auto' : 'smooth' });
+    },
+  };
 
   /* ---------- Ansicht: Verlauf ---------- */
 
@@ -4032,7 +4123,7 @@
   function renderLogin(view) {
     const reg = ui.authMode === 'register';
     // Ohne Konto unterwegs und über die Einstellungen hierher gekommen → Zurück-Knopf
-    if (account) setHeader({ title: 'Konto', back: '#/settings' });
+    if (account) setHeader({ title: 'Konto', back: '#/settings/account' });
     else setHeader({ title: 'Gym Tracker', hidden: true });
 
     if (!cloudConfigured) {
@@ -4435,8 +4526,30 @@
       </button>`;
   }
 
-  function renderSettings(view) {
-    setHeader({ title: 'Einstellungen', large: true });
+  /** Menüzeile mit Icon-Kachel, die in eine Unterseite führt (wie in den iOS-Einstellungen). */
+  function menuRow(href, icon, label, value, sub) {
+    return `
+      <a class="row menu-row" href="${href}">
+        <span class="row-ic" aria-hidden="true">${icon}</span>
+        <span class="row-text"><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</span>
+        <span class="row-value">${value || ''} ${ICON.chevron}</span>
+      </a>`;
+  }
+
+  const SETTINGS_PAGES = {
+    account: 'Konto',
+    training: 'Training & Timer',
+    nutrition: 'Ernährung',
+    notifications: 'Benachrichtigungen & Ton',
+    appearance: 'Darstellung',
+    backup: 'Datensicherung',
+    data: 'Daten',
+  };
+
+  function renderSettings(view, sub) {
+    if (sub && !SETTINGS_PAGES[sub]) { go('#/settings'); return; }
+    if (sub) setHeader({ title: SETTINGS_PAGES[sub], back: '#/settings' });
+    else setHeader({ title: 'Einstellungen', large: true });
     const st = db.settings;
     const perm = Notify.permission;
     const permText = {
@@ -4445,108 +4558,163 @@
       default: 'noch nicht gefragt',
       unsupported: 'hier nicht verfügbar',
     }[perm];
+    const permShort = { granted: 'An', denied: 'Blockiert', default: 'Aus', unsupported: '–' }[perm];
     const lastBackup = st.lastBackup ? fmtRelative(st.lastBackup, Date.now()) + ' (' + fmtDate(st.lastBackup) + ')' : 'noch nie';
     const backupOld = !isUser() && (!st.lastBackup || Date.now() - st.lastBackup > 7 * 86400000);
+    const themeLabel = { dark: 'Dunkel', light: 'Hell', system: 'System' }[st.theme] || 'Dunkel';
 
-    view.innerHTML = `
-      ${accountSection()}
+    /* ---------- Hauptseite ---------- */
+    if (!sub) {
+      const name = isUser() ? account.email : 'Ohne Konto';
+      const initial = isUser() ? esc((account.email || '?').trim().charAt(0).toUpperCase()) : svgI('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>');
+      view.innerHTML = `
+        <a class="profile-card" href="#/settings/account">
+          <span class="profile-avatar" aria-hidden="true">${initial}</span>
+          <span class="profile-text">
+            <b class="break">${esc(name)}</b>
+            <small id="sync-status">${isUser() ? esc(syncStatusText()) : 'Daten nur auf diesem Gerät · Anmelden'}</small>
+          </span>
+          ${ICON.chevron}
+        </a>
+        ${ui.isAdmin && isUser() ? `<section class="card flush">${menuRow('#/admin', svgI('<circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3 2.8-4.8 5.5-4.8s4.9 1.8 5.5 4.8M16 7.5h5M18.5 5v5"/>'), 'Nutzerverwaltung', '', 'Alle Konten verwalten')}</section>` : ''}
+        <section class="card flush">
+          ${menuRow('#/settings/training', ICON.dumbbell, 'Training & Timer', fmtRest(st.defaultRest), 'Pause, Gewichtsschritt, Wochenziel')}
+          ${menuRow('#/settings/nutrition', ICON.target, 'Ernährung', st.calorieGoal ? fmtInt(st.calorieGoal) + ' kcal' : '–', 'Kalorien- und Makroziele')}
+          ${menuRow('#/settings/notifications', ICON.clock, 'Benachrichtigungen & Ton', permShort, 'Signalton, Haptik, Pausen-Hinweis')}
+          ${menuRow('#/settings/appearance', svgI('<circle cx="12" cy="12" r="8"/><path class="fill" d="M12 4a8 8 0 0 1 0 16z"/>'), 'Darstellung', themeLabel)}
+        </section>
+        <section class="card flush">
+          ${menuRow('#/settings/backup', ICON.inbox, 'Datensicherung', backupOld ? ICON.warn : '', isUser() ? 'In der Cloud · Export als Datei' : 'Letztes Backup: ' + lastBackup)}
+          ${menuRow('#/settings/data', ICON.list, 'Daten', `${db.days.length} Tage`, `${db.sessions.length} Einheiten gespeichert`)}
+        </section>
+        <p class="hint center">Gym Tracker · ${isUser() ? 'Daten in deinem Konto gespeichert.' : 'Daten bleiben nur auf diesem Gerät.'}</p>`;
+      return;
+    }
 
-      <p class="section-label">Datensicherung</p>
-      <section class="card">
-        ${isUser() ? `
-        <div class="notice">
-          <strong>In der Cloud gesichert</strong>
-          Deine Daten liegen in deinem Konto. Ein zusätzlicher Export als Datei schadet trotzdem nicht –
-          z. B. bevor du etwas Größeres änderst.
-        </div>` : `
-        <div class="notice ${backupOld ? 'warn' : ''}">
-          <strong>Regelmäßig sichern!</strong>
-          Safari kann lokal gespeicherte Website-Daten löschen, z. B. wenn die App mehrere Wochen nicht geöffnet wurde
-          oder der Speicher knapp ist. Exportiere daher regelmäßig (z. B. wöchentlich) ein Backup und lege es in
-          „Dateien“ bzw. iCloud Drive ab${cloudConfigured ? ' – oder melde dich an, dann liegen die Daten in der Cloud' : ''}.
-        </div>`}
-        <p class="kv"><span>Letztes Backup</span><span>${lastBackup}</span></p>
-        <p class="kv"><span>Gespeichert</span><span>${db.days.length} Tage · ${db.sessions.length} Einheiten</span></p>
-        <div class="btn-row">
-          <button class="btn primary" data-action="export">Exportieren</button>
-          <button class="btn soft" data-action="import">Importieren</button>
-        </div>
-      </section>
-
-      <p class="section-label">Training &amp; Pausentimer</p>
-      <section class="card flush">
-        <button class="row" data-action="increment">
-          <span class="row-text"><span>Gewichtsschritt</span><small>für Steigerungsvorschläge und die +/− Buttons</small></span>
-          <span class="row-value">${fmtNum(st.increment)} kg ${ICON.chevron}</span>
-        </button>
-        <button class="row" data-action="weekly-goal">
-          <span class="row-text"><span>Wochenziel</span><small>Trainings pro Woche – für Serie &amp; Kalender</small></span>
-          <span class="row-value">${st.weeklyGoal}× ${ICON.chevron}</span>
-        </button>
-        <button class="row" data-action="default-rest">
-          <span class="row-text"><span>Standardpause</span><small>für neue Übungen</small></span>
-          <span class="row-value">${fmtRest(st.defaultRest)} ${ICON.chevron}</span>
-        </button>
-        ${switchRow('sound', 'Signalton', 'Piept, wenn die Pause vorbei ist')}
-        ${switchRow('vibrate', 'Vibration & Haptik', isIOS ? 'Leichtes Tippen beim Abhaken (iPhone ab iOS 18)' : 'Beim Abhaken und am Ende der Pause')}
-        ${'audioSession' in navigator ? switchRow('loudMode', 'Ton trotz Lautlos-Schalter', 'Kann laufende Musik unterbrechen') : ''}
-        <button class="row" data-action="test-sound">
-          <span class="row-text"><span>Ton testen</span></span><span class="row-value">${ICON.play}</span>
-        </button>
-      </section>
-
-      <p class="section-label">Ernährung</p>
-      <section class="card flush">
-        <button class="row" data-action="edit-goal" data-key="calorieGoal"><span class="row-text"><span>Kalorienziel</span></span><span class="row-value">${st.calorieGoal ? st.calorieGoal + ' kcal' : '–'} ${ICON.chevron}</span></button>
-        <button class="row" data-action="edit-goal" data-key="proteinGoal"><span class="row-text"><span>Protein-Ziel</span></span><span class="row-value">${st.proteinGoal ? st.proteinGoal + ' g' : '–'} ${ICON.chevron}</span></button>
-        <button class="row" data-action="edit-goal" data-key="carbGoal"><span class="row-text"><span>Kohlenhydrat-Ziel</span></span><span class="row-value">${st.carbGoal ? st.carbGoal + ' g' : '–'} ${ICON.chevron}</span></button>
-        <button class="row" data-action="edit-goal" data-key="fatGoal"><span class="row-text"><span>Fett-Ziel</span></span><span class="row-value">${st.fatGoal ? st.fatGoal + ' g' : '–'} ${ICON.chevron}</span></button>
-      </section>
-
-      <p class="section-label">Anstrengung pro Satz</p>
-      <section class="card">
-        <div class="segmented" role="radiogroup" aria-label="Anstrengung erfassen">
-          ${[['off', 'Aus'], ['rir', 'RIR'], ['rpe', 'RPE']].map(([v, l]) => `
-            <button role="radio" aria-checked="${st.effort === v}" aria-selected="${st.effort === v}" data-action="effort" data-value="${v}">${l}</button>`).join('')}
-        </div>
-        <p class="hint"><b>RIR</b> („Reps in Reserve“): Wie viele Wiederholungen wären noch gegangen? 0 = bis zum Versagen.
-          <b>RPE</b>: gefühlte Anstrengung von 1 bis 10 (10 = Maximum). Das Feld erscheint im Training neben der Notiz.</p>
-      </section>
-
-      <p class="section-label">Benachrichtigungen</p>
-      <section class="card">
-        <p class="kv"><span>Status</span><span>${permText}</span></p>
-        ${perm === 'default' ? '<button class="btn primary block" data-action="notif">Benachrichtigungen erlauben</button>' : ''}
-        ${perm === 'granted' ? '<button class="btn soft block" data-action="notif-test">Test-Benachrichtigung</button>' : ''}
-        <div class="notice">
-          <strong>So klappt es auf dem iPhone (ab iOS 16.4):</strong>
-          <ol>
-            <li>Öffne die App in Safari und tippe auf <em>Teilen</em> → <em>Zum Home-Bildschirm</em>.</li>
-            <li>Starte die App über das neue Icon auf dem Home-Bildschirm.</li>
-            <li>Tippe hier auf <em>Benachrichtigungen erlauben</em> und bestätige.</li>
-          </ol>
-          <p>Wichtig: iOS pausiert Web-Apps im Hintergrund. Am zuverlässigsten ist es, die App während der Pause
-          geöffnet zu lassen – der Bildschirm bleibt dabei automatisch an und der Signalton ertönt pünktlich.
-          Der Ton ist nur zu hören, wenn der Lautlos-Schalter aus ist${'audioSession' in navigator ? ' (oder die Option oben aktiv ist)' : ''}.</p>
-          ${isIOS && !isStandalone() ? '<p class="accent"><strong>Du nutzt die App gerade im Browser – füge sie zuerst zum Home-Bildschirm hinzu.</strong></p>' : ''}
-          ${perm === 'denied' ? '<p>Du hast Benachrichtigungen blockiert. Aktivieren: iPhone-Einstellungen → Mitteilungen → Gym.</p>' : ''}
-        </div>
-      </section>
-
-      <p class="section-label">Darstellung</p>
-      <section class="card">
-        <div class="segmented" role="radiogroup" aria-label="Design">
-          ${[['dark', 'Dunkel'], ['light', 'Hell'], ['system', 'System']].map(([v, l]) => `
-            <button role="radio" aria-checked="${st.theme === v}" aria-selected="${st.theme === v}" data-action="theme" data-value="${v}">${l}</button>`).join('')}
-        </div>
-      </section>
-
-      <p class="section-label">Daten</p>
-      <section class="card flush">
-        <button class="row" data-action="load-sample"><span class="row-text"><span>Beispiel-Trainingstage hinzufügen</span><small>Push, Pull, Beine</small></span></button>
-        <button class="row danger-text" data-action="reset"><span class="row-text"><span>Alle Daten löschen</span></span></button>
-      </section>
-      <p class="hint center">Gym Tracker · ${isUser() ? 'Daten in deinem Konto gespeichert.' : 'Daten bleiben nur auf diesem Gerät.'}</p>`;
+    /* ---------- Unterseiten ---------- */
+    let html = '';
+    if (sub === 'account') {
+      html = accountSection();
+    } else if (sub === 'training') {
+      html = `
+        <p class="section-label">Training</p>
+        <section class="card flush">
+          <button class="row" data-action="increment">
+            <span class="row-text"><span>Gewichtsschritt</span><small>für Steigerungsvorschläge und die +/− Buttons</small></span>
+            <span class="row-value">${fmtNum(st.increment)} kg ${ICON.chevron}</span>
+          </button>
+          <button class="row" data-action="weekly-goal">
+            <span class="row-text"><span>Wochenziel</span><small>Trainings pro Woche – für Serie &amp; Kalender</small></span>
+            <span class="row-value">${st.weeklyGoal}× ${ICON.chevron}</span>
+          </button>
+        </section>
+        <p class="section-label">Pausentimer</p>
+        <section class="card flush">
+          <button class="row" data-action="default-rest">
+            <span class="row-text"><span>Standardpause</span><small>für neue Übungen</small></span>
+            <span class="row-value">${fmtRest(st.defaultRest)} ${ICON.chevron}</span>
+          </button>
+          <a class="row" href="#/settings/notifications">
+            <span class="row-text"><span>Signalton &amp; Benachrichtigung</span><small>am Ende der Pause</small></span>
+            <span class="row-value">${ICON.chevron}</span>
+          </a>
+        </section>
+        <p class="section-label">Anstrengung pro Satz</p>
+        <section class="card">
+          <div class="segmented" role="radiogroup" aria-label="Anstrengung erfassen">
+            ${[['off', 'Aus'], ['rir', 'RIR'], ['rpe', 'RPE']].map(([v, l]) => `
+              <button role="radio" aria-checked="${st.effort === v}" aria-selected="${st.effort === v}" data-action="effort" data-value="${v}">${l}</button>`).join('')}
+          </div>
+          <p class="hint"><b>RIR</b> („Reps in Reserve“): Wie viele Wiederholungen wären noch gegangen? 0 = bis zum Versagen.
+            <b>RPE</b>: gefühlte Anstrengung von 1 bis 10 (10 = Maximum). Das Feld erscheint im Training neben der Notiz.</p>
+        </section>`;
+    } else if (sub === 'nutrition') {
+      html = `
+        <p class="section-label">Tagesziele</p>
+        <section class="card flush">
+          <button class="row" data-action="edit-goal" data-key="calorieGoal"><span class="row-text"><span>Kalorienziel</span></span><span class="row-value">${st.calorieGoal ? st.calorieGoal + ' kcal' : '–'} ${ICON.chevron}</span></button>
+          <button class="row" data-action="edit-goal" data-key="proteinGoal"><span class="row-text"><span>Protein-Ziel</span></span><span class="row-value">${st.proteinGoal ? st.proteinGoal + ' g' : '–'} ${ICON.chevron}</span></button>
+          <button class="row" data-action="edit-goal" data-key="carbGoal"><span class="row-text"><span>Kohlenhydrat-Ziel</span></span><span class="row-value">${st.carbGoal ? st.carbGoal + ' g' : '–'} ${ICON.chevron}</span></button>
+          <button class="row" data-action="edit-goal" data-key="fatGoal"><span class="row-text"><span>Fett-Ziel</span></span><span class="row-value">${st.fatGoal ? st.fatGoal + ' g' : '–'} ${ICON.chevron}</span></button>
+        </section>
+        <p class="hint">Die Ziele bestimmen den Kalorienring und die Makro-Balken im Reiter „Ernährung“.</p>`;
+    } else if (sub === 'notifications') {
+      html = `
+        <p class="section-label">Ton &amp; Haptik</p>
+        <section class="card flush">
+          ${switchRow('sound', 'Signalton', 'Piept, wenn die Pause vorbei ist')}
+          ${switchRow('vibrate', 'Vibration & Haptik', isIOS ? 'Leichtes Tippen beim Abhaken (iPhone ab iOS 18)' : 'Beim Abhaken und am Ende der Pause')}
+          ${'audioSession' in navigator ? switchRow('loudMode', 'Ton trotz Lautlos-Schalter', 'Kann laufende Musik unterbrechen') : ''}
+          <button class="row" data-action="test-sound">
+            <span class="row-text"><span>Ton testen</span></span><span class="row-value">${ICON.play}</span>
+          </button>
+        </section>
+        <p class="section-label">Benachrichtigungen</p>
+        <section class="card">
+          <p class="kv"><span>Status</span><span>${permText}</span></p>
+          ${perm === 'default' ? '<button class="btn primary block" data-action="notif">Benachrichtigungen erlauben</button>' : ''}
+          ${perm === 'granted' ? '<button class="btn soft block" data-action="notif-test">Test-Benachrichtigung</button>' : ''}
+          <div class="notice">
+            <strong>So klappt es auf dem iPhone (ab iOS 16.4):</strong>
+            <ol>
+              <li>Öffne die App in Safari und tippe auf <em>Teilen</em> → <em>Zum Home-Bildschirm</em>.</li>
+              <li>Starte die App über das neue Icon auf dem Home-Bildschirm.</li>
+              <li>Tippe hier auf <em>Benachrichtigungen erlauben</em> und bestätige.</li>
+            </ol>
+            <p>Wichtig: iOS pausiert Web-Apps im Hintergrund. Am zuverlässigsten ist es, die App während der Pause
+            geöffnet zu lassen – der Bildschirm bleibt dabei automatisch an und der Signalton ertönt pünktlich.
+            Der Ton ist nur zu hören, wenn der Lautlos-Schalter aus ist${'audioSession' in navigator ? ' (oder die Option oben aktiv ist)' : ''}.</p>
+            ${isIOS && !isStandalone() ? '<p class="accent"><strong>Du nutzt die App gerade im Browser – füge sie zuerst zum Home-Bildschirm hinzu.</strong></p>' : ''}
+            ${perm === 'denied' ? '<p>Du hast Benachrichtigungen blockiert. Aktivieren: iPhone-Einstellungen → Mitteilungen → Gym.</p>' : ''}
+          </div>
+        </section>`;
+    } else if (sub === 'appearance') {
+      html = `
+        <p class="section-label">Design</p>
+        <section class="card">
+          <div class="theme-previews">
+            ${[['dark', 'Dunkel'], ['light', 'Hell'], ['system', 'System']].map(([v, l]) => `
+              <button class="theme-pick${st.theme === v ? ' on' : ''}" data-action="theme" data-value="${v}" aria-pressed="${st.theme === v}">
+                <span class="theme-mock ${v}" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="theme-name">${l}</span>
+                <span class="setup-radio" aria-hidden="true"></span>
+              </button>`).join('')}
+          </div>
+          <p class="hint">„System“ folgt automatisch der Einstellung deines iPhones (Hell/Dunkel).</p>
+        </section>`;
+    } else if (sub === 'backup') {
+      html = `
+        <section class="card">
+          ${isUser() ? `
+          <div class="notice">
+            <strong>In der Cloud gesichert</strong>
+            Deine Daten liegen in deinem Konto. Ein zusätzlicher Export als Datei schadet trotzdem nicht –
+            z. B. bevor du etwas Größeres änderst.
+          </div>` : `
+          <div class="notice ${backupOld ? 'warn' : ''}">
+            <strong>Regelmäßig sichern!</strong>
+            Safari kann lokal gespeicherte Website-Daten löschen, z. B. wenn die App mehrere Wochen nicht geöffnet wurde
+            oder der Speicher knapp ist. Exportiere daher regelmäßig (z. B. wöchentlich) ein Backup und lege es in
+            „Dateien“ bzw. iCloud Drive ab${cloudConfigured ? ' – oder melde dich an, dann liegen die Daten in der Cloud' : ''}.
+          </div>`}
+          <p class="kv"><span>Letztes Backup</span><span>${lastBackup}</span></p>
+          <p class="kv"><span>Gespeichert</span><span>${db.days.length} Tage · ${db.sessions.length} Einheiten</span></p>
+          <div class="btn-row">
+            <button class="btn primary" data-action="export">Exportieren</button>
+            <button class="btn soft" data-action="import">Importieren</button>
+          </div>
+        </section>`;
+    } else if (sub === 'data') {
+      html = `
+        <section class="card flush">
+          <button class="row" data-action="load-sample"><span class="row-text"><span>Beispiel-Trainingstage hinzufügen</span><small>Push, Pull, Beine</small></span><span class="row-value">${ICON.plus}</span></button>
+        </section>
+        <section class="card flush">
+          <button class="row danger-text" data-action="reset"><span class="row-text"><span>Alle Daten löschen</span><small>${isUser() ? 'Aus deinem Konto – auf allen Geräten' : 'Von diesem Gerät'}</small></span><span class="row-value">${ICON.trash}</span></button>
+        </section>
+        <p class="hint">Tipp: Vor dem Löschen ein Backup unter „Datensicherung“ exportieren.</p>`;
+    }
+    view.innerHTML = html;
   }
 
   /* =========================================================
@@ -5883,6 +6051,7 @@
       saveSoon();
     },
     'summary-done': () => go('#/'),
+    'wk-go': (el) => { Haptics.tap(); WorkoutPager.go(Number(el.dataset.index)); },
     'preview-day': (el) => {
       const s = db.activeSession;
       // Läuft dieser Tag schon, direkt zurück ins Training – sonst erst die Vorschau

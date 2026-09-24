@@ -665,3 +665,147 @@ test('Geschätzte Trainingsdauer für die Vorschau', () => {
   assert.equal(Core.estimateMinutes(push), 15);
   assert.equal(Core.estimateMinutes(Core.addDay(db, 'Leer')), 0);
 });
+
+/* ================= v2: Ernährung, Lebensmittel, Übungsbibliothek ================= */
+
+const LIB = require('../exercises.json').exercises;
+
+test('Migration: altes Backup (v1) bleibt importierbar, neue Felder werden ergänzt', () => {
+  const oldBackup = {
+    app: 'gym-tracker', version: 1,
+    data: {
+      days: [{ id: 'd1', name: 'Push', exercises: [{ id: 'e1', name: 'Bankdrücken', rest: 120, sets: 3 }] }],
+      sessions: [{ id: 's1', dayId: 'd1', dayName: 'Push', finishedAt: T0, startedAt: T0 - 3600000,
+        exercises: [{ exId: 'e1', name: 'Bankdrücken', sets: [{ weight: 80, reps: 8, note: '', done: true }] }] }],
+      settings: { defaultRest: 90, sound: true },
+    },
+  };
+  const db = Core.normalize(oldBackup);
+  assert.equal(db.version, 2, 'Schema-Version erhoeht');
+  assert.deepEqual(db.nutrition, []);
+  assert.deepEqual(db.foods, []);
+  assert.deepEqual(db.customExercises, []);
+  assert.deepEqual(db.libMeta, {});
+  assert.equal(db.settings.calorieGoal, 2000);
+  assert.equal(db.settings.proteinGoal, 150);
+  assert.equal(db.days[0].exercises[0].libId, null);
+  assert.equal(db.days[0].name, 'Push');
+  assert.equal(db.sessions.length, 1);
+  assert.equal(Core.lastPerformance(db, 'Bankdrücken').sets[0].weight, 80);
+});
+
+test('Open Food Facts: Parser uebernimmt vorhandene Werte, fehlende bleiben null', () => {
+  const ok = Core.parseOFF({ status: 1, product: {
+    code: '4000417025005', product_name: 'Haferflocken', brands: 'Kölln, Marke',
+    serving_size: '40 g', nutriments: { 'energy-kcal_100g': 372, 'proteins_100g': 13.5, 'carbohydrates_100g': 58.7, 'fat_100g': 7 },
+  } });
+  assert.deepEqual(ok, { barcode: '4000417025005', name: 'Haferflocken', brand: 'Kölln', kcal: 372, protein: 13.5, carbs: 58.7, fat: 7, serving: 40, custom: false });
+  const partial = Core.parseOFF({ status: 1, product: { code: '1', product_name: 'X', nutriments: { 'energy-kcal_100g': 100, 'proteins_100g': 5 } } });
+  assert.equal(partial.fat, null);
+  assert.equal(partial.carbs, null);
+  assert.equal(partial.serving, null);
+  assert.equal(Core.parseOFF({ status: 0 }), null);
+  assert.equal(Core.parseOFF(null), null);
+});
+
+test('Portionsumrechnung: unbekannte Naehrwerte bleiben null', () => {
+  const food = { kcal: 372, protein: 13.5, carbs: 58.7, fat: null };
+  assert.deepEqual(Core.scaleFood(food, 40), { kcal: 148.8, protein: 5.4, carbs: 23.5, fat: null });
+  assert.deepEqual(Core.scaleFood(food, 0), { kcal: 0, protein: 0, carbs: 0, fat: null });
+});
+
+test('Ernaehrungseintraege: hinzufuegen, Tagessumme, aendern, loeschen', () => {
+  const db = Core.emptyData();
+  const today = Core.dayKey(Date.now());
+  Core.addNutrition(db, { date: today, meal: 'breakfast', name: 'Haferflocken', kcal: 149, protein: 5.4, carbs: 23.5, fat: 3, grams: 40 });
+  Core.addNutrition(db, { date: today, meal: 'lunch', name: 'Reis', kcal: 200, protein: 4, carbs: 44, fat: null });
+  Core.addNutrition(db, { date: '2020-01-01', meal: 'snack', name: 'Alt', kcal: 999 });
+  assert.deepEqual(Core.dayTotals(db, today), { kcal: 349, protein: 9.4, carbs: 67.5, fat: 3 });
+  assert.equal(Core.nutritionForDay(db, today).length, 2);
+  const id = db.nutrition.find((n) => n.name === 'Reis').id;
+  Core.updateNutrition(db, id, { kcal: 250 });
+  assert.equal(Core.dayTotals(db, today).kcal, 399);
+  Core.deleteNutrition(db, id);
+  assert.equal(Core.nutritionForDay(db, today).length, 1);
+  Core.addNutrition(db, { date: today, meal: 'snack', name: 'Apfel', kcal: 80 });
+  const apfel = db.nutrition.find((n) => n.name === 'Apfel');
+  assert.equal(apfel.protein, null);
+  assert.equal(apfel.grams, null);
+});
+
+test('Lebensmittel: speichern, per Barcode finden, Favorit, Suche', () => {
+  const db = Core.emptyData();
+  const a = Core.saveFood(db, { barcode: '111', name: 'Magerquark', brand: 'Milbona', kcal: 67, protein: 12, carbs: 4, fat: 0.2 });
+  Core.saveFood(db, { barcode: '222', name: 'Vollkornbrot', kcal: 220, protein: 8 });
+  assert.equal(Core.findFoodByBarcode(db, '111').name, 'Magerquark');
+  assert.equal(Core.findFoodByBarcode(db, '999'), null);
+  Core.saveFood(db, Object.assign({}, a, { kcal: 68 }));
+  assert.equal(db.foods.length, 2);
+  assert.equal(Core.foodById(db, a.id).kcal, 68);
+  Core.toggleFoodFavorite(db, a.id);
+  Core.markFoodUsed(db, db.foods[1].id, T0);
+  assert.equal(Core.searchFoods(db, '')[0].name, 'Magerquark');
+  assert.equal(Core.searchFoods(db, 'quark').length, 1);
+  Core.deleteFood(db, a.id);
+  assert.equal(db.foods.length, 1);
+});
+
+test('Uebungen mit der Bibliothek verknuepfen (feste ID, Name/Alias, Gross-/Kleinschreibung)', () => {
+  const db = Core.emptyData();
+  const d = Core.addDay(db, 'Push');
+  Core.addExercise(db, d.id, 'Bankdrücken');
+  Core.addExercise(db, d.id, 'KNIEBEUGEN');
+  Core.addExercise(db, d.id, 'bench press');
+  Core.addExercise(db, d.id, 'Mein Spezial-Curl');
+  assert.ok(Core.linkPlanToLibrary(db, LIB));
+  assert.ok(d.exercises.every((e) => e.libId));
+  assert.equal(d.exercises[0].libId, 'bankdruecken-lh');
+  assert.equal(d.exercises[1].libId, 'kniebeugen');
+  assert.equal(d.exercises[2].libId, 'bankdruecken-lh');
+  const custom = db.customExercises.find((c) => util.normName(c.name) === 'mein spezial-curl');
+  assert.ok(custom);
+  assert.equal(d.exercises[3].libId, custom.id);
+  assert.equal(Core.linkPlanToLibrary(db, LIB), false);
+});
+
+test('Eigene Uebung anlegen, bearbeiten, loeschen - Verlauf bleibt erhalten', () => {
+  const db = Core.emptyData();
+  const d = Core.addDay(db, 'Tag');
+  const libId = Core.resolveExercise(db, 'Meine Übung', LIB);
+  Core.addExercise(db, d.id, 'Meine Übung', 90, 3, libId);
+  doSession(db, d.id, T0, { 'Meine Übung': [[50, 10]] });
+  assert.ok(db.customExercises.some((c) => c.id === libId));
+  Core.saveCustomExercise(db, { id: libId, name: 'Meine Übung', muscle: 'Bizeps', equipment: 'Kurzhantel', type: 'Isolation', steps: ['Schritt 1'] });
+  assert.equal(Core.customExerciseById(db, libId).muscle, 'Bizeps');
+  Core.deleteCustomExercise(db, libId);
+  assert.equal(db.customExercises.length, 0);
+  assert.equal(Core.lastPerformance(db, 'Meine Übung').sets[0].weight, 50);
+});
+
+test('Favoriten und zuletzt verwendet fuer Bibliotheksuebungen', () => {
+  const db = Core.emptyData();
+  assert.equal(Core.libFav(db, 'bankdruecken-lh'), false);
+  Core.toggleLibFav(db, 'bankdruecken-lh');
+  assert.equal(Core.libFav(db, 'bankdruecken-lh'), true);
+  Core.markExerciseUsed(db, 'kniebeugen', T0);
+  assert.equal(Core.libUsed(db, 'kniebeugen'), T0);
+  Core.toggleLibFav(db, 'bankdruecken-lh');
+  assert.equal(db.libMeta['bankdruecken-lh'], undefined);
+});
+
+test('Export/Import: neue Daten sind enthalten und ueberstehen die Runde', () => {
+  const db = Core.emptyData();
+  const d = Core.addDay(db, 'Push');
+  Core.addExercise(db, d.id, 'Bankdrücken', 120, 3, Core.resolveExercise(db, 'Bankdrücken', LIB));
+  Core.addNutrition(db, { date: Core.dayKey(T0), meal: 'lunch', name: 'Reis', kcal: 200, protein: 4, carbs: 44, fat: 1, grams: 100 });
+  Core.saveFood(db, { barcode: '111', name: 'Magerquark', kcal: 67, protein: 12 });
+  Core.toggleLibFav(db, 'kniebeugen');
+  Core.saveCustomExercise(db, { name: 'Custom', muscle: 'Bauch', equipment: 'Körpergewicht', type: 'Isolation', steps: ['x'] });
+  const exported = JSON.parse(JSON.stringify({ app: 'gym-tracker', version: 2, data: db }));
+  const back = Core.normalize(exported);
+  assert.deepEqual(back.nutrition, db.nutrition);
+  assert.deepEqual(back.foods, db.foods);
+  assert.deepEqual(back.customExercises, db.customExercises);
+  assert.deepEqual(back.libMeta, db.libMeta);
+  assert.equal(back.days[0].exercises[0].libId, 'bankdruecken-lh');
+});

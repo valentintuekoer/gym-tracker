@@ -47,9 +47,20 @@ async function init() {
   const userDoc = (uid) => F.doc(fs, 'users', uid);
   const sessionsCol = (uid) => F.collection(fs, 'users', uid, 'sessions');
   const bodyCol = (uid) => F.collection(fs, 'users', uid, 'body');
+  const nutritionCol = (uid) => F.collection(fs, 'users', uid, 'nutrition');
+  const foodCol = (uid) => F.collection(fs, 'users', uid, 'food');
 
   // Teile des Hauptdokuments (siehe Sync.MAIN_FIELDS in app.js)
-  const MAIN_FIELDS = { 'main.days': 'days', 'main.settings': 'settings', 'main.active': 'activeSession' };
+  const MAIN_FIELDS = {
+    'main.days': 'days', 'main.settings': 'settings', 'main.active': 'activeSession',
+    'main.customex': 'customExercises', 'main.libmeta': 'libMeta',
+  };
+
+  // Schlüssel-Präfix (Sammlung) → passende Firestore-Sammlung
+  const collFor = (uid, key) => key.startsWith('body:') ? [bodyCol(uid), key.slice(5)]
+    : key.startsWith('nutrition:') ? [nutritionCol(uid), key.slice(10)]
+    : key.startsWith('food:') ? [foodCol(uid), key.slice(5)]
+    : [sessionsCol(uid), key.slice(8)];
 
   /**
    * Schreibt Operationen in Paketen (Firestore erlaubt max. 500 pro Batch).
@@ -68,7 +79,8 @@ async function init() {
         } else if (op.key === 'main') {
           batch.delete(userDoc(uid)); // nur beim Löschen des Kontos
         } else {
-          const ref = op.key.startsWith('body:') ? F.doc(bodyCol(uid), op.key.slice(5)) : F.doc(sessionsCol(uid), op.key.slice(8));
+          const [col, id] = collFor(uid, op.key);
+          const ref = F.doc(col, id);
           if (op.data) batch.set(ref, op.data);
           else batch.delete(ref);
         }
@@ -89,11 +101,7 @@ async function init() {
       const user = auth.currentUser;
       if (!user) throw Object.assign(new Error('not signed in'), { code: 'auth/requires-recent-login' });
       await A.reauthenticateWithCredential(user, A.EmailAuthProvider.credential(user.email, password));
-      const [sessions, body] = await Promise.all([F.getDocs(sessionsCol(user.uid)), F.getDocs(bodyCol(user.uid))]);
-      const ops = sessions.docs.map((d) => ({ key: 'session:' + d.id, data: null }))
-        .concat(body.docs.map((d) => ({ key: 'body:' + d.id, data: null })));
-      ops.push({ key: 'main', data: null });
-      await commitOps(user.uid, ops);
+      await deleteUserData(user.uid);
       await A.deleteUser(user);
     },
 
@@ -117,7 +125,13 @@ async function init() {
           const u3 = F.onSnapshot(bodyCol(uid), opts, (snap) => {
             if (clean(snap)) handlers.body(list(snap));
           }, onError);
-          return () => { u1(); u2(); u3(); };
+          const u4 = F.onSnapshot(nutritionCol(uid), opts, (snap) => {
+            if (clean(snap)) handlers.nutrition(list(snap));
+          }, onError);
+          const u5 = F.onSnapshot(foodCol(uid), opts, (snap) => {
+            if (clean(snap)) handlers.foods(list(snap));
+          }, onError);
+          return () => { u1(); u2(); u3(); u4(); u5(); };
         },
         commit: (ops) => commitOps(uid, ops),
         /** Gibt es das Hauptdokument wirklich nicht mehr? (direkt beim Server nachgefragt) */
@@ -134,9 +148,13 @@ async function init() {
   const blockedDoc = (uid) => F.doc(fs, 'blocked', uid);
 
   async function deleteUserData(uid) {
-    const [sessions, body] = await Promise.all([F.getDocs(sessionsCol(uid)), F.getDocs(bodyCol(uid))]);
+    const [sessions, body, nutrition, food] = await Promise.all([
+      F.getDocs(sessionsCol(uid)), F.getDocs(bodyCol(uid)), F.getDocs(nutritionCol(uid)), F.getDocs(foodCol(uid)),
+    ]);
     const ops = sessions.docs.map((d) => ({ key: 'session:' + d.id, data: null }))
-      .concat(body.docs.map((d) => ({ key: 'body:' + d.id, data: null })));
+      .concat(body.docs.map((d) => ({ key: 'body:' + d.id, data: null })))
+      .concat(nutrition.docs.map((d) => ({ key: 'nutrition:' + d.id, data: null })))
+      .concat(food.docs.map((d) => ({ key: 'food:' + d.id, data: null })));
     ops.push({ key: 'main', data: null });
     await commitOps(uid, ops);
   }

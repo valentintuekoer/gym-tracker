@@ -24,7 +24,7 @@
    * 1. Hilfsfunktionen
    * ========================================================= */
 
-  const DATA_VERSION = 1;
+  const DATA_VERSION = 2; // v2: Ernährung, Lebensmittel, Übungsbibliothek/eigene Übungen
   const MAX_REST = 1800;
   const DEFAULT_SETS = 3;  // Sätze pro Übung, wenn nichts anderes eingestellt ist
   const MAX_SETS = 20;
@@ -38,6 +38,10 @@
     lastBackup: null,  // Zeitstempel des letzten Exports
     increment: 2.5,    // Gewichtsschritt (kg) für Steigerungsvorschläge und +/−-Buttons
     weeklyGoal: 3,     // Trainings pro Woche (für Wochenziel & Serie)
+    calorieGoal: 2000, // Kalorien-Tagesziel (kcal)
+    proteinGoal: 150,  // Makroziele in Gramm
+    carbGoal: 220,
+    fatGoal: 70,
     effort: 'off',     // Anstrengung pro Satz erfassen: 'off' | 'rir' | 'rpe'
   };
 
@@ -177,6 +181,94 @@
     return (min === max ? String(min) : min + '–' + max) + ' Wdh.';
   }
 
+  const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+  /** Nährwert lesen: Zahl ≥ 0 (auf 1 Nachkommastelle) oder null (= unbekannt, NICHT mit 0 füllen). */
+  function parseNut(v) {
+    const n = parseNum(v);
+    return n === null ? null : Math.round(n * 10) / 10;
+  }
+
+  /** Tagesziel/Menge: ganze Zahl ≥ 0 oder null. */
+  function parseGoal(v) {
+    const n = parseNum(v);
+    return n === null ? null : Math.round(n);
+  }
+
+  /** 'YYYY-MM-DD' aus String (unverändert) oder Zeitstempel; sonst null. */
+  function parseDayKey(v) {
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? Core.dayKey(n) : null;
+  }
+
+  /** Lebensmittel bereinigen. Nährwerte pro 100 g, unbekannte Werte bleiben null. */
+  function normFood(f) {
+    return {
+      id: String((f && f.id) || uid()),
+      barcode: f && f.barcode ? String(f.barcode) : null,
+      name: String((f && f.name) || 'Lebensmittel').slice(0, 120),
+      brand: String((f && f.brand) || '').slice(0, 80),
+      kcal: parseNut(f && f.kcal),
+      protein: parseNut(f && f.protein),
+      carbs: parseNut(f && f.carbs),
+      fat: parseNut(f && f.fat),
+      serving: parseNut(f && f.serving),      // Gramm pro Portion (optional)
+      favorite: !!(f && f.favorite),
+      lastUsed: Number(f && f.lastUsed) || null,
+      custom: !!(f && f.custom),              // manuell angelegt
+      at: Number(f && f.at) || Date.now(),
+    };
+  }
+
+  /** Ernährungseintrag bereinigen. Gespeichert werden die absoluten Werte für die Menge. */
+  function normNutrition(n) {
+    return {
+      id: String((n && n.id) || uid()),
+      date: parseDayKey(n && n.date) || Core.dayKey(Date.now()),
+      meal: MEALS.includes(n && n.meal) ? n.meal : 'snack',
+      name: String((n && n.name) || '').slice(0, 120),
+      kcal: parseNut(n && n.kcal),
+      protein: parseNut(n && n.protein),
+      carbs: parseNut(n && n.carbs),
+      fat: parseNut(n && n.fat),
+      grams: parseNut(n && n.grams),          // verzehrte Menge in g (optional, z. B. bei Schnelleingabe null)
+      foodId: n && n.foodId ? String(n.foodId) : null,
+      at: Number(n && n.at) || Date.now(),
+    };
+  }
+
+  const MUSCLES = ['Brust', 'Rücken', 'Schultern', 'Bizeps', 'Trizeps', 'Beine', 'Gesäß', 'Waden', 'Bauch', 'Unterarme', 'Ganzkörper'];
+  const EQUIPMENT = ['Langhantel', 'Kurzhantel', 'Maschine', 'Kabel', 'Körpergewicht', 'Kettlebell', 'Band'];
+
+  /** Eigene Übung bereinigen. */
+  function normCustomExercise(e) {
+    return {
+      id: String((e && e.id) || uid()),
+      name: String((e && e.name) || 'Übung').slice(0, 80),
+      muscle: e && MUSCLES.includes(e.muscle) ? e.muscle : 'Ganzkörper',
+      secondary: Array.isArray(e && e.secondary) ? e.secondary.map(String).slice(0, 6) : [],
+      equipment: e && EQUIPMENT.includes(e.equipment) ? e.equipment : 'Kurzhantel',
+      type: e && e.type === 'Isolation' ? 'Isolation' : 'Grundübung',
+      steps: Array.isArray(e && e.steps) ? e.steps.map((x) => String(x).slice(0, 200)).filter(Boolean).slice(0, 6) : [],
+      custom: true,
+    };
+  }
+
+  /** libMeta bereinigen: { exerciseId: { fav, used } } für Favoriten & "zuletzt verwendet". */
+  function normLibMeta(m) {
+    const out = {};
+    if (m && typeof m === 'object') {
+      for (const [k, v] of Object.entries(m)) {
+        if (!v || typeof v !== 'object') continue;
+        const fav = !!v.fav;
+        const used = Number(v.used) || null;
+        if (fav || used) out[String(k)] = { fav, used };
+      }
+    }
+    return out;
+  }
+
   /** Geschätztes 1RM nach Epley. */
   function e1rm(weight, reps) {
     if (!weight || !reps || reps < 1) return null;
@@ -191,7 +283,11 @@
   const Core = {};
 
   Core.emptyData = function () {
-    return { version: DATA_VERSION, days: [], sessions: [], activeSession: null, body: [], settings: { ...DEFAULT_SETTINGS } };
+    return {
+      version: DATA_VERSION, days: [], sessions: [], activeSession: null, body: [],
+      nutrition: [], foods: [], customExercises: [], libMeta: {},
+      settings: { ...DEFAULT_SETTINGS },
+    };
   };
 
   /** Ziel-Wiederholungen einer Übung (beide null = kein Ziel). */
@@ -200,8 +296,8 @@
     return t ? { repMin: t.min, repMax: t.max } : { repMin: null, repMax: null };
   }
 
-  function newPlanExercise(name, rest, sets) {
-    return { id: uid(), name, rest, sets, repMin: null, repMax: null, note: '' };
+  function newPlanExercise(name, rest, sets, libId) {
+    return { id: uid(), name, rest, sets, repMin: null, repMax: null, note: '', libId: libId || null };
   }
 
   Core.sampleDays = function () {
@@ -270,6 +366,16 @@
     db.settings.increment = clampIncrement(db.settings.increment);
     db.settings.weeklyGoal = Math.min(7, Math.max(1, Math.round(Number(db.settings.weeklyGoal)) || DEFAULT_SETTINGS.weeklyGoal));
     if (!['off', 'rir', 'rpe'].includes(db.settings.effort)) db.settings.effort = 'off';
+    db.settings.calorieGoal = parseGoal(db.settings.calorieGoal);
+    db.settings.proteinGoal = parseGoal(db.settings.proteinGoal);
+    db.settings.carbGoal = parseGoal(db.settings.carbGoal);
+    db.settings.fatGoal = parseGoal(db.settings.fatGoal);
+
+    db.foods = (Array.isArray(raw.foods) ? raw.foods : []).filter(Boolean).map(normFood);
+    db.nutrition = (Array.isArray(raw.nutrition) ? raw.nutrition : []).filter(Boolean).map(normNutrition)
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.at - b.at));
+    db.customExercises = (Array.isArray(raw.customExercises) ? raw.customExercises : []).filter(Boolean).map(normCustomExercise);
+    db.libMeta = normLibMeta(raw.libMeta);
 
     db.body = (Array.isArray(raw.body) ? raw.body : [])
       .filter((e) => e && Number.isFinite(Number(e.date)))
@@ -286,6 +392,7 @@
         sets: clampSets(e.sets, null), // fehlt bei älteren Daten → unten ergänzt
         ...repTargetFields(e.repMin, e.repMax),
         note: String(e.note || ''),
+        libId: e.libId ? String(e.libId) : null, // Verknüpfung zur Bibliothek (bei Altdaten null → Laufzeit-Verknüpfung)
       })),
     }));
 
@@ -389,10 +496,10 @@
     return day ? day.exercises.find((e) => e.id === exId) || null : null;
   };
 
-  Core.addExercise = function (db, dayId, name, rest, sets) {
+  Core.addExercise = function (db, dayId, name, rest, sets, libId) {
     const day = Core.findDay(db, dayId);
     if (!day || !String(name).trim()) return null;
-    const ex = newPlanExercise(String(name).trim(), clampRest(rest, db.settings.defaultRest), clampSets(sets));
+    const ex = newPlanExercise(String(name).trim(), clampRest(rest, db.settings.defaultRest), clampSets(sets), libId);
     day.exercises.push(ex);
     Core.syncSession(db);
     return ex;
@@ -935,6 +1042,186 @@
     return null;
   };
 
+  /* ---------- Ernährung & Kalorien ---------- */
+
+  Core.MEALS = MEALS;
+
+  Core.nutritionForDay = (db, dayKey) => db.nutrition.filter((n) => n.date === dayKey).sort((a, b) => a.at - b.at);
+
+  /** Tagessummen (unbekannte Einzelwerte zählen als 0). */
+  Core.dayTotals = function (db, dayKey) {
+    const t = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+    for (const n of db.nutrition) {
+      if (n.date !== dayKey) continue;
+      for (const k of ['kcal', 'protein', 'carbs', 'fat']) if (n[k] !== null) t[k] += n[k];
+    }
+    for (const k in t) t[k] = Math.round(t[k] * 10) / 10;
+    return t;
+  };
+
+  /** Nährwerte eines Lebensmittels (pro 100 g) auf eine Menge in Gramm umrechnen; unbekannt bleibt null. */
+  Core.scaleFood = function (food, grams) {
+    const f = (Number(grams) || 0) / 100;
+    const out = {};
+    for (const k of ['kcal', 'protein', 'carbs', 'fat']) {
+      out[k] = food[k] === null || food[k] === undefined ? null : Math.round(food[k] * f * 10) / 10;
+    }
+    return out;
+  };
+
+  function sortNutrition(db) {
+    db.nutrition.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.at - b.at));
+  }
+
+  Core.addNutrition = function (db, entry) {
+    const n = normNutrition(entry);
+    db.nutrition.push(n);
+    sortNutrition(db);
+    return n;
+  };
+
+  Core.updateNutrition = function (db, id, patch) {
+    const i = db.nutrition.findIndex((n) => n.id === id);
+    if (i < 0) return false;
+    db.nutrition[i] = normNutrition({ ...db.nutrition[i], ...patch, id });
+    sortNutrition(db);
+    return true;
+  };
+
+  Core.deleteNutrition = function (db, id) {
+    const before = db.nutrition.length;
+    db.nutrition = db.nutrition.filter((n) => n.id !== id);
+    return db.nutrition.length < before;
+  };
+
+  /* ---------- Lebensmittel ---------- */
+
+  Core.findFoodByBarcode = (db, code) => db.foods.find((f) => f.barcode && f.barcode === String(code)) || null;
+  Core.foodById = (db, id) => db.foods.find((f) => f.id === id) || null;
+
+  /** Lebensmittel anlegen oder aktualisieren (per id). Rückgabe: gespeichertes Lebensmittel. */
+  Core.saveFood = function (db, food) {
+    const f = normFood(food);
+    const i = db.foods.findIndex((x) => x.id === f.id);
+    if (i >= 0) db.foods[i] = f; else db.foods.push(f);
+    return f;
+  };
+
+  Core.deleteFood = function (db, id) {
+    const before = db.foods.length;
+    db.foods = db.foods.filter((f) => f.id !== id);
+    return db.foods.length < before;
+  };
+
+  Core.toggleFoodFavorite = function (db, id) {
+    const f = Core.foodById(db, id);
+    if (!f) return false;
+    f.favorite = !f.favorite;
+    return true;
+  };
+
+  Core.markFoodUsed = function (db, id, now) {
+    const f = Core.foodById(db, id);
+    if (f) f.lastUsed = now || Date.now();
+  };
+
+  /** Lebensmittel durchsuchen; Favoriten zuerst, dann zuletzt verwendet. Leerer Query = alle. */
+  Core.searchFoods = function (db, q) {
+    const key = normName(q || '');
+    const list = key ? db.foods.filter((f) => normName(f.name).includes(key) || normName(f.brand).includes(key)) : db.foods.slice();
+    return list.sort((a, b) => (b.favorite - a.favorite) || ((b.lastUsed || 0) - (a.lastUsed || 0)) || a.name.localeCompare(b.name, 'de'));
+  };
+
+  /** Produktdaten aus der Open-Food-Facts-Antwort lesen (pro 100 g). Fehlende Werte bleiben null. */
+  Core.parseOFF = function (json) {
+    const p = json && json.product;
+    if (!json || json.status === 0 || !p) return null;
+    const nutr = p.nutriments || {};
+    const num = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.round(n * 10) / 10 : null; };
+    const m = String(p.serving_size || '').match(/([\d.,]+)\s*g/i);
+    return {
+      barcode: p.code ? String(p.code) : null,
+      name: String(p.product_name || p.product_name_de || '').trim(),
+      brand: String(p.brands || '').split(',')[0].trim(),
+      kcal: num(nutr['energy-kcal_100g']),
+      protein: num(nutr['proteins_100g']),
+      carbs: num(nutr['carbohydrates_100g']),
+      fat: num(nutr['fat_100g']),
+      serving: m ? num(m[1].replace(',', '.')) : null,
+      custom: false,
+    };
+  };
+
+  /* ---------- Übungsbibliothek & eigene Übungen ---------- */
+
+  Core.libFav = (db, id) => !!(db.libMeta[id] && db.libMeta[id].fav);
+  Core.libUsed = (db, id) => (db.libMeta[id] && db.libMeta[id].used) || 0;
+
+  function setLibMeta(db, id, patch) {
+    const cur = db.libMeta[id] || { fav: false, used: 0 };
+    const next = { fav: !!cur.fav, used: cur.used || 0, ...patch };
+    if (next.fav || next.used) db.libMeta[id] = { fav: !!next.fav, used: next.used || null };
+    else delete db.libMeta[id];
+  }
+
+  Core.toggleLibFav = function (db, id) {
+    setLibMeta(db, id, { fav: !Core.libFav(db, id) });
+    return Core.libFav(db, id);
+  };
+
+  Core.markExerciseUsed = function (db, id, now) {
+    if (id) setLibMeta(db, id, { used: now || Date.now() });
+  };
+
+  Core.customExerciseById = (db, id) => db.customExercises.find((e) => e.id === id) || null;
+
+  Core.saveCustomExercise = function (db, e) {
+    const c = normCustomExercise(e);
+    const i = db.customExercises.findIndex((x) => x.id === c.id);
+    if (i >= 0) db.customExercises[i] = c; else db.customExercises.push(c);
+    return c;
+  };
+
+  /** Eigene Übung löschen. Verlauf (nach Name) und Trainingstage bleiben erhalten. */
+  Core.deleteCustomExercise = function (db, id) {
+    const before = db.customExercises.length;
+    db.customExercises = db.customExercises.filter((e) => e.id !== id);
+    delete db.libMeta[id];
+    return db.customExercises.length < before;
+  };
+
+  /**
+   * Übung zu einer Bibliotheks-ID auflösen (feste ID, nicht Name):
+   * 1. eingebaute Bibliothek (Name oder englischer Alias), 2. eigene Übung, 3. sonst neu als eigene Übung anlegen.
+   */
+  Core.resolveExercise = function (db, name, library) {
+    const key = normName(name);
+    if (!key) return null;
+    const lib = (library || []).find((x) => normName(x.name) === key || (x.aliases || []).some((a) => normName(a) === key));
+    if (lib) return lib.id;
+    const cust = db.customExercises.find((x) => normName(x.name) === key);
+    if (cust) return cust.id;
+    const created = normCustomExercise({ name: String(name).trim() });
+    db.customExercises.push(created);
+    return created.id;
+  };
+
+  /** Übung nach ID finden (eingebaut oder eigen). */
+  Core.exerciseById = function (db, library, id) {
+    return (library || []).find((x) => x.id === id) || db.customExercises.find((x) => x.id === id) || null;
+  };
+
+  /** Alle Übungen der Trainingstage nachträglich mit der Bibliothek verknüpfen (nur fehlende libId). */
+  Core.linkPlanToLibrary = function (db, library) {
+    let changed = false;
+    for (const d of db.days) for (const e of d.exercises) {
+      if (e.libId) continue;
+      e.libId = Core.resolveExercise(db, e.name, library);
+      changed = true;
+    }
+    return changed;
+  };
+
   /* ---------- Auswertungen ---------- */
 
   function bestOf(sets) {
@@ -1075,11 +1362,14 @@
   const Sync = {};
 
   /** Teile des Hauptdokuments: Schlüssel → Feldname in Firestore */
-  const MAIN_FIELDS = { 'main.days': 'days', 'main.settings': 'settings', 'main.active': 'activeSession' };
+  const MAIN_FIELDS = {
+    'main.days': 'days', 'main.settings': 'settings', 'main.active': 'activeSession',
+    'main.customex': 'customExercises', 'main.libmeta': 'libMeta',
+  };
   Sync.MAIN_FIELDS = MAIN_FIELDS;
 
   /** Ist das ein Schlüssel, der einem Dokument/Feld auf dem Server entspricht? */
-  const isDocKey = (k) => k in MAIN_FIELDS || k.startsWith('session:') || k.startsWith('body:');
+  const isDocKey = (k) => k in MAIN_FIELDS || k.startsWith('session:') || k.startsWith('body:') || k.startsWith('nutrition:') || k.startsWith('food:');
 
   /** JSON mit sortierten Schlüsseln → gleicher Inhalt ergibt immer denselben Text. */
   Sync.stableStringify = function stable(v) {
@@ -1111,15 +1401,24 @@
   Sync.keyHash = (key, data) => (key in MAIN_FIELDS ? Sync.hash('v:' + Sync.stableStringify(data === undefined ? null : data)) : Sync.hashOf(data));
 
   /** Alles außer den Einheiten – praktisch zum Vergleichen zweier Geräte (Tests). */
-  Sync.mainOf = (db) => ({ days: db.days, settings: db.settings, activeSession: db.activeSession, body: db.body });
+  Sync.mainOf = (db) => ({
+    days: db.days, settings: db.settings, activeSession: db.activeSession, body: db.body,
+    nutrition: db.nutrition, foods: db.foods, customExercises: db.customExercises, libMeta: db.libMeta,
+  });
 
-  Sync.keysOf = (db) => Object.keys(MAIN_FIELDS)
-    .concat(db.sessions.map((s) => 'session:' + s.id), db.body.map((b) => 'body:' + b.id));
+  Sync.keysOf = (db) => Object.keys(MAIN_FIELDS).concat(
+    db.sessions.map((s) => 'session:' + s.id),
+    db.body.map((b) => 'body:' + b.id),
+    db.nutrition.map((n) => 'nutrition:' + n.id),
+    db.foods.map((f) => 'food:' + f.id),
+  );
 
   Sync.getDoc = function (db, key) {
     if (key in MAIN_FIELDS) return db[MAIN_FIELDS[key]];
     if (key.startsWith('session:')) return db.sessions.find((s) => s.id === key.slice(8)) || null;
     if (key.startsWith('body:')) return db.body.find((b) => b.id === key.slice(5)) || null;
+    if (key.startsWith('nutrition:')) return db.nutrition.find((n) => n.id === key.slice(10)) || null;
+    if (key.startsWith('food:')) return db.foods.find((f) => f.id === key.slice(5)) || null;
     return null;
   };
 
@@ -1149,6 +1448,8 @@
       }
       return;
     }
+    if (key === 'main.customex') { db.customExercises = Core.normalize({ days: [], customExercises: data || [] }).customExercises; return; }
+    if (key === 'main.libmeta') { db.libMeta = Core.normalize({ days: [], libMeta: data || {} }).libMeta; return; }
     if (key.startsWith('body:')) {
       const id = key.slice(5);
       db.body = db.body.filter((b) => b.id !== id);
@@ -1157,14 +1458,31 @@
         db.body.push(b);
         db.body.sort((x, y) => x.date - y.date);
       }
+      return;
+    }
+    if (key.startsWith('nutrition:')) {
+      const id = key.slice(10);
+      db.nutrition = db.nutrition.filter((n) => n.id !== id);
+      const n = data && Core.normalize({ days: [], nutrition: [{ ...data, id }] }).nutrition[0];
+      if (n) db.nutrition.push(n);
+      db.nutrition.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.at - b.at));
+      return;
+    }
+    if (key.startsWith('food:')) {
+      const id = key.slice(5);
+      db.foods = db.foods.filter((f) => f.id !== id);
+      const f = data && Core.normalize({ days: [], foods: [{ ...data, id }] }).foods[0];
+      if (f) db.foods.push(f);
     }
   };
 
-  Sync.isEmpty = (db) => !db.days.length && !db.sessions.length && !db.activeSession && !db.body.length;
+  Sync.isEmpty = (db) => !db.days.length && !db.sessions.length && !db.activeSession && !db.body.length
+    && !db.nutrition.length && !db.foods.length && !db.customExercises.length;
 
   /** Hat jemand ohne Konto schon etwas Eigenes angelegt (mehr als die Beispieldaten)? */
   Sync.hasUserContent = function (db) {
-    if (db.sessions.length || db.activeSession || db.body.length) return true;
+    if (db.sessions.length || db.activeSession || db.body.length
+      || db.nutrition.length || db.foods.length || db.customExercises.length) return true;
     const sig = (days) => days.map((d) => normName(d.name) + ':' + d.exercises.map((e) => normName(e.name)).join('|')).join(';');
     return db.days.length > 0 && sig(db.days) !== sig(Core.sampleDays());
   };
@@ -1206,10 +1524,18 @@
       target.activeSession = g.activeSession;
       target.settings = { ...g.settings };
       target.body = g.body;
+      target.nutrition = g.nutrition;
+      target.foods = g.foods;
+      target.customExercises = g.customExercises;
+      target.libMeta = { ...g.libMeta };
       return target;
     }
     for (const b of g.body) if (!target.body.some((x) => x.id === b.id)) target.body.push(b);
     target.body.sort((a, b) => a.date - b.date);
+    for (const f of g.foods) if (!target.foods.some((x) => x.id === f.id)) target.foods.push(f);
+    for (const n of g.nutrition) if (!target.nutrition.some((x) => x.id === n.id)) target.nutrition.push(n);
+    for (const e of g.customExercises) if (!target.customExercises.some((x) => x.id === e.id)) target.customExercises.push(e);
+    target.libMeta = { ...g.libMeta, ...target.libMeta };
     for (const s of g.sessions) if (!target.sessions.some((x) => x.id === s.id)) target.sessions.push(s);
     target.sessions.sort((a, b) => a.finishedAt - b.finishedAt);
     for (const d of g.days) {
@@ -1392,6 +1718,8 @@
         main: handleMain,
         sessions: (list) => handleCollection('session:', list),
         body: (list) => handleCollection('body:', list),
+        nutrition: (list) => handleCollection('nutrition:', list),
+        foods: (list) => handleCollection('food:', list),
       }, (err) => {
         // Listener ist nach einem Fehler beendet → später neu verbinden
         setStatus('error', err);
@@ -1893,6 +2221,8 @@
 
   const ui = {
     historyTab: 'sessions', chartMode: {}, lastRoute: null, authMode: 'login', authEmail: '',
+    foodDate: null,
+    lib: { q: '', muscle: new Set(), equip: new Set(), fav: false, custom: false },
     isAdmin: false,          // wird von cloud.js gesetzt (Prüfung über die Firestore-Regeln)
     admin: { users: null, loading: false, error: null, filter: '', stats: {} },
     blocked: null,           // Sperr-Info, falls sie während des Anmeldens eintrifft
@@ -1908,6 +2238,10 @@
         if (parts[1] === 'session') return { name: 'history-session', id: parts[2], tab: 'history' };
         return { name: 'history', tab: 'history' };
       case 'settings': return { name: 'settings', tab: 'settings' };
+      case 'food': return { name: 'food', tab: 'food' };
+      case 'library':
+        if (parts[1] === 'ex') return { name: 'libex', id: parts[2] || '', tab: 'library' };
+        return { name: 'library', tab: 'library' };
       case 'summary': return { name: 'summary', id: parts[1], tab: 'home' };
       case 'import': return { name: 'import', code: parts[1] || '', tab: 'home' };
       case 'preview': return { name: 'preview', id: parts[1], tab: 'home' };
@@ -1963,6 +2297,9 @@
       case 'admin': renderAdmin(view, route.id); break;
       case 'body': renderBodyForm(view, route.id); break;
       case 'settings': renderSettings(view); break;
+      case 'food': renderFood(view); break;
+      case 'library': renderLibrary(view); break;
+      case 'libex': renderLibEx(view, route.id); break;
       case 'login': renderLogin(view); break;
       default: renderHome(view);
     }
@@ -3280,6 +3617,14 @@
         </button>
       </section>
 
+      <p class="section-label">Ernährung</p>
+      <section class="card flush">
+        <button class="row" data-action="edit-goal" data-key="calorieGoal"><span class="row-text"><span>Kalorienziel</span></span><span class="row-value">${st.calorieGoal ? st.calorieGoal + ' kcal' : '–'} ${ICON.chevron}</span></button>
+        <button class="row" data-action="edit-goal" data-key="proteinGoal"><span class="row-text"><span>Protein-Ziel</span></span><span class="row-value">${st.proteinGoal ? st.proteinGoal + ' g' : '–'} ${ICON.chevron}</span></button>
+        <button class="row" data-action="edit-goal" data-key="carbGoal"><span class="row-text"><span>Kohlenhydrat-Ziel</span></span><span class="row-value">${st.carbGoal ? st.carbGoal + ' g' : '–'} ${ICON.chevron}</span></button>
+        <button class="row" data-action="edit-goal" data-key="fatGoal"><span class="row-text"><span>Fett-Ziel</span></span><span class="row-value">${st.fatGoal ? st.fatGoal + ' g' : '–'} ${ICON.chevron}</span></button>
+      </section>
+
       <p class="section-label">Anstrengung pro Satz</p>
       <section class="card">
         <div class="segmented" role="radiogroup" aria-label="Anstrengung erfassen">
@@ -3324,6 +3669,587 @@
         <button class="row danger-text" data-action="reset"><span class="row-text"><span>Alle Daten löschen</span></span></button>
       </section>
       <p class="hint center">Gym Tracker · ${isUser() ? 'Daten in deinem Konto gespeichert.' : 'Daten bleiben nur auf diesem Gerät.'}</p>`;
+  }
+
+  /* =========================================================
+   *  v2-Oberfläche: Ernährung & Übungsbibliothek
+   * ========================================================= */
+
+  Object.assign(ICON, {
+    scan: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h4V3H3a2 2 0 0 0-2 2v4h2zm14-2v2h4v4h2V5a2 2 0 0 0-2-2zM5 15H3v4a2 2 0 0 0 2 2h4v-2H5zm16 0v4h-4v2h4a2 2 0 0 0 2-2v-4zM6 8h1v8H6zm2 0h2v8H8zm3 0h1v8h-1zm2 0h2v8h-2zm3 0h2v8h-2z"/></svg>',
+    star: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 17.3-6.2 3.7 1.6-7L2 9.2l7.1-.6L12 2l2.9 6.6 7.1.6-5.4 4.8 1.6 7z"/></svg>',
+    search: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>',
+    dumbbell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 8h-1V6.5a1.5 1.5 0 0 0-3 0V11H7.5V6.5a1.5 1.5 0 0 0-3 0V8h-1a1 1 0 0 0 0 2v4a1 1 0 0 0 0 2h1v1.5a1.5 1.5 0 0 0 3 0V13h9v4.5a1.5 1.5 0 0 0 3 0V16h1a1 1 0 0 0 0-2v-4a1 1 0 0 0 0-2z"/></svg>',
+  });
+
+  const MEAL_LABEL = { breakfast: 'Frühstück', lunch: 'Mittag', dinner: 'Abend', snack: 'Snacks' };
+
+  /* ---------- Übungsbibliothek laden ---------- */
+
+  let LIB = [];
+  let libLoaded = false;
+
+  function allExercises() { return LIB.concat(db.customExercises); }
+  function libById(id) { return LIB.find((x) => x.id === id) || Core.customExerciseById(db, id) || null; }
+
+  async function loadLibrary() {
+    if (libLoaded) return;
+    try {
+      const res = await fetch('exercises.json', { cache: 'force-cache' });
+      const data = await res.json();
+      LIB = Array.isArray(data && data.exercises) ? data.exercises : [];
+    } catch (e) { LIB = []; }
+    libLoaded = true;
+    // Bestehende Trainingstage nachträglich mit der Bibliothek verknüpfen (feste ID)
+    if (Core.linkPlanToLibrary(db, LIB)) save();
+    const n = parseRoute().name;
+    if (n === 'library' || n === 'libex' || n === 'day' || n === 'workout') render();
+  }
+
+  /* ---------- Allgemeine Modal-Hülle für interaktive Formulare ---------- */
+
+  function customModal(inner, opts) {
+    const o = opts || {};
+    const wrap = document.createElement('div');
+    wrap.className = 'modal' + (o.full ? ' modal-full' : '');
+    wrap.innerHTML = '<div class="modal-backdrop" data-close></div><div class="modal-card" role="dialog" aria-modal="true">' + inner + '</div>';
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    function close() {
+      document.removeEventListener('keydown', onKey);
+      wrap.classList.add('closing');
+      setTimeout(() => wrap.remove(), 180);
+      if (o.onClose) o.onClose();
+    }
+    wrap.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) close(); });
+    document.addEventListener('keydown', onKey);
+    $('#modal-root').appendChild(wrap);
+    return { wrap, card: wrap.querySelector('.modal-card'), close };
+  }
+
+  /* ---------- Ansicht: Ernährung ---------- */
+
+  function shiftDayKey(key, delta) {
+    const p = key.split('-').map(Number);
+    const d = new Date(p[0], p[1] - 1, p[2] + delta, 12);
+    return Core.dayKey(d.getTime());
+  }
+
+  function macroBar(label, value, goal, cls) {
+    const pct = goal ? Math.min(100, Math.round((value / goal) * 100)) : 0;
+    return '<div class="macro">' +
+      '<div class="macro-head"><span>' + label + '</span><span>' + fmtNum(Math.round(value)) + (goal ? ' / ' + goal : '') + ' g</span></div>' +
+      '<div class="macro-track"><div class="macro-fill ' + cls + '" style="width:' + pct + '%"></div></div></div>';
+  }
+
+  function renderFood(view) {
+    setHeader({ title: 'Ernährung', large: true });
+    if (!ui.foodDate) ui.foodDate = Core.dayKey(Date.now());
+    const key = ui.foodDate;
+    const today = Core.dayKey(Date.now());
+    const parts = key.split('-').map(Number);
+    const ts = new Date(parts[0], parts[1] - 1, parts[2], 12).getTime();
+    const dLabel = key === today ? 'Heute' : (key === shiftDayKey(today, -1) ? 'Gestern' : fmtLongDate(ts));
+
+    const t = Core.dayTotals(db, key);
+    const goal = db.settings.calorieGoal;
+    const pct = goal ? Math.min(1, t.kcal / goal) : 0;
+    const R = 52, C = 2 * Math.PI * R;
+    const ring = '<svg class="cal-ring" viewBox="0 0 120 120" role="img" aria-label="Kalorien heute">' +
+      '<circle cx="60" cy="60" r="' + R + '" class="ring-bg"/>' +
+      '<circle cx="60" cy="60" r="' + R + '" class="ring-fg" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - pct)).toFixed(1) + '" transform="rotate(-90 60 60)"/>' +
+      '<text x="60" y="56" class="ring-num">' + fmtInt(Math.round(t.kcal)) + '</text>' +
+      '<text x="60" y="74" class="ring-sub">' + (goal ? '/ ' + fmtInt(goal) + ' kcal' : 'kcal') + '</text></svg>';
+    const remaining = goal ? goal - t.kcal : null;
+
+    const meals = MEALS.map((meal) => {
+      const entries = Core.nutritionForDay(db, key).filter((n) => n.meal === meal);
+      const sum = entries.reduce((a, n) => a + (n.kcal || 0), 0);
+      const rows = entries.map((n) => '' +
+        '<div class="food-row" data-action="food-edit" data-id="' + esc(n.id) + '" role="button" tabindex="0">' +
+          '<div class="fr-main"><div class="fr-name">' + esc(n.name || 'Eintrag') + '</div>' +
+          '<div class="fr-sub">' + (n.grams !== null ? fmtNum(n.grams) + ' g · ' : '') +
+            [n.protein !== null ? 'E ' + fmtNum(n.protein) : '', n.carbs !== null ? 'K ' + fmtNum(n.carbs) : '', n.fat !== null ? 'F ' + fmtNum(n.fat) : ''].filter(Boolean).join(' · ') + '</div></div>' +
+          '<div class="fr-kcal">' + (n.kcal !== null ? fmtInt(Math.round(n.kcal)) + ' kcal' : '–') + '</div>' +
+          '<button class="icon-btn sm danger" data-action="food-del" data-id="' + esc(n.id) + '" aria-label="Eintrag löschen">' + ICON.trash + '</button>' +
+        '</div>').join('');
+      return '<section class="card meal">' +
+        '<div class="meal-head"><h2>' + MEAL_LABEL[meal] + '</h2><span class="meal-sum">' + (sum ? fmtInt(Math.round(sum)) + ' kcal' : '') + '</span></div>' +
+        (rows || '<p class="meal-empty">Noch nichts eingetragen.</p>') +
+        '<button class="btn soft block sm" data-action="food-add" data-meal="' + meal + '">' + ICON.plus + ' Hinzufügen</button>' +
+      '</section>';
+    }).join('');
+
+    view.innerHTML =
+      '<div class="date-nav">' +
+        '<button class="icon-btn" data-action="food-prev" aria-label="Vorheriger Tag">' + ICON.back + '</button>' +
+        '<button class="date-label" data-action="food-today">' + dLabel + '</button>' +
+        '<button class="icon-btn" data-action="food-next" aria-label="Nächster Tag" ' + (key >= today ? 'disabled' : '') + '>' + ICON.chevron + '</button>' +
+      '</div>' +
+      '<section class="card cal-card">' +
+        ring +
+        '<div class="cal-side">' +
+          (goal ? '<div class="cal-remain ' + (remaining < 0 ? 'over' : '') + '"><strong>' + fmtInt(Math.abs(Math.round(remaining))) + '</strong><small>kcal ' + (remaining < 0 ? 'drüber' : 'übrig') + '</small></div>' : '<div class="cal-remain"><strong>' + fmtInt(Math.round(t.kcal)) + '</strong><small>kcal heute</small></div>') +
+          macroBar('Protein', t.protein, db.settings.proteinGoal, 'p') +
+          macroBar('Kohlenhydrate', t.carbs, db.settings.carbGoal, 'c') +
+          macroBar('Fett', t.fat, db.settings.fatGoal, 'f') +
+        '</div>' +
+      '</section>' +
+      meals +
+      '<p class="hint center">Ziele änderst du in den Einstellungen. Barcode scannen über „Hinzufügen“ bei einer Mahlzeit.</p>';
+  }
+
+  /* ---------- Ernährung: Eintrag hinzufügen ---------- */
+
+  async function chooseAddMethod(meal) {
+    const c = await actionSheet('Zu ' + MEAL_LABEL[meal] + ' hinzufügen', [
+      { label: '📷 Barcode scannen', value: 'scan' },
+      { label: '🔎 Aus meinen Lebensmitteln', value: 'search' },
+      { label: '✏️ Schnelleingabe (nur kcal)', value: 'quick' },
+      { label: '➕ Lebensmittel manuell anlegen', value: 'manual' },
+    ]);
+    if (c === 'scan') openScanner((code) => onScanned(code, meal));
+    else if (c === 'search') openFoodSearch(meal);
+    else if (c === 'quick') openQuick(meal);
+    else if (c === 'manual') openFoodForm({}, meal);
+  }
+
+  async function openQuick(meal) {
+    const name = await promptText('Schnelleingabe', { placeholder: 'z. B. Restaurant-Essen', message: 'Name optional, danach die Kalorien.', okLabel: 'Weiter' });
+    if (name === null && name !== '') { /* Abbruch */ }
+    const kcalStr = await promptText('Kalorien', { placeholder: 'kcal', inputmode: 'numeric', okLabel: 'Speichern' });
+    if (kcalStr === null) return;
+    const kcal = parseNum(kcalStr);
+    if (kcal === null) { toast('Bitte Kalorien eingeben.'); return; }
+    Core.addNutrition(db, { date: ui.foodDate, meal, name: name || 'Eintrag', kcal });
+    save(); render();
+    toast('Eingetragen');
+  }
+
+  /* ---------- Barcode-Scanner ---------- */
+
+  function manualBarcode(onCode) {
+    promptText('Barcode eingeben', { placeholder: 'z. B. 4000417025005', inputmode: 'numeric', okLabel: 'Suchen' })
+      .then((v) => { if (v) onCode(v.replace(/\D/g, '')); });
+  }
+
+  async function openScanner(onCode) {
+    if (!window.ZXing || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast('Kamera hier nicht verfügbar – Barcode von Hand eingeben.');
+      manualBarcode(onCode);
+      return;
+    }
+    const m = customModal(
+      '<h2 class="modal-title">Barcode scannen</h2>' +
+      '<div class="scanner"><video id="scan-video" playsinline muted autoplay></video><div class="scan-frame"></div></div>' +
+      '<p class="scan-hint" id="scan-hint">Halte den Strichcode in den Rahmen.</p>' +
+      '<div class="modal-actions stack">' +
+        '<button class="btn soft" data-manual>Barcode von Hand eingeben</button>' +
+        '<button class="btn ghost" data-stop data-close>Abbrechen</button>' +
+      '</div>');
+    const video = m.card.querySelector('#scan-video');
+    const reader = new ZXing.BrowserMultiFormatReader();
+    let done = false;
+    const stop = () => {
+      try { reader.reset(); } catch (e) { /* */ }
+      const s = video && video.srcObject;
+      if (s && s.getTracks) s.getTracks().forEach((t) => t.stop());
+    };
+    const finish = (code) => { if (done) return; done = true; stop(); m.close(); onCode(code); };
+    m.wrap.addEventListener('click', (e) => {
+      if (e.target.closest('[data-stop]')) stop();
+      if (e.target.closest('[data-manual]')) { stop(); m.close(); manualBarcode(onCode); }
+    });
+    try {
+      await reader.decodeFromConstraints({ video: { facingMode: { ideal: 'environment' } } }, video, (result) => {
+        if (result) finish(result.getText());
+      });
+    } catch (e) {
+      stop();
+      if (!done) m.close();
+      const denied = e && (e.name === 'NotAllowedError' || /permission|denied|notallowed/i.test(String(e.name || e)));
+      const hint = m.card.querySelector('#scan-hint');
+      if (denied) {
+        const v = await openDialog({
+          title: 'Kamerazugriff nötig',
+          message: 'Bitte erlaube den Zugriff auf die Kamera. Auf dem iPhone: Einstellungen → Apps bzw. Safari → Kamera → „Erlauben“. Du kannst den Barcode auch von Hand eingeben.',
+          buttons: [{ label: 'Barcode eingeben', style: 'primary', value: 'm' }, { label: 'Abbrechen', style: 'ghost' }],
+        });
+        if (v === 'm') manualBarcode(onCode);
+      } else {
+        if (hint) hint.textContent = 'Kamera nicht verfügbar.';
+        manualBarcode(onCode);
+      }
+    }
+  }
+
+  function fetchOFF(barcode) {
+    return fetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(barcode) + '.json?fields=code,product_name,product_name_de,brands,serving_size,nutriments')
+      .then((r) => r.json())
+      .then((json) => Core.parseOFF(json));
+  }
+
+  function onScanned(barcode, meal) {
+    if (!barcode) return;
+    const local = Core.findFoodByBarcode(db, barcode);
+    if (local) { openPortion(local, meal); return; }
+    toast('Suche Produkt …');
+    fetchOFF(barcode).then((food) => {
+      if (food && food.name) {
+        const saved = Core.saveFood(db, { ...food, barcode });
+        save();
+        openPortion(saved, meal, true);
+      } else {
+        toast('Produkt nicht gefunden – bitte anlegen.');
+        openFoodForm({ barcode }, meal);
+      }
+    }).catch(() => {
+      toast('Keine Verbindung – bitte manuell anlegen.');
+      openFoodForm({ barcode }, meal);
+    });
+  }
+
+  /* ---------- Meine Lebensmittel: suchen ---------- */
+
+  function foodListHTML(q) {
+    const list = Core.searchFoods(db, q);
+    if (!list.length) return '<p class="hint center">' + (q ? 'Nichts gefunden.' : 'Noch keine Lebensmittel. Scanne einen Barcode oder lege eines an.') + '</p>';
+    return list.map((f) => '' +
+      '<div class="list-item" data-pick="' + esc(f.id) + '" role="button" tabindex="0">' +
+        '<button class="fav-btn ' + (f.favorite ? 'on' : '') + '" data-fav="' + esc(f.id) + '" aria-label="Favorit">' + ICON.star + '</button>' +
+        '<div class="li-main"><div class="li-title">' + esc(f.name) + (f.custom ? ' <span class="badge">eigen</span>' : '') + '</div>' +
+        '<div class="li-sub">' + (f.brand ? esc(f.brand) + ' · ' : '') + (f.kcal !== null ? fmtInt(f.kcal) + ' kcal/100 g' : 'ohne kcal') + '</div></div>' +
+        ICON.chevron +
+      '</div>').join('');
+  }
+
+  function openFoodSearch(meal) {
+    const m = customModal(
+      '<h2 class="modal-title">Meine Lebensmittel</h2>' +
+      '<input class="in" id="food-q" type="search" placeholder="Suchen" autocomplete="off" autocapitalize="off">' +
+      '<div class="list scroll-list" id="food-list">' + foodListHTML('') + '</div>' +
+      '<div class="modal-actions"><button class="btn ghost" data-close>Schließen</button></div>');
+    const q = m.card.querySelector('#food-q');
+    const listEl = m.card.querySelector('#food-list');
+    q.addEventListener('input', () => { listEl.innerHTML = foodListHTML(q.value); });
+    m.card.addEventListener('click', (e) => {
+      const fav = e.target.closest('[data-fav]');
+      if (fav) { e.stopPropagation(); Core.toggleFoodFavorite(db, fav.dataset.fav); save(); listEl.innerHTML = foodListHTML(q.value); return; }
+      const pick = e.target.closest('[data-pick]');
+      if (pick) { const f = Core.foodById(db, pick.dataset.pick); m.close(); if (f) openPortion(f, meal); }
+    });
+  }
+
+  /* ---------- Portion wählen & eintragen ---------- */
+
+  function openPortion(food, meal, isNew) {
+    const hasServing = food.serving && food.serving > 0;
+    const startAmount = hasServing ? 1 : (food.serving || 100);
+    const state = { unit: hasServing ? 'portion' : 'g', amount: hasServing ? 1 : 100, meal: meal || 'snack' };
+    const nutRow = (k, label) => '<div class="pn"><span>' + label + '</span><strong id="pn-' + k + '">–</strong></div>';
+    const m = customModal(
+      '<h2 class="modal-title">' + esc(food.name) + '</h2>' +
+      (food.brand ? '<p class="modal-msg">' + esc(food.brand) + '</p>' : '') +
+      (isNew ? '<div class="notice ok">Produkt gefunden und gespeichert.</div>' : '') +
+      '<div class="portion">' +
+        '<label class="lbl">Menge<input class="in" id="p-amount" type="text" inputmode="decimal" value="' + fmtNum(startAmount) + '"></label>' +
+        (hasServing ? '<div class="segmented small" id="p-unit"><button data-unit="portion" aria-selected="true">Portion (' + fmtNum(food.serving) + ' g)</button><button data-unit="g" aria-selected="false">Gramm</button></div>' : '<span class="unit-fixed">Gramm</span>') +
+      '</div>' +
+      '<div class="pn-grid">' + nutRow('kcal', 'kcal') + nutRow('protein', 'Protein') + nutRow('carbs', 'KH') + nutRow('fat', 'Fett') + '</div>' +
+      '<label class="lbl">Mahlzeit<select class="in" id="p-meal">' + MEALS.map((x) => '<option value="' + x + '"' + (x === state.meal ? ' selected' : '') + '>' + MEAL_LABEL[x] + '</option>').join('') + '</select></label>' +
+      '<div class="modal-actions"><button class="btn ghost" data-close>Abbrechen</button><button class="btn primary" data-save>Speichern</button></div>' +
+      '<button class="btn ghost block sm" data-edit>Nährwerte des Produkts bearbeiten</button>');
+    const amountEl = m.card.querySelector('#p-amount');
+    const mealEl = m.card.querySelector('#p-meal');
+    const grams = () => {
+      const a = parseNum(amountEl.value) || 0;
+      return state.unit === 'portion' && hasServing ? a * food.serving : a;
+    };
+    const refresh = () => {
+      const sc = Core.scaleFood(food, grams());
+      for (const k of ['kcal', 'protein', 'carbs', 'fat']) {
+        m.card.querySelector('#pn-' + k).textContent = sc[k] === null ? '–' : fmtNum(sc[k]) + (k === 'kcal' ? '' : ' g');
+      }
+    };
+    amountEl.addEventListener('input', refresh);
+    const unitSeg = m.card.querySelector('#p-unit');
+    if (unitSeg) unitSeg.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-unit]'); if (!b) return;
+      state.unit = b.dataset.unit;
+      [...unitSeg.children].forEach((c) => c.setAttribute('aria-selected', c === b));
+      if (state.unit === 'portion') amountEl.value = '1'; else amountEl.value = fmtNum(food.serving || 100);
+      refresh();
+    });
+    m.card.querySelector('[data-edit]').addEventListener('click', () => { m.close(); openFoodForm(food, mealEl.value); });
+    m.card.querySelector('[data-save]').addEventListener('click', () => {
+      const g = grams();
+      if (!g) { toast('Bitte eine Menge eingeben.'); return; }
+      const sc = Core.scaleFood(food, g);
+      Core.addNutrition(db, { date: ui.foodDate, meal: mealEl.value, name: food.name, kcal: sc.kcal, protein: sc.protein, carbs: sc.carbs, fat: sc.fat, grams: g, foodId: food.id });
+      Core.markFoodUsed(db, food.id, Date.now());
+      save(); m.close(); render();
+      toast('Eingetragen');
+    });
+    refresh();
+  }
+
+  /* ---------- Lebensmittel manuell anlegen / bearbeiten ---------- */
+
+  function openFoodForm(prefill, meal) {
+    const f = prefill || {};
+    const num = (v) => (v === null || v === undefined ? '' : fmtNum(v));
+    const m = customModal(
+      '<h2 class="modal-title">' + (f.id ? 'Lebensmittel bearbeiten' : 'Neues Lebensmittel') + '</h2>' +
+      '<p class="modal-msg">Nährwerte pro 100 g. Leer lassen, wenn unbekannt.</p>' +
+      '<form id="ff" class="ff">' +
+        (f.barcode ? '<p class="kv"><span>Barcode</span><span class="break">' + esc(f.barcode) + '</span></p>' : '') +
+        '<label class="lbl">Name<input class="in" name="name" value="' + esc(f.name || '') + '" required></label>' +
+        '<label class="lbl">Marke (optional)<input class="in" name="brand" value="' + esc(f.brand || '') + '"></label>' +
+        '<div class="form-grid">' +
+          '<label class="lbl">kcal<input class="in" name="kcal" inputmode="decimal" value="' + num(f.kcal) + '"></label>' +
+          '<label class="lbl">Protein (g)<input class="in" name="protein" inputmode="decimal" value="' + num(f.protein) + '"></label>' +
+          '<label class="lbl">Kohlenhydrate (g)<input class="in" name="carbs" inputmode="decimal" value="' + num(f.carbs) + '"></label>' +
+          '<label class="lbl">Fett (g)<input class="in" name="fat" inputmode="decimal" value="' + num(f.fat) + '"></label>' +
+        '</div>' +
+        '<label class="lbl">Portionsgröße in g (optional)<input class="in" name="serving" inputmode="decimal" value="' + num(f.serving) + '"></label>' +
+        '<div class="modal-actions"><button type="button" class="btn ghost" data-close>Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>' +
+      '</form>');
+    m.card.querySelector('#ff').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const el = e.target.elements;
+      if (!el.name.value.trim()) { toast('Bitte einen Namen eingeben.'); return; }
+      const saved = Core.saveFood(db, {
+        id: f.id, barcode: f.barcode || null, custom: true,
+        name: el.name.value, brand: el.brand.value,
+        kcal: el.kcal.value, protein: el.protein.value, carbs: el.carbs.value, fat: el.fat.value, serving: el.serving.value,
+      });
+      save();
+      m.close();
+      if (meal) openPortion(saved, meal);
+      else { toast('Gespeichert'); render(); }
+    });
+  }
+
+  /* ---------- Ansicht: Übungsbibliothek ---------- */
+
+  function exerciseMatchesFilter(ex) {
+    const f = ui.lib;
+    if (f.muscle.size && !f.muscle.has(ex.muscle)) return false;
+    if (f.equip.size && !f.equip.has(ex.equipment)) return false;
+    if (f.fav && !Core.libFav(db, ex.id)) return false;
+    if (f.custom && !ex.custom) return false;
+    if (f.q) {
+      const key = normName(f.q);
+      const hay = normName(ex.name) + ' ' + (ex.aliases || []).map(normName).join(' ');
+      if (!hay.includes(key)) return false;
+    }
+    return true;
+  }
+
+  function filteredExercises() {
+    return allExercises().filter(exerciseMatchesFilter).sort((a, b) => {
+      const fa = Core.libFav(db, a.id), fb = Core.libFav(db, b.id);
+      if (fa !== fb) return fb - fa;
+      return a.name.localeCompare(b.name, 'de');
+    });
+  }
+
+  function libItemHTML(ex) {
+    return '<a class="list-item" href="#/library/ex/' + encodeURIComponent(ex.id) + '">' +
+      '<button class="fav-btn ' + (Core.libFav(db, ex.id) ? 'on' : '') + '" data-libfav="' + esc(ex.id) + '" aria-label="Favorit">' + ICON.star + '</button>' +
+      '<div class="li-main"><div class="li-title">' + esc(ex.name) + (ex.custom ? ' <span class="badge">eigen</span>' : '') + '</div>' +
+      '<div class="li-sub">' + esc(ex.muscle) + ' · ' + esc(ex.equipment) + ' · ' + esc(ex.type) + '</div></div>' +
+      ICON.chevron + '</a>';
+  }
+
+  function chip(label, active, action, value) {
+    return '<button class="chip small ' + (active ? '' : 'dim') + '" data-action="' + action + '" data-value="' + esc(value) + '">' + esc(label) + '</button>';
+  }
+
+  function renderLibrary(view) {
+    setHeader({ title: 'Bibliothek', large: true });
+    const f = ui.lib;
+    const recent = allExercises().filter((e) => Core.libUsed(db, e.id)).sort((a, b) => Core.libUsed(db, b.id) - Core.libUsed(db, a.id)).slice(0, 5);
+    const list = filteredExercises();
+    const anyFilter = f.q || f.muscle.size || f.equip.size || f.fav || f.custom;
+    view.innerHTML =
+      '<input class="in" id="lib-q" type="search" placeholder="Übung suchen (deutsch oder englisch)" value="' + esc(f.q) + '" autocomplete="off" autocapitalize="off">' +
+      '<div class="chips filter-chips">' +
+        chip('★ Favoriten', f.fav, 'lib-fav') + chip('Eigene', f.custom, 'lib-custom') +
+      '</div>' +
+      '<div class="chips filter-chips">' + MUSCLES.map((mu) => chip(mu, f.muscle.has(mu), 'lib-muscle', mu)).join('') + '</div>' +
+      '<div class="chips filter-chips">' + EQUIPMENT.map((eq) => chip(eq, f.equip.has(eq), 'lib-equip', eq)).join('') + '</div>' +
+      (!anyFilter && recent.length ? '<p class="section-label">Zuletzt verwendet</p><div class="list">' + recent.map(libItemHTML).join('') + '</div>' : '') +
+      '<p class="section-label">' + (anyFilter ? list.length + ' Treffer' : 'Alle Übungen (' + list.length + ')') + '</p>' +
+      '<div class="list" id="lib-list">' + (list.length ? list.map(libItemHTML).join('') : '<p class="hint center">Keine Übung gefunden.</p>') + '</div>' +
+      '<button class="btn soft block" data-action="lib-new">' + ICON.plus + ' Eigene Übung anlegen</button>';
+    const q = view.querySelector('#lib-q');
+    q.addEventListener('input', () => {
+      f.q = q.value;
+      view.querySelector('#lib-list').innerHTML = (() => { const l = filteredExercises(); return l.length ? l.map(libItemHTML).join('') : '<p class="hint center">Keine Übung gefunden.</p>'; })();
+    });
+  }
+
+  /* ---------- Ansicht: Übungsdetail ---------- */
+
+  function renderLibEx(view, id) {
+    const ex = libById(id);
+    if (!ex) { go('#/library'); return; }
+    setHeader({ title: ex.name, back: '#/library',
+      actions: '<button class="hdr-btn" data-action="lib-fav-toggle" data-id="' + esc(ex.id) + '" aria-label="Favorit">' + (Core.libFav(db, ex.id) ? '★' : '☆') + '</button>' });
+    const hist = Core.exerciseHistory(db, normName(ex.name));
+    const best = hist.reduce((b, h) => Math.max(b, h.best.weight || 0), 0);
+    const points = hist.filter((h) => h.best.e1rm !== null).map((h) => ({ x: h.date, y: h.best.e1rm }));
+    view.innerHTML =
+      '<section class="card">' +
+        '<div class="ex-tags">' +
+          '<span class="tag">' + esc(ex.muscle) + '</span>' +
+          (ex.secondary || []).map((sMx) => '<span class="tag ghost">' + esc(sMx) + '</span>').join('') +
+          '<span class="tag">' + esc(ex.equipment) + '</span><span class="tag">' + esc(ex.type) + '</span>' +
+          (ex.custom ? '<span class="tag accent">eigene Übung</span>' : '') +
+        '</div>' +
+        (ex.steps && ex.steps.length ? '<p class="section-label" style="margin-left:0">Ausführung</p><ul class="steps-list">' + ex.steps.map((st) => '<li>' + esc(st) + '</li>').join('') + '</ul>' : '<p class="hint">Keine Beschreibung hinterlegt.</p>') +
+      '</section>' +
+      (hist.length ?
+        '<section class="card"><div class="chart-head"><span class="muted">Bestes Gewicht</span> <strong>' + (best ? fmtNum(best) + ' kg' : '–') + '</strong></div>' +
+        (points.length ? chartSVG(points, 'kg') : '<p class="hint">Noch keine 1RM-Daten.</p>') + '</section>' +
+        '<p class="section-label">Letzte Einheiten</p>' +
+        hist.slice().reverse().slice(0, 5).map((h) => '<section class="card"><a class="ex-head link" href="#/history/session/' + encodeURIComponent(h.sessionId) + '"><h2 class="sm">' + fmtLongDate(h.date) + '</h2>' + ICON.chevron + '</a>' + setTable(h.sets) + '</section>').join('')
+        : '<p class="hint center">Noch keine Einheiten mit dieser Übung.</p>') +
+      '<button class="btn primary block" data-action="lib-add-to-day" data-id="' + esc(ex.id) + '">' + ICON.plus + ' Zu Trainingstag hinzufügen</button>' +
+      (ex.custom ? '<div class="btn-row"><button class="btn soft" data-action="lib-edit" data-id="' + esc(ex.id) + '">' + ICON.edit + ' Bearbeiten</button><button class="btn soft danger-text" data-action="lib-del" data-id="' + esc(ex.id) + '">' + ICON.trash + ' Löschen</button></div>' : '');
+  }
+
+  /* ---------- Eigene Übung anlegen / bearbeiten ---------- */
+
+  function openCustomExerciseForm(existing) {
+    const e = existing || {};
+    const sel = (name, options, cur) => '<select class="in" name="' + name + '">' + options.map((o) => '<option' + (o === cur ? ' selected' : '') + '>' + o + '</option>').join('') + '</select>';
+    const m = customModal(
+      '<h2 class="modal-title">' + (e.id ? 'Übung bearbeiten' : 'Eigene Übung') + '</h2>' +
+      '<form id="cf" class="ff">' +
+        '<label class="lbl">Name<input class="in" name="name" value="' + esc(e.name || '') + '" required></label>' +
+        '<label class="lbl">Hauptmuskel' + sel('muscle', MUSCLES, e.muscle || 'Brust') + '</label>' +
+        '<label class="lbl">Equipment' + sel('equipment', EQUIPMENT, e.equipment || 'Kurzhantel') + '</label>' +
+        '<label class="lbl">Art' + sel('type', ['Grundübung', 'Isolation'], e.type || 'Grundübung') + '</label>' +
+        '<label class="lbl">Ausführung (eine Zeile pro Punkt)<textarea class="in" name="steps" rows="4">' + esc((e.steps || []).join('\n')) + '</textarea></label>' +
+        '<div class="modal-actions"><button type="button" class="btn ghost" data-close>Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>' +
+      '</form>');
+    m.card.querySelector('#cf').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const el = ev.target.elements;
+      if (!el.name.value.trim()) { toast('Bitte einen Namen eingeben.'); return; }
+      const saved = Core.saveCustomExercise(db, {
+        id: e.id, name: el.name.value, muscle: el.muscle.value, equipment: el.equipment.value, type: el.type.value,
+        secondary: e.secondary || [],
+        steps: el.steps.value.split('\n').map((x) => x.trim()).filter(Boolean),
+      });
+      save(); m.close();
+      if (parseRoute().name === 'libex') go('#/library/ex/' + encodeURIComponent(saved.id));
+      else render();
+      toast('Gespeichert');
+    });
+  }
+
+  /* ---------- Übungen zu einem Trainingstag hinzufügen (Bibliothek, Mehrfachauswahl) ---------- */
+
+  function openExercisePicker(dayId) {
+    const chosen = new Set();
+    const pickList = (q) => {
+      const key = normName(q);
+      const list = allExercises().filter((ex) => !key || (normName(ex.name) + ' ' + (ex.aliases || []).map(normName).join(' ')).includes(key))
+        .sort((a, b) => (Core.libFav(db, b.id) - Core.libFav(db, a.id)) || a.name.localeCompare(b.name, 'de'));
+      let html = list.map((ex) => '<label class="pick-row"><input type="checkbox" value="' + esc(ex.id) + '"' + (chosen.has(ex.id) ? ' checked' : '') + '>' +
+        '<span class="pick-main"><span class="pick-name">' + esc(ex.name) + (ex.custom ? ' <span class="badge">eigen</span>' : '') + '</span><span class="pick-sub">' + esc(ex.muscle) + ' · ' + esc(ex.equipment) + '</span></span></label>').join('');
+      const exact = list.some((ex) => normName(ex.name) === key);
+      if (q.trim() && !exact) html += '<button type="button" class="btn ghost block sm" data-create>„' + esc(q.trim()) + '“ als eigene Übung anlegen</button>';
+      return html || '<p class="hint center">Nichts gefunden.</p>';
+    };
+    const m = customModal(
+      '<h2 class="modal-title">Übungen hinzufügen</h2>' +
+      '<input class="in" id="pick-q" type="search" placeholder="Suchen oder neue Übung tippen" autocomplete="off" autocapitalize="sentences">' +
+      '<div class="list scroll-list" id="pick-list">' + pickList('') + '</div>' +
+      '<div class="modal-actions"><button class="btn ghost" data-close>Abbrechen</button><button class="btn primary" data-add>Hinzufügen</button></div>', { full: true });
+    const q = m.card.querySelector('#pick-q');
+    const listEl = m.card.querySelector('#pick-list');
+    const addBtn = m.card.querySelector('[data-add]');
+    const updateBtn = () => { addBtn.textContent = chosen.size ? 'Hinzufügen (' + chosen.size + ')' : 'Hinzufügen'; };
+    q.addEventListener('input', () => { listEl.innerHTML = pickList(q.value); });
+    listEl.addEventListener('change', (e) => {
+      const cb = e.target.closest('input[type=checkbox]');
+      if (cb) { if (cb.checked) chosen.add(cb.value); else chosen.delete(cb.value); updateBtn(); }
+    });
+    listEl.addEventListener('click', (e) => {
+      if (e.target.closest('[data-create]')) {
+        const name = q.value.trim();
+        const id = Core.resolveExercise(db, name, LIB);
+        Core.addExercise(db, dayId, name, db.settings.defaultRest, undefined, id);
+        Core.markExerciseUsed(db, id, Date.now());
+        save(); m.close(); render();
+        toast('„' + name + '“ hinzugefügt');
+      }
+    });
+    addBtn.addEventListener('click', () => {
+      if (!chosen.size) { m.close(); return; }
+      let n = 0;
+      for (const id of chosen) {
+        const ex = libById(id);
+        if (!ex) continue;
+        Core.addExercise(db, dayId, ex.name, db.settings.defaultRest, undefined, id);
+        Core.markExerciseUsed(db, id, Date.now());
+        n++;
+      }
+      save(); m.close(); render();
+      toast(n + (n === 1 ? ' Übung' : ' Übungen') + ' hinzugefügt');
+    });
+    updateBtn();
+  }
+
+  /** Zu welchem Trainingstag hinzufügen? (aus der Bibliothek heraus) */
+  async function addExerciseToDay(ex) {
+    if (!db.days.length) { toast('Lege zuerst einen Trainingstag an.'); return; }
+    const choice = await actionSheet('„' + ex.name + '“ hinzufügen zu …', db.days.map((d) => ({ label: d.name, value: d.id })));
+    if (!choice) return;
+    Core.addExercise(db, choice, ex.name, db.settings.defaultRest, undefined, ex.id);
+    Core.markExerciseUsed(db, ex.id, Date.now());
+    save();
+    toast('Zu „' + (Core.findDay(db, choice) || {}).name + '“ hinzugefügt');
+  }
+
+  function toggleSet(set, v) { if (set.has(v)) set.delete(v); else set.add(v); }
+
+  function editNutrition(id) {
+    const n = db.nutrition.find((x) => x.id === id);
+    if (!n) return;
+    const num = (v) => (v === null ? '' : fmtNum(v));
+    const m = customModal(
+      '<h2 class="modal-title">Eintrag bearbeiten</h2>' +
+      '<form id="ne" class="ff">' +
+        '<label class="lbl">Name<input class="in" name="name" value="' + esc(n.name) + '"></label>' +
+        '<label class="lbl">Mahlzeit<select class="in" name="meal">' + MEALS.map((x) => '<option value="' + x + '"' + (x === n.meal ? ' selected' : '') + '>' + MEAL_LABEL[x] + '</option>').join('') + '</select></label>' +
+        '<div class="form-grid">' +
+          '<label class="lbl">kcal<input class="in" name="kcal" inputmode="decimal" value="' + num(n.kcal) + '"></label>' +
+          '<label class="lbl">Protein (g)<input class="in" name="protein" inputmode="decimal" value="' + num(n.protein) + '"></label>' +
+          '<label class="lbl">KH (g)<input class="in" name="carbs" inputmode="decimal" value="' + num(n.carbs) + '"></label>' +
+          '<label class="lbl">Fett (g)<input class="in" name="fat" inputmode="decimal" value="' + num(n.fat) + '"></label>' +
+        '</div>' +
+        '<div class="modal-actions"><button type="button" class="btn ghost" data-close>Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>' +
+      '</form>');
+    m.card.querySelector('#ne').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const el = e.target.elements;
+      Core.updateNutrition(db, id, { name: el.name.value, meal: el.meal.value, kcal: el.kcal.value, protein: el.protein.value, carbs: el.carbs.value, fat: el.fat.value });
+      save(); m.close(); render(); toast('Gespeichert');
+    });
+  }
+
+  async function editGoal(key) {
+    const meta = { calorieGoal: ['Kalorienziel', 'kcal'], proteinGoal: ['Protein-Ziel', 'g'], carbGoal: ['Kohlenhydrat-Ziel', 'g'], fatGoal: ['Fett-Ziel', 'g'] }[key];
+    const v = await promptText(meta[0], { value: db.settings[key] == null ? '' : String(db.settings[key]), inputmode: 'numeric', placeholder: meta[1], okLabel: 'Speichern' });
+    if (v === null) return;
+    const n = parseNum(v);
+    if (n === null || n <= 0) { toast('Bitte eine Zahl eingeben.'); return; }
+    db.settings[key] = Math.round(n);
+    save(); render();
   }
 
   /* ---------- Theme ---------- */
@@ -3478,16 +4404,7 @@
     save(); render();
   }
 
-  async function addExercise(dayId) {
-    const name = await promptText('Neue Übung', {
-      placeholder: 'z. B. Bankdrücken', list: knownExerciseNames(), okLabel: 'Hinzufügen',
-      message: 'Gleicher Name = gemeinsamer Verlauf, auch über mehrere Tage.',
-    });
-    if (name === null) return;
-    Core.addExercise(db, dayId, name, db.settings.defaultRest);
-    save(); render();
-    toast(`„${name}“ hinzugefügt – Sätze & Pause kannst du antippen und ändern.`);
-  }
+  function addExercise(dayId) { openExercisePicker(dayId); }
 
   async function renameExercise(dayId, exId) {
     const ex = Core.findExercise(db, dayId, exId);
@@ -3695,6 +4612,34 @@
       try { await window.GymCloud.admin.remove(u.uid, u.email); toast('Konto entfernt'); } catch (e) { toast(authErrorText(e)); }
       actions['admin-reload']();
       go('#/admin');
+    },
+    'food-add': (el) => chooseAddMethod(el.dataset.meal),
+    'food-prev': () => { ui.foodDate = shiftDayKey(ui.foodDate || Core.dayKey(Date.now()), -1); render(); },
+    'food-next': () => { const today = Core.dayKey(Date.now()); if ((ui.foodDate || today) < today) { ui.foodDate = shiftDayKey(ui.foodDate, 1); render(); } },
+    'food-today': () => { ui.foodDate = Core.dayKey(Date.now()); render(); },
+    'food-edit': (el) => editNutrition(el.dataset.id),
+    'food-del': async (el) => {
+      const n = db.nutrition.find((x) => x.id === el.dataset.id);
+      if (!n) return;
+      const ok = await confirmAction('Eintrag löschen?', (n.name || 'Eintrag') + (n.kcal !== null ? ' · ' + Math.round(n.kcal) + ' kcal' : ''), 'Löschen');
+      if (!ok) return;
+      Core.deleteNutrition(db, el.dataset.id); save(); render();
+    },
+    'edit-goal': (el) => editGoal(el.dataset.key),
+    'lib-fav': () => { ui.lib.fav = !ui.lib.fav; render(); },
+    'lib-custom': () => { ui.lib.custom = !ui.lib.custom; render(); },
+    'lib-muscle': (el) => { toggleSet(ui.lib.muscle, el.dataset.value); render(); },
+    'lib-equip': (el) => { toggleSet(ui.lib.equip, el.dataset.value); render(); },
+    'lib-new': () => openCustomExerciseForm(),
+    'lib-fav-toggle': (el) => { Core.toggleLibFav(db, el.dataset.id); save(); render(); },
+    'lib-add-to-day': (el) => { const ex = libById(el.dataset.id); if (ex) addExerciseToDay(ex); },
+    'lib-edit': (el) => { const ex = Core.customExerciseById(db, el.dataset.id); if (ex) openCustomExerciseForm(ex); },
+    'lib-del': async (el) => {
+      const ex = Core.customExerciseById(db, el.dataset.id);
+      if (!ex) return;
+      const ok = await confirmAction('„' + ex.name + '“ löschen?', 'Die eigene Übung wird aus der Bibliothek entfernt. Dein Trainingsverlauf bleibt erhalten.', 'Löschen');
+      if (!ok) return;
+      Core.deleteCustomExercise(db, ex.id); save(); go('#/library');
     },
     'share-day': (el) => {
       const day = Core.findDay(db, el.dataset.id);
@@ -3962,6 +4907,8 @@
   }
 
   function onClick(e) {
+    const favEl = e.target.closest('[data-libfav]');
+    if (favEl) { e.preventDefault(); Core.toggleLibFav(db, favEl.dataset.libfav); save(); render(); return; }
     const el = e.target.closest('[data-action]');
     if (el && !el.disabled && actions[el.dataset.action]) {
       e.preventDefault();
@@ -4097,6 +5044,7 @@
     Timer.restore();
     Wake.update();
     render();
+    loadLibrary();
 
     // Browser bitten, die Daten nicht automatisch zu löschen (wird nicht überall gewährt).
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});

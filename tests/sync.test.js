@@ -22,10 +22,10 @@ function reorder(v) {
  * "sessions" und "body". Offline gesammelte Schreibvorgänge werden – wie bei Firestore –
  * beim Wiederverbinden "blind" angewendet.
  */
-const MAIN = { 'main.days': 'days', 'main.settings': 'settings', 'main.active': 'activeSession' };
+const MAIN = { 'main.days': 'days', 'main.settings': 'settings', 'main.active': 'activeSession', 'main.customex': 'customExercises', 'main.libmeta': 'libMeta' };
 
 class FakeServer {
-  constructor() { this.main = null; this.sessions = new Map(); this.body = new Map(); this.clients = new Set(); this.writes = 0; }
+  constructor() { this.main = null; this.sessions = new Map(); this.body = new Map(); this.nutrition = new Map(); this.foods = new Map(); this.clients = new Set(); this.writes = 0; }
   broadcast() { for (const c of this.clients) c.deliver(); }
 }
 
@@ -61,7 +61,10 @@ class FakeClient {
         if (op.key in MAIN) srv.main = { ...(srv.main || {}), [MAIN[op.key]]: op.data === null ? null : reorder(op.data) };
         else if (op.key === 'main') srv.main = null;
         else {
-          const [col, id] = op.key.startsWith('body:') ? [srv.body, op.key.slice(5)] : [srv.sessions, op.key.slice(8)];
+          const [col, id] = op.key.startsWith('body:') ? [srv.body, op.key.slice(5)]
+            : op.key.startsWith('nutrition:') ? [srv.nutrition, op.key.slice(10)]
+            : op.key.startsWith('food:') ? [srv.foods, op.key.slice(5)]
+            : [srv.sessions, op.key.slice(8)];
           if (op.data) col.set(id, reorder(op.data)); else col.delete(id);
         }
       }
@@ -78,6 +81,8 @@ class FakeClient {
     subs.main(clone(this.server.main));
     if (this.subs) subs.sessions(list(this.server.sessions));
     if (this.subs) subs.body(list(this.server.body));
+    if (this.subs) subs.nutrition(list(this.server.nutrition));
+    if (this.subs) subs.foods(list(this.server.foods));
   }
   setOnline(v) {
     this.online = v;

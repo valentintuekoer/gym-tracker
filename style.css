@@ -2901,8 +2901,10 @@ button.setup-opt:active { transform: scale(0.97); }
 .invite .hint { margin: var(--s-2) 0 0; }
 .invite .btn-row { width: 100%; }
 
-.offline-note { display: flex; align-items: center; justify-content: center; gap: 6px; }
-.offline-note svg { flex: none; width: 17px; height: 17px; }
+.offline-note { display: flex; flex-direction: column; align-items: center; margin: var(--s-3) 0; }
+.offline-note .hint { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 var(--s-1) var(--s-2); }
+.offline-note .hint svg { flex: none; width: 17px; height: 17px; }
+.offline-note .btn.sm { min-height: 38px; }
 
 /* Vergleich: Du vs. Freund */
 .vs-hero { display: flex; align-items: center; justify-content: center; gap: var(--s-4); padding: var(--s-2) 0 var(--s-3); }

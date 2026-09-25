@@ -192,6 +192,32 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Ernährung, Bibliothek, Ver
   await ctx.close();
 });
 
+test('Nach einem Update mit alter Cloud-Anbindung im Cache: einmal neu laden, dann klarer Hinweis', async () => {
+  const OLD = process.env.OLD_CLOUD_JS; // cloud.js der Vorversion (ohne Freunde)
+  if (!OLD || !fs.existsSync(OLD)) return;
+  const { ctx, page } = await device('update');
+  await register(page, 'update@test.de');
+  await createProfile(page, 'updater', false);
+  // wie ein iPhone, das noch die alte cloud.js aus dem Cache liefert
+  await ctx.route('**/cloud.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync(OLD) }));
+  await page.reload();
+  await page.waitForFunction(() => sessionStorage.getItem('gymtracker.updateReload') === '1');
+  await page.waitForFunction(() => window.GymCloud && window.GymApp && location.hash === '#/profile' && performance.getEntriesByType('navigation')[0].type === 'reload' && document.readyState === 'complete');
+  const note = page.locator('.offline-note', { hasText: 'Die App wurde aktualisiert' });
+  try { await note.waitFor(); } catch (e) {
+    console.log('DEBUG', await page.evaluate(() => document.querySelector('#view').innerText.slice(0, 400)));
+    throw e;
+  }
+  await note.locator('[data-action="social-retry"]', { hasText: 'Neu laden' }).waitFor();
+  // Mit der aktuellen cloud.js ist wieder alles verbunden
+  await ctx.unroute('**/cloud.js');
+  await Promise.all([page.waitForEvent('load'), note.locator('[data-action="social-retry"]').click()]);
+  await page.locator('.profile-hero h2', { hasText: '@updater' }).waitFor();
+  await page.waitForTimeout(1500);
+  assert.equal(await page.locator('.offline-note').count(), 0);
+  await ctx.close();
+});
+
 test('Freunde: Registrierung, Profil mit Foto, Anfrage, Vergleich, Rangliste, offline, entfernen, Konto löschen', async () => {
   const A = await device('anna');
   const B = await device('ben');
@@ -244,7 +270,14 @@ test('Freunde: Registrierung, Profil mit Foto, Anfrage, Vergleich, Rangliste, of
   // --- A trainiert Bankdrücken → gemeinsame Übung, Vergleich bei B ---
   await logBench(A.page, 80, 8);
   await A.page.waitForTimeout(1500);
+  // App neu öffnen, während angemeldet: Anmeldung wird erst nach dem Laden von Firebase wiederhergestellt
   await B.page.reload();
+  await B.page.goto(base + '/#/settings/account');
+  await B.page.locator('#sync-status', { hasText: 'Synchronisiert' }).waitFor();
+  await B.page.goto(base + '/#/profile');
+  await B.page.waitForTimeout(1500);
+  assert.equal(await B.page.locator('.offline-note').count(), 0, 'nach Neustart mit Freunden verbunden');
+  assert.equal(await B.page.evaluate(() => !!window.GymApp.Social.unsub), true);
   await B.page.goto(base + '/#/profile');
   await B.page.locator('.list .person', { hasText: '@anna' }).click();
   const rec = B.page.locator('.cmp', { hasText: 'Bankdrücken' });
@@ -345,13 +378,14 @@ test('Freunde: Registrierung, Profil mit Foto, Anfrage, Vergleich, Rangliste, of
   await C.page.locator('#friend-results', { hasText: 'Niemand mit „anna“ gefunden' }).waitFor();
   // Firestore direkt (am Regelwerk vorbei) prüfen: kein Rest von anna
   const docs = await (await fetch(`http://127.0.0.1:8080/v1/projects/${PROJECT}/databases/(default)/documents/usernames`, { headers: { Authorization: 'Bearer owner' } })).json();
-  assert.deepEqual((docs.documents || []).map((d) => d.name.split('/').pop()).sort(), ['ben', 'cleo']);
+  const names = (docs.documents || []).map((d) => d.name.split('/').pop());
+  assert.ok(!names.includes('anna') && names.includes('ben') && names.includes('cleo'), names.join(','));
   const profiles = await (await fetch(`http://127.0.0.1:8080/v1/projects/${PROJECT}/databases/(default)/documents/publicProfiles`, { headers: { Authorization: 'Bearer owner' } })).json();
-  assert.equal(profiles.documents.length, 2);
+  assert.ok(!profiles.documents.some((d) => d.fields.username.stringValue === 'anna'));
 
   for (const p of pages) toastLog.push(...await p.page.evaluate(() => window.__toasts || []).catch(() => []));
   await Promise.all([A.ctx.close(), B.ctx.close(), C.ctx.close()]);
-  assert.deepEqual(errors, []);
+  assert.deepEqual(errors, [], JSON.stringify(errors));
   assert.ok(toastLog.some((t) => /befreundet/.test(t)), 'Toasts werden mitgeschrieben');
   assert.deepEqual(toastLog.filter((t) => /Fehler|fehlgeschlagen|nicht geklappt|Berechtigung/.test(t)), []);
 });

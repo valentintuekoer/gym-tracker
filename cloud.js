@@ -7,9 +7,12 @@
  * Datenablage in Firestore (nur der jeweilige Nutzer darf lesen/schreiben, siehe firestore.rules):
  *   users/{uid}                  → { days, settings, activeSession }
  *   users/{uid}/sessions/{id}    → eine abgeschlossene Trainingseinheit
+ * Freunde (Profil, Benutzername, Anfragen, geteilte Kennzahlen): siehe social.js
  */
+import { createSocial } from './social.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/12.3.0/';
+const REDIRECT_KEY = 'gymtracker.appleRedirect'; // „Mit Apple anmelden“ per Weiterleitung gestartet
 const cfg = window.GYM_FIREBASE_CONFIG;
 
 let ready = false;
@@ -89,19 +92,63 @@ async function init() {
     }
   }
 
+  // Cloud Storage (Profilfotos) erst laden, wenn wirklich ein Foto hochgeladen/gelöscht wird
+  let storageP = null;
+  const storage = () => storageP || (storageP = import(SDK + 'firebase-storage.js').then((S) => {
+    const st = S.getStorage(app);
+    if (cfg.useEmulator) S.connectStorageEmulator(st, '127.0.0.1', 9199);
+    return { S, st };
+  }).catch((e) => { storageP = null; throw e; }));
+  const social = createSocial({ F, fs, auth, storage: cfg.storageBucket ? storage : null });
+
+  const appleProvider = () => {
+    const p = new A.OAuthProvider('apple.com');
+    p.addScope('email');
+    p.setCustomParameters({ locale: 'de_DE' });
+    return p;
+  };
+
   window.GymCloud = {
     signIn: (email, password) => A.signInWithEmailAndPassword(auth, email, password),
     signUp: (email, password) => A.createUserWithEmailAndPassword(auth, email, password),
     resetPassword: (email) => A.sendPasswordResetEmail(auth, email),
     signOut: () => A.signOut(auth),
     currentUser: () => auth.currentUser,
+    social,
 
-    /** Löscht alle Cloud-Daten und das Konto (Passwort zur Bestätigung nötig). */
+    /**
+     * „Mit Apple anmelden“. Zuerst als Pop-up (klappt in Safari und in der Home-Bildschirm-App);
+     * wo Pop-ups nicht gehen, per Weiterleitung – das Ergebnis kommt dann beim nächsten Start (getRedirectResult).
+     */
+    async signInWithApple() {
+      try {
+        await A.signInWithPopup(auth, appleProvider());
+        return { redirect: false };
+      } catch (e) {
+        if (e && (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment')) {
+          try { sessionStorage.setItem(REDIRECT_KEY, '1'); } catch (x) { /* privat */ }
+          await A.signInWithRedirect(auth, appleProvider());
+          return { redirect: true };
+        }
+        throw e;
+      }
+    },
+
+    /** Anmeldewege des aktuellen Kontos, z. B. ['password'] oder ['apple.com'] */
+    providers: () => (auth.currentUser ? auth.currentUser.providerData.map((p) => p.providerId) : []),
+
+    /**
+     * Löscht das Konto und alle Cloud-Daten: Trainingsdaten, Profil, Benutzername, Foto,
+     * Freundschaften und Anfragen. Bestätigung per Passwort bzw. erneut „Mit Apple anmelden“.
+     */
     async deleteAccount(password) {
       const user = auth.currentUser;
       if (!user) throw Object.assign(new Error('not signed in'), { code: 'auth/requires-recent-login' });
-      await A.reauthenticateWithCredential(user, A.EmailAuthProvider.credential(user.email, password));
+      if (password) await A.reauthenticateWithCredential(user, A.EmailAuthProvider.credential(user.email, password));
+      else await A.reauthenticateWithPopup(user, appleProvider());
+      await social.deleteAll(user.uid);
       await deleteUserData(user.uid);
+      await F.deleteDoc(profileDoc(user.uid)).catch(() => {});
       await A.deleteUser(user);
     },
 
@@ -192,17 +239,24 @@ async function init() {
     /** Konto entfernen = sperren (zuerst, damit währenddessen nichts neu geschrieben wird) + alle Daten löschen */
     async remove(uid, email) {
       await window.GymCloud.admin.block(uid, email, 'Konto entfernt');
+      await social.deleteAll(uid).catch(() => {});
       await deleteUserData(uid);
       await F.deleteDoc(profileDoc(uid));
     },
   };
 
   if (window.GymApp) {
+    // Rückkehr von „Mit Apple anmelden“ per Weiterleitung: Erfolg meldet onAuthStateChanged, hier nur Fehler
+    let redirected = false;
+    try { redirected = sessionStorage.getItem(REDIRECT_KEY) === '1'; sessionStorage.removeItem(REDIRECT_KEY); } catch (x) { /* privat */ }
+    if (redirected) A.getRedirectResult(auth).catch((e) => { if (window.GymApp.onAuthError) window.GymApp.onAuthError(e); });
     window.GymApp.onCloudReady();
     let unwatchBlocked = null;
     A.onAuthStateChanged(auth, (u) => {
       if (unwatchBlocked) { unwatchBlocked(); unwatchBlocked = null; }
-      window.GymApp.onAuthState(u ? { uid: u.uid, email: u.email } : null);
+      // Neues Konto: erste Anmeldung = Erstellung (auch bei „Mit Apple anmelden“)
+      const isNew = !!(u && u.metadata.creationTime && u.metadata.creationTime === u.metadata.lastSignInTime);
+      window.GymApp.onAuthState(u ? { uid: u.uid, email: u.email || '', isNew } : null);
       if (!u) { window.GymApp.setAdmin(false); return; }
       // Profil für die Nutzerverwaltung aktuell halten (schlägt still fehl, wenn gesperrt)
       F.setDoc(profileDoc(u.uid), {

@@ -6,19 +6,23 @@
 'use strict';
 
 // Bei jeder Änderung an den App-Dateien hochzählen, damit Nutzer die neue Version bekommen.
-const CACHE = 'gym-tracker-v9';
+const CACHE = 'gym-tracker-v10';
 const SDK_CACHE = 'gym-tracker-firebase-sdk';   // Firebase-Bibliothek (versionierte, unveränderliche URLs)
 const SDK_PREFIX = 'https://www.gstatic.com/firebasejs/';
+const AVATAR_CACHE = 'gym-tracker-avatars';     // Profilfotos von Freunden (für die Offline-Ansicht)
+const AVATAR_HOST = 'firebasestorage.googleapis.com';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './cloud.js',
+  './social.js',
   './firebase-config.js',
   './manifest.json',
   './exercises.json',
   './vendor/zxing.min.js',
+  './vendor/qrcode.js',
   './icons/icon.svg',
   './icons/icon-152.png',
   './icons/icon-167.png',
@@ -40,7 +44,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== SDK_CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== SDK_CACHE && k !== AVATAR_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -64,8 +68,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Profilfotos: jede neue Version hat eine eigene Adresse (…&v=…) → aus dem Cache, sonst laden und merken
+  const url = new URL(req.url);
+  if (url.hostname === AVATAR_HOST && url.pathname.includes('/o/avatars%2F')) {
+    event.respondWith(caches.open(AVATAR_CACHE).then(async (cache) => {
+      const cached = await cache.match(req);
+      if (cached) return cached;
+      const res = await fetch(req);
+      if (res.ok || res.type === 'opaque') {
+        cache.put(req, res.clone());
+        // Nicht endlos wachsen: nur die neuesten 60 Fotos behalten
+        cache.keys().then((keys) => keys.slice(0, Math.max(0, keys.length - 60)).forEach((k) => cache.delete(k)));
+      }
+      return res;
+    }));
+    return;
+  }
+
   // Alles andere Fremde (z. B. Firebase-Server) nie cachen
-  if (new URL(req.url).origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin) return;
 
   // Seitenaufrufe (auch mit #/… oder ?…) bekommen immer die index.html
   const key = req.mode === 'navigate' ? './index.html' : req;

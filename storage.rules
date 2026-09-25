@@ -1,0 +1,17 @@
+rules_version = '2';
+
+// Sicherheitsregeln für Cloud Storage (nur Profilfotos)
+//   avatars/{uid}.jpg → Profilfoto; schreiben darf nur der Nutzer selbst, max. 2 MB, nur JPEG.
+// Angezeigt werden die Fotos über ihre Download-Adresse, die nur Freunde (und die Suche) zu sehen bekommen.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /avatars/{file} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && file == request.auth.uid + '.jpg'
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType == 'image/jpeg';
+      allow delete: if request.auth != null && file == request.auth.uid + '.jpg';
+    }
+  }
+}

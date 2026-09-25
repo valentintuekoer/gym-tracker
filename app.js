@@ -43,6 +43,7 @@
     carbGoal: 220,
     fatGoal: 70,
     effort: 'off',     // Anstrengung pro Satz erfassen: 'off' | 'rir' | 'rpe'
+    shareRecords: true, // Freunde: Rekorde je Übung teilen (Kennzahlen wie Einheiten/Serie immer)
   };
 
   /** Körpermaße: Schlüssel, Bezeichnung, Einheit */
@@ -366,6 +367,7 @@
     db.settings.increment = clampIncrement(db.settings.increment);
     db.settings.weeklyGoal = Math.min(7, Math.max(1, Math.round(Number(db.settings.weeklyGoal)) || DEFAULT_SETTINGS.weeklyGoal));
     if (!['off', 'rir', 'rpe'].includes(db.settings.effort)) db.settings.effort = 'off';
+    db.settings.shareRecords = db.settings.shareRecords !== false;
     db.settings.calorieGoal = parseGoal(db.settings.calorieGoal);
     db.settings.proteinGoal = parseGoal(db.settings.proteinGoal);
     db.settings.carbGoal = parseGoal(db.settings.carbGoal);
@@ -1326,6 +1328,142 @@
     return out.sort((a, b) => a.date - b.date);
   };
 
+  /* ---------- Freunde: Benutzername & geteilte Kennzahlen ----------
+   * Geteilt werden nur Aggregate: Anzahl Einheiten und Volumen pro Kalendertag (letzte 53 Wochen),
+   * Gesamtzahl, Wochenziel und – abschaltbar – Rekorde je Bibliotheks-Übung (feste ID).
+   * Einzelne Sätze, Notizen, Pläne, Körpermaße und Ernährung verlassen das Gerät dafür nie.
+   */
+
+  const USERNAME_RE = /^[a-z0-9][a-z0-9._]{2,19}$/;
+  const DAY_MS = 86400000;
+
+  Core.normUsername = (s) => String(s || '').trim().replace(/^@+/, '').toLowerCase();
+
+  /** Fehlertext oder null, wenn der Benutzername gültig ist. */
+  Core.usernameError = function (s) {
+    const u = Core.normUsername(s);
+    if (u.length < 3) return 'Mindestens 3 Zeichen.';
+    if (u.length > 20) return 'Höchstens 20 Zeichen.';
+    if (!USERNAME_RE.test(u)) return 'Nur a–z, Ziffern, Punkt und Unterstrich – am Anfang ein Buchstabe oder eine Ziffer.';
+    return null;
+  };
+
+  /** Namen/Aliasse der eingebauten Bibliothek → feste Übungs-ID */
+  function libraryIndex(library) {
+    const byName = new Map();
+    const ids = new Set();
+    for (const x of library || []) {
+      ids.add(x.id);
+      byName.set(normName(x.name), x.id);
+      for (const a of x.aliases || []) if (!byName.has(normName(a))) byName.set(normName(a), x.id);
+    }
+    return { byName, ids };
+  }
+
+  /** Feste Bibliotheks-ID einer Übung aus einer Einheit (über den Plan, sonst über den Namen) oder null. */
+  function libIdOf(db, session, e, idx) {
+    if (e.exId && session.dayId) {
+      const plan = Core.findExercise(db, session.dayId, e.exId);
+      if (plan && plan.libId && idx.ids.has(plan.libId)) return plan.libId;
+    }
+    return idx.byName.get(normName(e.name)) || null;
+  }
+
+  /** Kennzahlen zum Teilen mit Freunden (siehe oben). */
+  Core.socialStats = function (db, now, library, opts) {
+    const shareRecords = !opts || opts.shareRecords !== false;
+    const idx = libraryIndex(library);
+    const since = Core.dayKey(now - 371 * DAY_MS);
+    const days = {};
+    const recs = {};
+    const usage = {};
+    let last = null;
+    for (const s of db.sessions) {
+      if (last === null || s.finishedAt > last) last = s.finishedAt;
+      const k = Core.dayKey(s.finishedAt);
+      if (k >= since) {
+        const d = days[k] || (days[k] = [0, 0]);
+        d[0]++;
+        d[1] += Math.round(Core.sessionStats(s).volume);
+      }
+      for (const e of s.exercises) {
+        const id = libIdOf(db, s, e, idx);
+        if (!id) continue;
+        usage[id] = (usage[id] || 0) + 1;
+        const b = bestOf(e.sets);
+        const r = recs[id] || (recs[id] = { w: null, e: null, r: null });
+        if (b.weight !== null && (r.w === null || b.weight > r.w)) r.w = b.weight;
+        if (b.e1rm !== null && (r.e === null || b.e1rm > r.e)) r.e = Math.round(b.e1rm * 10) / 10;
+        if (b.reps !== null && (r.r === null || b.reps > r.r)) r.r = b.reps;
+      }
+    }
+    let fav = null;
+    for (const id of Object.keys(usage)) if (fav === null || usage[id] > usage[fav]) fav = id;
+    const records = {};
+    if (shareRecords) {
+      Object.keys(recs).sort((a, b) => usage[b] - usage[a]).slice(0, 80).forEach((id) => { records[id] = recs[id]; });
+    }
+    return {
+      v: 1, goal: db.settings.weeklyGoal || DEFAULT_SETTINGS.weeklyGoal, total: db.sessions.length, last,
+      days, records, fav: shareRecords ? fav : null, favCount: shareRecords && fav ? usage[fav] : 0,
+    };
+  };
+
+  /**
+   * Vergleichbare Werte aus geteilten Kennzahlen – bezogen auf „jetzt“. Dadurch stimmen z. B.
+   * „diese Woche“ und die Serie auch dann, wenn ein Freund die App länger nicht geöffnet hat.
+   */
+  Core.socialMetrics = function (stats, now) {
+    const st = stats || {};
+    const days = st.days && typeof st.days === 'object' ? st.days : {};
+    const goal = Math.min(7, Math.max(1, Math.round(Number(st.goal)) || DEFAULT_SETTINGS.weeklyGoal));
+    const d = new Date(now);
+    const weekKey = Core.dayKey(weekStart(now));
+    const monthKey = Core.dayKey(new Date(d.getFullYear(), d.getMonth(), 1, 12).getTime());
+    const from7 = Core.dayKey(now - 6 * DAY_MS);
+    const from30 = Core.dayKey(now - 29 * DAY_MS);
+    const today = Core.dayKey(now);
+    const weeks = new Map();
+    let week = 0, month = 0, vol7 = 0, vol30 = 0;
+    for (const [k, v] of Object.entries(days)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || !Array.isArray(v) || k > today) continue;
+      const n = Math.max(0, Number(v[0]) || 0), vol = Math.max(0, Number(v[1]) || 0);
+      if (k >= weekKey) week += n;
+      if (k >= monthKey) month += n;
+      if (k >= from7) vol7 += vol;
+      if (k >= from30) vol30 += vol;
+      const wk = weekStart(new Date(k + 'T12:00').getTime());
+      weeks.set(wk, (weeks.get(wk) || 0) + n);
+    }
+    const cur = weekStart(now);
+    let w = (weeks.get(cur) || 0) >= goal ? cur : prevWeek(cur);
+    let streak = 0;
+    while ((weeks.get(w) || 0) >= goal && streak < 60) { streak++; w = prevWeek(w); }
+    return { week, month, streak, total: Math.max(0, Number(st.total) || 0), vol7, vol30, goal, last: Number(st.last) || null };
+  };
+
+  /** Rekorde bei Übungen, die beide teilen: [{ id, me: {w,e,r}, them: {w,e,r} }] */
+  Core.commonRecords = function (mine, theirs) {
+    const a = (mine && mine.records) || {}, b = (theirs && theirs.records) || {};
+    return Object.keys(a).filter((id) => b[id] && typeof b[id] === 'object').map((id) => ({ id, me: a[id], them: b[id] }));
+  };
+
+  /** Rangliste: [{ …entry, value, rank }] – gleiche Werte teilen sich den Platz. */
+  Core.rankBy = function (entries, metric) {
+    const list = entries.map((e) => ({ ...e, value: Number(e.metrics && e.metrics[metric]) || 0 }))
+      .sort((x, y) => (y.value - x.value) || (x.me ? -1 : y.me ? 1 : 0) || String(x.name || '').localeCompare(String(y.name || ''), 'de'));
+    let rank = 0, prev = null;
+    list.forEach((e, i) => { if (e.value !== prev) { rank = i + 1; prev = e.value; } e.rank = rank; });
+    return list;
+  };
+
+  /** "heute trainiert", "vor 3 Tagen trainiert" … */
+  Core.activityText = function (last, now) {
+    if (!last) return 'noch kein Training';
+    const r = fmtRelative(last, now);
+    return r === fmtDate(last) ? 'zuletzt am ' + r : r + ' trainiert';
+  };
+
   /* =========================================================
    * 3. TimerCore – Pausentimer auf Basis eines End-Zeitstempels
    *    Die Restzeit wird immer aus (endAt − jetzt) berechnet. Dadurch stimmt sie
@@ -1767,7 +1905,7 @@
   /* ---------- Export für Tests (Node) ---------- */
   if (typeof document === 'undefined') {
     if (typeof module !== 'undefined') {
-      module.exports = { Core, TimerCore, Sync, createSyncEngine, util: { parseNum, fmtNum, fmtClock, fmtRelative, fmtSet, fmtRest, fmtSets, fmtRepTarget, parseRepTarget, normName, e1rm, esc, clampRest, clampSets } };
+      module.exports = { Core, TimerCore, Sync, createSyncEngine, util: { fmtDate, parseNum, fmtNum, fmtClock, fmtRelative, fmtSet, fmtRest, fmtSets, fmtRepTarget, parseRepTarget, normName, e1rm, esc, clampRest, clampSets } };
     }
     return;
   }
@@ -1780,6 +1918,7 @@
   const TIMER_KEY = 'gymtracker.timer.v1';
   const ACCOUNT_KEY = 'gymtracker.account.v1';   // { mode: 'guest' } | { mode: 'user', uid, email }
   const SYNC_PREFIX = 'gymtracker.sync.v1.';     // + uid → Abgleich-Stand ("base")
+  const GUEST_FROM_KEY = 'gymtracker.guestfrom.v1'; // uid, aus dessen Konto die Daten ohne Konto stammen (nach Abmelden)
 
   // Auch akzeptieren, wenn der Firebase-Codeblock unverändert als `const firebaseConfig = {…}` eingefügt wurde
   /* global firebaseConfig */
@@ -1879,6 +2018,7 @@
   function save() {
     writeLocal();
     if (engine) engine.schedule();
+    Social.schedulePublish(); // geteilte Kennzahlen (nur falls ein Profil besteht)
   }
 
   /** Für Tipp-Eingaben: gebündelt speichern. */
@@ -2512,7 +2652,12 @@
         if (parts[1] === 'ex') return { name: 'history-ex', key: parts[2] || '', tab: 'history' };
         if (parts[1] === 'session') return { name: 'history-session', id: parts[2], tab: 'history' };
         return { name: 'history', tab: 'history' };
-      case 'settings': return { name: 'settings', sub: parts[1] || null, tab: 'settings' };
+      case 'settings': return { name: 'settings', sub: parts[1] || null, tab: 'profile' };
+      case 'profile': return { name: parts[1] === 'edit' ? 'profile-edit' : 'profile', tab: 'profile' };
+      case 'friends': return { name: parts[1] === 'requests' ? 'friends-requests' : 'friends-add', tab: 'profile' };
+      case 'friend': return { name: 'friend', id: parts[1] || '', tab: 'profile' };
+      case 'leaderboard': return { name: 'leaderboard', tab: 'profile' };
+      case 'invite': return { name: 'invite', id: parts[1] || '', tab: 'profile' };
       case 'food': return { name: 'food', tab: 'food' };
       case 'library':
         if (parts[1] === 'ex') return { name: 'libex', id: parts[2] || '', tab: 'library' };
@@ -2520,10 +2665,10 @@
       case 'summary': return { name: 'summary', id: parts[1], tab: 'home' };
       case 'import': return { name: 'import', code: parts[1] || '', tab: 'home' };
       case 'preview': return { name: 'preview', id: parts[1], tab: 'home' };
-      case 'admin': return { name: 'admin', id: parts[1] || null, tab: 'settings' };
+      case 'admin': return { name: 'admin', id: parts[1] || null, tab: 'profile' };
       case 'body': return { name: 'body', id: parts[1] || 'new', tab: 'history' };
-      case 'login': return { name: 'login', tab: 'settings' };
-      case 'intro': return { name: 'intro', tab: 'settings' };
+      case 'login': return { name: 'login', tab: 'profile' };
+      case 'intro': return { name: 'intro', tab: 'profile' };
       case 'setup': return { name: 'setup', tab: 'home' };
       default: return { name: 'home', tab: 'home' };
     }
@@ -2604,7 +2749,7 @@
 
   /* ---------- Navigation mit Übergängen ---------- */
 
-  const TAB_ROOT = { home: '#/', history: '#/history', food: '#/food', library: '#/library', settings: '#/settings' };
+  const TAB_ROOT = { home: '#/', history: '#/history', food: '#/food', library: '#/library', profile: '#/profile' };
   const navStack = [];
 
   /** Richtung eines Seitenwechsels: push (tiefer), pop (zurück), tab (anderer Reiter). */
@@ -2761,6 +2906,7 @@
     // Noch nicht entschieden (Konto oder ohne Konto)? → Anmeldeseite
     if (!account && route.name !== 'login' && route.name !== 'intro') {
       if (route.name === 'import') ui.pendingImport = route.code; // nach dem Anmelden weitermachen
+      if (route.name === 'invite') ui.pendingInvite = Core.normUsername(route.id);
       location.replace(introSeen() ? '#/login' : '#/intro');
       return;
     }
@@ -2791,6 +2937,13 @@
       case 'admin': renderAdmin(view, route.id); break;
       case 'body': renderBodyForm(view, route.id); break;
       case 'settings': renderSettings(view, route.sub); break;
+      case 'profile': renderProfile(view); break;
+      case 'profile-edit': renderProfileEdit(view); break;
+      case 'friends-add': renderFriendsAdd(view); break;
+      case 'friends-requests': renderRequests(view); break;
+      case 'friend': renderFriend(view, route.id); break;
+      case 'leaderboard': renderLeaderboard(view); break;
+      case 'invite': renderInvite(view, route.id); break;
       case 'food': renderFood(view); break;
       case 'library': renderLibrary(view); break;
       case 'libex': renderLibEx(view, route.id); break;
@@ -2809,6 +2962,7 @@
     $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === route.tab));
     TabLens.update();
     $('#tab-dot').hidden = !db.activeSession;
+    Social.badge();
     ui.lastRoute = key;
     ui.lastTab = route.tab;
     const dir = ui.navDir;
@@ -2910,6 +3064,7 @@
     }
     const rn = parseRoute().name;
     if (rn === 'food') FoodFx.play(view, sameRoute);
+    if (!sameRoute && (rn === 'friend' || rn === 'leaderboard')) SocialFx.bars(view);
     if (rn === 'workout') WorkoutPager.init(view); else WorkoutPager.stop();
   }
 
@@ -2947,6 +3102,12 @@
       const code = ui.pendingImport;
       ui.pendingImport = null;
       location.replace('#/import/' + code);
+      return;
+    }
+    if (ui.pendingInvite && isUser()) {
+      const name = ui.pendingInvite;
+      ui.pendingInvite = null;
+      location.replace('#/invite/' + encodeURIComponent(name));
       return;
     }
     const now = Date.now();
@@ -4108,6 +4269,7 @@
       save();
     }
     location.replace('#/');
+    if (skip || !st || st.start === 'sample') Social.maybeOnboard();
     if (skip || !st) return;
     if (st.start === 'sample') toast('Plan „Push · Pull · Beine“ angelegt');
     else if (st.start === 'own') setTimeout(() => actions['add-day'](), 450);
@@ -4153,6 +4315,9 @@
           <div>${ICON.reload}<span><b>Auf allen Geräten</b>iPhone, iPad und Computer bleiben automatisch synchron.</span></div>
           <div>${ICON.done}<span><b>Sicher gespeichert</b>Deine Trainings gehen nicht verloren, auch wenn Safari Daten löscht.</span></div>
         </div>` : ''}
+        <button class="btn apple block lg" data-action="auth-apple">${APPLE_LOGO}Mit Apple ${reg ? 'registrieren' : 'anmelden'}</button>
+        <p class="form-error" id="apple-error" role="alert" hidden></p>
+        <div class="divider"><span>oder mit E-Mail</span></div>
         <div class="segmented" role="tablist">
           <button role="tab" aria-selected="${!reg}" data-action="auth-mode" data-mode="login">Anmelden</button>
           <button role="tab" aria-selected="${reg}" data-action="auth-mode" data-mode="register">Konto erstellen</button>
@@ -4202,6 +4367,11 @@
       'auth/operation-not-allowed': 'Anmeldung per E-Mail ist im Firebase-Projekt nicht aktiviert.',
       'auth/unauthorized-domain': 'Diese Web-Adresse ist im Firebase-Projekt nicht freigegeben.',
       'auth/requires-recent-login': 'Bitte melde dich erneut an und versuche es dann noch einmal.',
+      'auth/popup-blocked': 'Das Anmeldefenster wurde blockiert. Bitte erneut tippen.',
+      'auth/account-exists-with-different-credential': 'Für diese E-Mail gibt es schon ein Konto mit Passwort – bitte mit E-Mail und Passwort anmelden.',
+      'auth/user-mismatch': 'Bitte bestätige mit demselben Apple-Konto, mit dem du angemeldet bist.',
+      'username-taken': 'Dieser Benutzername ist leider schon vergeben.',
+      'deadline-exceeded': 'Der Server antwortet nicht. Bitte später erneut versuchen.',
       'permission-denied': 'Keine Berechtigung – bitte die Firestore-Regeln prüfen.',
       'unavailable': 'Server nicht erreichbar.',
       'no-cloud': 'Keine Verbindung zum Server. Bitte prüfe deine Internetverbindung.',
@@ -4257,7 +4427,10 @@
       const wasGuest = !isUser();
       const guestDb = db;
       let migrate = false;
-      if (wasGuest && Sync.hasUserContent(guestDb)) {
+      // Nach dem Abmelden liegen die Daten dieses Kontos „ohne Konto“ auf dem Gerät → einfach wieder übernehmen
+      if (wasGuest && Sync.hasUserContent(guestDb) && lsGet(GUEST_FROM_KEY) === user.uid) {
+        migrate = true;
+      } else if (wasGuest && Sync.hasUserContent(guestDb)) {
         const v = await openDialog({
           title: 'Daten ins Konto übernehmen?',
           message: `Auf diesem Gerät gibt es bereits Daten ohne Konto (${guestDb.days.length} ` +
@@ -4271,6 +4444,7 @@
         });
         migrate = v === true;
       }
+      lsDel(GUEST_FROM_KEY);
       account = { mode: 'user', uid: user.uid, email: user.email };
       saveAccount();
       db = loadData(dataKey(), Core.emptyData);
@@ -4282,11 +4456,13 @@
       }
       writeLocal();
       applyTheme();
+      Social.attach();
+      ui.socialOnboard = true; // nach dem Anmelden: Profil (Benutzername, Foto) anlegen lassen, falls noch keins
       startSync();
       Wake.update();
       ui.authEmail = '';
-      if (ui.afterRegister && isFreshData()) startSetup();
-      else { go('#/'); toast('Angemeldet als ' + user.email); }
+      if ((ui.afterRegister || user.isNew) && isFreshData()) startSetup();
+      else { go('#/'); toast('Angemeldet' + (user.email ? ' als ' + user.email : '')); }
       ui.afterRegister = false;
     } finally {
       entering = false;
@@ -4310,6 +4486,7 @@
       },
     });
     engine.start();
+    Social.connect();
   }
 
   function stopSync() {
@@ -4342,16 +4519,30 @@
     if (el) el.textContent = syncStatusText();
   }
 
-  /** Abmelden bzw. Konto verlassen: lokale Kopie der Kontodaten entfernen. */
+  /**
+   * Abmelden bzw. Konto verlassen. Die Trainingsdaten bleiben auf dem Gerät: Sie wandern in den
+   * Speicher „ohne Konto“. Entfernt werden nur die Kontokopie, der Abgleich-Stand und die
+   * zwischengespeicherten Freundesdaten.
+   */
   async function leaveAccount() {
     stopSync();
     const uid = account && account.uid;
+    const accountDb = db;
+    Social.detach();
     account = null;           // vor signOut, damit onAuthState(null) nichts mehr tut
     saveAccount();
     if (window.GymCloud) { try { await window.GymCloud.signOut(); } catch (e) { /* offline egal */ } }
-    if (uid) { lsDel(STORAGE_KEY + '.u.' + uid); lsDel(SYNC_PREFIX + uid); }
-    Timer.stop();
-    db = loadData(STORAGE_KEY, Core.emptyData);
+    const guest = loadData(STORAGE_KEY, Core.emptyData);
+    const guestWasEmpty = Sync.isEmpty(guest);
+    db = Sync.mergeGuest(guest, accountDb);
+    writeLocal();
+    if (uid) {
+      lsDel(STORAGE_KEY + '.u.' + uid);
+      lsDel(SYNC_PREFIX + uid);
+      Social.forget(uid);
+      // Beim nächsten Anmelden mit demselben Konto ohne Rückfrage wieder übernehmen
+      if (guestWasEmpty) lsSet(GUEST_FROM_KEY, uid); else lsDel(GUEST_FROM_KEY);
+    }
     applyTheme();
     Wake.update();
     ui.authMode = 'login';
@@ -4365,7 +4556,8 @@
       return `
         <p class="section-label">Konto</p>
         <section class="card">
-          <p class="kv"><span>Angemeldet als</span><span class="break">${esc(account.email)}</span></p>
+          <p class="kv"><span>Angemeldet als</span><span class="break">${esc(account.email || 'Apple-ID')}</span></p>
+          ${Social.profile && Social.profile.username ? `<p class="kv"><span>Benutzername</span><a href="#/profile">@${esc(Social.profile.username)}</a></p>` : ''}
           <p class="kv"><span>Cloud</span><span id="sync-status">${esc(syncStatusText())}</span></p>
           <p class="kv"><span>Nutzer-ID</span><button class="uid-btn" data-action="copy-uid" aria-label="Nutzer-ID kopieren">${esc(account.uid)}</button></p>
           <p class="hint">Deine Daten werden in deinem Konto gespeichert und auf allen Geräten abgeglichen, auf denen du angemeldet bist. Offline eingetragene Sätze werden automatisch nachgeladen.</p>
@@ -4373,7 +4565,8 @@
             <button class="btn soft" data-action="sync-now">Jetzt abgleichen</button>
             <button class="btn soft" data-action="logout">Abmelden</button>
           </div>
-          <button class="btn ghost block danger-text" data-action="delete-account">Konto löschen</button>
+          <button class="btn ghost block danger-text" data-action="delete-account">Konto und alle Cloud-Daten löschen</button>
+          <p class="hint">Löscht Konto, Profil, Freundschaften, geteilte Kennzahlen und die Cloud-Sicherung. Die Trainingsdaten auf diesem Gerät bleiben erhalten; der Export unter „Datensicherung“ funktioniert jederzeit auch ohne Konto.</p>
         </section>
         ${ui.isAdmin ? `
         <p class="section-label">Verwaltung</p>
@@ -4549,7 +4742,7 @@
   function renderSettings(view, sub) {
     if (sub && !SETTINGS_PAGES[sub]) { go('#/settings'); return; }
     if (sub) setHeader({ title: SETTINGS_PAGES[sub], back: '#/settings' });
-    else setHeader({ title: 'Einstellungen', large: true });
+    else setHeader({ title: 'Einstellungen', large: true, back: '#/profile' });
     const st = db.settings;
     const perm = Notify.permission;
     const permText = {
@@ -4767,7 +4960,8 @@
     // Bestehende Trainingstage nachträglich mit der Bibliothek verknüpfen (feste ID)
     if (Core.linkPlanToLibrary(db, LIB)) save();
     const n = parseRoute().name;
-    if (n === 'library' || n === 'libex' || n === 'day' || n === 'workout') render();
+    if (n === 'library' || n === 'libex' || n === 'day' || n === 'workout' || SOCIAL_ROUTES.has(n)) render();
+    Social.schedulePublish(500);
   }
 
   /* ---------- Allgemeine Modal-Hülle für interaktive Formulare ---------- */
@@ -4989,14 +5183,17 @@
 
   /* ---------- Barcode-Scanner ---------- */
 
-  function manualBarcode(onCode) {
+  function manualBarcodeDefault(onCode) {
     promptText('Barcode eingeben', { placeholder: 'z. B. 4000417025005', inputmode: 'numeric', okLabel: 'Suchen' })
       .then((v) => { if (v) onCode(v.replace(/\D/g, '')); });
   }
 
-  async function openScanner(onCode) {
+  /** Kamera-Scanner (Barcodes und QR-Codes). opts: { title, hint, manual(onCode), manualLabel } */
+  async function openScanner(onCode, opts) {
+    const o = opts || {};
+    const manualBarcode = o.manual || manualBarcodeDefault;
     if (!window.ZXing || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast('Kamera hier nicht verfügbar – Barcode von Hand eingeben.');
+      toast('Kamera hier nicht verfügbar – bitte von Hand eingeben.');
       manualBarcode(onCode);
       return;
     }
@@ -5004,8 +5201,8 @@
     const m = customModal(
       '<div class="scanner"><video id="scan-video" playsinline muted autoplay></video>' +
         '<div class="scan-frame" id="scan-frame"><i></i><i></i><i></i><i></i></div>' +
-        '<div class="scan-top"><h2 class="scan-title">Barcode scannen</h2>' +
-        '<p class="scan-hint" id="scan-hint">Halte den Strichcode in den Rahmen.</p></div>' +
+        '<div class="scan-top"><h2 class="scan-title">' + esc(o.title || 'Barcode scannen') + '</h2>' +
+        '<p class="scan-hint" id="scan-hint">' + esc(o.hint || 'Halte den Strichcode in den Rahmen.') + '</p></div>' +
       '</div>' +
       '<div class="scan-bar">' +
         '<button class="btn soft" data-manual>' + ICON.pencil + ' Eingeben</button>' +
@@ -5043,8 +5240,8 @@
       if (denied) {
         const v = await openDialog({
           title: 'Kamerazugriff nötig',
-          message: 'Bitte erlaube den Zugriff auf die Kamera. Auf dem iPhone: Einstellungen → Apps bzw. Safari → Kamera → „Erlauben“. Du kannst den Barcode auch von Hand eingeben.',
-          buttons: [{ label: 'Barcode eingeben', style: 'primary', value: 'm' }, { label: 'Abbrechen', style: 'ghost' }],
+          message: 'Bitte erlaube den Zugriff auf die Kamera. Auf dem iPhone: Einstellungen → Apps bzw. Safari → Kamera → „Erlauben“. Du kannst den Code auch von Hand eingeben.',
+          buttons: [{ label: o.manualLabel || 'Barcode eingeben', style: 'primary', value: 'm' }, { label: 'Abbrechen', style: 'ghost' }],
         });
         if (v === 'm') manualBarcode(onCode);
       } else {
@@ -6373,36 +6570,46 @@
     'logout': async () => {
       const pending = engine && engine.pending();
       const ok = await confirmAction('Abmelden?',
-        pending
-          ? 'Achtung: Einige Änderungen sind noch nicht in der Cloud (z. B. weil du offline bist). Wenn du dich jetzt abmeldest, gehen sie verloren.'
-          : 'Deine Daten bleiben in deinem Konto gespeichert und werden von diesem Gerät entfernt. Beim nächsten Anmelden sind sie wieder da.',
-        'Abmelden', !!pending);
+        'Deine Trainingsdaten bleiben auf diesem Gerät (ohne Konto) und in deinem Konto. ' +
+        'Freunde und Vergleiche sind nach dem nächsten Anmelden wieder da.' +
+        (pending ? ' Noch nicht hochgeladene Änderungen werden übertragen, wenn du dich wieder anmeldest.' : ''),
+        'Abmelden', false);
       if (!ok) return;
       await leaveAccount();
-      toast('Abgemeldet');
+      toast('Abgemeldet – deine Daten sind weiter auf dem Gerät');
     },
     'delete-account': async () => {
       const ok = await confirmAction('Konto löschen?',
-        'Dein Konto und alle in der Cloud gespeicherten Trainingsdaten werden endgültig gelöscht. ' +
-        'Das kann nicht rückgängig gemacht werden. Tipp: Vorher ein Backup exportieren.', 'Weiter');
+        'Endgültig gelöscht werden: dein Konto, dein Profil (Benutzername, Foto), alle Freundschaften und Anfragen, ' +
+        'deine geteilten Kennzahlen und alle in der Cloud gesicherten Trainingsdaten. ' +
+        'Deine Trainingsdaten auf diesem Gerät bleiben erhalten (ohne Konto). Das kann nicht rückgängig gemacht werden.', 'Weiter');
       if (!ok) return;
-      const pw = await openDialog({
-        title: 'Passwort bestätigen',
-        message: 'Zur Sicherheit gib bitte dein Passwort ein.',
-        input: { type: 'password', autocomplete: 'current-password', select: false },
-        buttons: [{ label: 'Abbrechen', style: 'ghost' }, { label: 'Konto endgültig löschen', style: 'danger', submit: true }],
-      });
-      if (!pw) return;
-      if (!window.GymCloud) { toast(authErrorText({ code: 'no-cloud' })); return; }
+      if (!window.GymCloud || !navigator.onLine) { toast(authErrorText({ code: 'no-cloud' })); return; }
+      let pw = null;
+      if (window.GymCloud.providers().includes('password')) {
+        pw = await openDialog({
+          title: 'Passwort bestätigen',
+          message: 'Zur Sicherheit gib bitte dein Passwort ein.',
+          input: { type: 'password', autocomplete: 'current-password', select: false },
+          buttons: [{ label: 'Abbrechen', style: 'ghost' }, { label: 'Konto endgültig löschen', style: 'danger', submit: true }],
+        });
+        if (!pw) return;
+      } else {
+        const ok2 = await confirmAction('Mit Apple bestätigen', 'Zur Sicherheit meldest du dich im nächsten Schritt noch einmal kurz mit Apple an.', 'Konto endgültig löschen');
+        if (!ok2) return;
+      }
       stopSync();
+      ui.deleting = true; // Firebase meldet gleich „abgemeldet“ – das übernimmt hier leaveAccount (Daten bleiben lokal)
       try {
         await window.GymCloud.deleteAccount(pw);
       } catch (e) {
+        ui.deleting = false;
         toast(authErrorText(e));
         startSync();
         return;
       }
       await leaveAccount();
+      ui.deleting = false;
       toast('Konto gelöscht');
     },
 
@@ -6424,6 +6631,1148 @@
       toast('Alle Daten gelöscht');
     },
   };
+
+  /* =========================================================
+   *  Freunde: Profil, Anfragen, Vergleich, Rangliste
+   *  Alles hier braucht ein Konto. Ohne Konto bleibt der Rest der App unverändert offline nutzbar.
+   * ========================================================= */
+
+  Object.assign(ICON, {
+    gear: svgI('<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.3M12 18.2v2.3M20.5 12h-2.3M5.8 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6"/>'),
+    user: svgI('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>'),
+    users: svgI('<circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.6-3 2.8-4.8 5.5-4.8s4.9 1.8 5.5 4.8M15.5 5.8a3 3 0 0 1 0 5.6M17.5 14.4c1.6.6 2.7 2.2 3 4.6"/>'),
+    userPlus: svgI('<circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.6-3 2.8-4.8 5.5-4.8s4.9 1.8 5.5 4.8M18 8v6M15 11h6"/>'),
+    camera: svgI('<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.5"/>'),
+    image: svgI('<rect x="4" y="5" width="16" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 17l4.5-4.5 3.5 3.5 2.5-2.5 4.5 4.5"/>'),
+    qr: svgI('<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 14h2M14 18v2M18 18h2v2h-2z"/>'),
+    cloudOff: svgI('<path d="M7 18.5h10.5a3.5 3.5 0 0 0 .6-6.95A5.5 5.5 0 0 0 7.6 9.1 4.5 4.5 0 0 0 7 18.5zM4 4l16 16"/>'),
+    shield: svgI('<path d="M12 3.5 5 6v5.5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6z"/><path d="M9 12l2.2 2.2L15.5 10"/>'),
+    podium: svgI('<path d="M9 20.5V9.5h6v11M3.5 20.5v-7H9M15 15.5h5.5v5M2.5 20.5h19M12 4l.9 1.8 2 .3-1.4 1.4.3 2-1.8-.9-1.8.9.3-2-1.4-1.4 2-.3z"/>'),
+  });
+  // Apple-Logo (Simple Icons, CC0)
+  const APPLE_LOGO = '<svg class="i apple-logo" viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>';
+
+  const SOCIAL_KEY = 'gymtracker.social.v1.';        // + uid → zuletzt geladene Freundesdaten (für offline)
+  const SOCIAL_PUB = 'gymtracker.socialpub.v1.';     // + uid → Hash der zuletzt geteilten Kennzahlen
+  const SOCIAL_LATER = 'gymtracker.sociallater.v1.'; // + uid → „Profil später anlegen“ gewählt
+  const SOCIAL_ROUTES = new Set(['profile', 'profile-edit', 'friends-add', 'friends-requests', 'friend', 'leaderboard', 'invite']);
+
+  /** Profilfotos nur von sicheren Quellen (Storage-Adresse oder eingebettetes JPEG/PNG). */
+  function safePhoto(p) {
+    if (typeof p !== 'string') return null;
+    if (/^https:\/\/[^\s"'<>]+$/.test(p)) return p;
+    if (/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/[^\s"'<>]*$/.test(p)) return p; // Firebase-Emulator
+    if (/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(p)) return p;
+    return null;
+  }
+
+  /** Rundes Profilfoto – ohne Foto ein grauer Platzhalter. size: '' (42px) | 'md' | 'lg' | 'xl' */
+  function avatarHTML(photo, size) {
+    const src = safePhoto(photo);
+    const cls = 'avatar' + (size ? ' ' + size : '');
+    return src
+      ? `<span class="${cls}"><img src="${esc(src)}" alt="" loading="lazy" decoding="async"></span>`
+      : `<span class="${cls} avatar-empty" aria-hidden="true">${ICON.user}</span>`;
+  }
+
+  const Social = {
+    uid: null,
+    profile: undefined,  // undefined = noch unbekannt, null = keins angelegt, sonst { username, photo }
+    friends: null,       // [{ uid, since }] – null = noch nie geladen
+    people: {},          // uid → { username, photo, stats, updatedAt } | { missing: true }
+    incoming: null,      // eingehende Anfragen
+    outgoing: null,      // ausgehende Anfragen
+    fetchedAt: null,     // letzter bestätigter Server-Stand
+    error: null,
+    peopleAt: 0,
+    loadingPeople: false,
+    unsub: null,
+    pubTimer: null,
+    retryTimer: null,
+
+    api() { return window.GymCloud && window.GymCloud.social; },
+    ready() { return !!(this.uid && this.profile && this.profile.username); },
+    /** Zeigen wir gerade zwischengespeicherte Daten (offline bzw. Verbindung gestört)? */
+    stale() { return !navigator.onLine || !!this.error || !this.api(); },
+
+    /** Zwischengespeicherte Daten des angemeldeten Kontos laden (ohne Netz). */
+    attach() {
+      if (!isUser()) { this.detach(); return; }
+      if (this.uid === account.uid) return;
+      this.detach();
+      this.uid = account.uid;
+      let c = null;
+      try { c = JSON.parse(lsGet(SOCIAL_KEY + this.uid)); } catch (e) { c = null; }
+      c = c || {};
+      this.profile = c.profile === undefined ? undefined : c.profile;
+      this.friends = Array.isArray(c.friends) ? c.friends : null;
+      this.people = c.people && typeof c.people === 'object' ? c.people : {};
+      this.incoming = Array.isArray(c.incoming) ? c.incoming : null;
+      this.outgoing = Array.isArray(c.outgoing) ? c.outgoing : null;
+      this.fetchedAt = c.fetchedAt || null;
+      this.badge();
+    },
+
+    /** Mit der Cloud verbinden: Profil laden, Freunde & Anfragen live beobachten. */
+    connect() {
+      this.attach();
+      if (!this.uid || !this.api() || this.unsub) return;
+      const uid = this.uid;
+      this.fetchProfile();
+      this.unsub = this.api().watch({
+        friends: (list) => {
+          if (uid !== this.uid) return;
+          this.friends = list;
+          for (const k of Object.keys(this.people)) if (!list.some((f) => f.uid === k)) delete this.people[k];
+          this.gotServer();
+          this.refreshPeople(true);
+          this.changed();
+        },
+        incoming: (list) => { if (uid === this.uid) { this.incoming = list; this.gotServer(); this.changed(); } },
+        outgoing: (list) => { if (uid === this.uid) { this.outgoing = list; this.gotServer(); this.changed(); } },
+      }, (err) => {
+        if (uid !== this.uid) return;
+        this.error = err;
+        if (this.unsub) { this.unsub(); this.unsub = null; }
+        clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => this.connect(), 15000);
+        this.changed();
+      });
+    },
+
+    detach() {
+      if (this.unsub) { this.unsub(); this.unsub = null; }
+      clearTimeout(this.pubTimer);
+      clearTimeout(this.retryTimer);
+      Object.assign(this, { uid: null, profile: undefined, friends: null, people: {}, incoming: null, outgoing: null, fetchedAt: null, error: null, peopleAt: 0, forceAgain: false });
+      this.badge();
+    },
+
+    /** Beim Abmelden: Freundesdaten dieses Kontos vom Gerät entfernen. */
+    forget(uid) { lsDel(SOCIAL_KEY + uid); lsDel(SOCIAL_PUB + uid); lsDel(SOCIAL_LATER + uid); },
+
+    persist() {
+      if (!this.uid) return;
+      lsSet(SOCIAL_KEY + this.uid, JSON.stringify({
+        profile: this.profile, friends: this.friends, people: this.people,
+        incoming: this.incoming, outgoing: this.outgoing, fetchedAt: this.fetchedAt,
+      }));
+    },
+
+    gotServer() { this.error = null; this.fetchedAt = Date.now(); this.persist(); },
+
+    async fetchProfile() {
+      const uid = this.uid;
+      try {
+        const p = await this.api().getMyProfile();
+        if (uid !== this.uid) return;
+        this.profile = p && p.username ? { username: p.username, photo: p.photo || null } : null;
+        this.gotServer();
+        this.changed();
+        if (this.profile) this.schedulePublish(1500);
+        else this.maybeOnboard();
+      } catch (e) {
+        if (uid !== this.uid) return;
+        if (e && e.code !== 'unavailable' && navigator.onLine) this.error = e;
+        // offline: zwischengespeichertes Profil weiter nutzen und später erneut fragen
+        if (navigator.onLine) setTimeout(() => { if (this.uid === uid) this.fetchProfile(); }, 10000);
+        else window.addEventListener('online', () => { if (this.uid === uid) this.fetchProfile(); }, { once: true });
+      }
+    },
+
+    /** Profile (inkl. Kennzahlen) der Freunde laden – höchstens einmal pro Minute, außer `force`. */
+    async refreshPeople(force) {
+      if (this.loadingPeople) { if (force) this.forceAgain = true; return; }
+      if (!this.uid || !this.api() || !this.friends || !navigator.onLine) return;
+      if (!force && Date.now() - this.peopleAt < 60000) return;
+      const uid = this.uid;
+      const uids = this.friends.map((f) => f.uid);
+      this.peopleAt = Date.now();
+      if (!uids.length) return;
+      this.loadingPeople = true;
+      try {
+        const res = await this.api().getProfiles(uids);
+        if (uid !== this.uid) return;
+        for (const [k, v] of Object.entries(res)) {
+          this.people[k] = v ? { username: v.username || '', photo: v.photo || null, stats: v.stats || null, updatedAt: v.updatedAt || null } : { missing: true };
+        }
+        this.gotServer();
+      } catch (e) {
+        if (uid === this.uid) this.error = e;
+      } finally {
+        this.loadingPeople = false;
+      }
+      if (uid !== this.uid) return;
+      this.changed();
+      if (this.forceAgain) { this.forceAgain = false; this.refreshPeople(true); }
+    },
+
+    /** Neue Daten → Reiter-Punkt aktualisieren und die offene Freunde-Ansicht neu zeichnen. */
+    changed() {
+      this.badge();
+      if (!SOCIAL_ROUTES.has(parseRoute().name)) return;
+      const a = document.activeElement;
+      if (a && a.matches && a.matches('input')) { renderPending = true; return; }
+      render();
+    },
+
+    badge() {
+      const d = $('#tab-dot-profile');
+      if (d) d.hidden = !(this.uid && this.incoming && this.incoming.length);
+    },
+
+    onOnline() {
+      this.error = null;
+      if (this.uid && !this.unsub) this.connect();
+      this.refreshPeople(true);
+      this.schedulePublish(1000);
+      this.changed();
+    },
+    onOffline() { this.changed(); },
+
+    /** Geteilte Kennzahlen aktualisieren (gebündelt, nur bei Änderungen). */
+    schedulePublish(delay) {
+      if (!this.ready() || !this.api()) return;
+      clearTimeout(this.pubTimer);
+      this.pubTimer = setTimeout(() => this.publish(), delay === undefined ? 4000 : delay);
+    },
+
+    async publish() {
+      if (!this.ready() || !this.api()) return;
+      if (!libLoaded) { this.schedulePublish(2000); return; }
+      const stats = sharedStats();
+      const h = Sync.hash(Sync.stableStringify(stats));
+      const uid = this.uid;
+      if (lsGet(SOCIAL_PUB + uid) === h) return;
+      try {
+        await this.api().publishStats(stats);
+        if (uid === this.uid) lsSet(SOCIAL_PUB + uid, h);
+      } catch (e) { /* offline o. Ä. – nächster Versuch beim nächsten Speichern bzw. online */ }
+    },
+
+    /** Nach dem Anmelden einmalig zur Profil-Einrichtung (Benutzername, Foto) führen. */
+    maybeOnboard() {
+      if (!ui.socialOnboard || this.profile !== null || !this.uid) return;
+      if (lsGet(SOCIAL_LATER + this.uid)) { ui.socialOnboard = false; return; }
+      if (parseRoute().name !== 'home') return; // nicht mitten in der Einrichtung o. Ä. stören
+      ui.socialOnboard = false;
+      ui.pedit = null;
+      go('#/profile/edit');
+    },
+
+    /** Beziehung zu einem Nutzer: self | friend | incoming | outgoing | none */
+    relation(uid) {
+      if (uid === this.uid) return 'self';
+      if ((this.friends || []).some((f) => f.uid === uid)) return 'friend';
+      if ((this.incoming || []).some((r) => r.from === uid)) return 'incoming';
+      if ((this.outgoing || []).some((r) => r.to === uid)) return 'outgoing';
+      return 'none';
+    },
+  };
+
+  /** Das wird geteilt (siehe Core.socialStats) – Rekorde nur, wenn in den Einstellungen erlaubt. */
+  const sharedStats = () => Core.socialStats(db, Date.now(), LIB, { shareRecords: db.settings.shareRecords });
+  /** Eigene Werte für Profil, Vergleich und Rangliste (lokal, immer aktuell). */
+  const myFullStats = () => Core.socialStats(db, Date.now(), LIB);
+
+  function fmtVolume(v) {
+    return v >= 10000 ? fmtNum(Math.round(v / 100) / 10) + ' t' : fmtInt(v) + ' kg';
+  }
+
+  function fmtRecord(r) {
+    if (!r) return '–';
+    if (r.w !== null && r.w !== undefined) return fmtNum(r.w) + ' kg';
+    if (r.r !== null && r.r !== undefined) return r.r + ' Wdh.';
+    return '–';
+  }
+
+  function offlineNote() {
+    if (!Social.stale()) return '';
+    const t = Social.fetchedAt;
+    return `<p class="hint center offline-note">${ICON.cloudOff}<span>${navigator.onLine ? 'Keine Verbindung zum Server' : 'Offline'}${t
+      ? ' – zuletzt aktualisiert am ' + fmtDate(t) + ' um ' + fmtTime(t) + ' Uhr' : ''}</span></p>`;
+  }
+
+  function skeletonRows(n) {
+    return '<div class="sk-item"><div class="sk sk-circle"></div><div class="sk-lines"><div class="sk sk-line" style="width:55%"></div><div class="sk sk-line" style="width:35%"></div></div></div>'.repeat(n);
+  }
+
+  function socialErrorText(e) {
+    const code = (e && e.code) || '';
+    if (code === 'unavailable' || !navigator.onLine) return 'Keine Verbindung – bitte später erneut versuchen.';
+    if (code === 'permission-denied') return 'Das ist gerade nicht möglich (keine Berechtigung).';
+    return authErrorText(e);
+  }
+
+  function needOnline() {
+    if (!Social.api()) { toast(authErrorText({ code: 'no-cloud' })); return false; }
+    if (!navigator.onLine) { toast('Keine Internetverbindung – bitte später erneut versuchen.'); return false; }
+    return true;
+  }
+
+  function withTimeout(p, ms) {
+    return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'deadline-exceeded' })), ms))]);
+  }
+
+  /* ---------- Profilfoto: verkleinern & komprimieren (auf dem Gerät) ---------- */
+
+  function loadImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image')); };
+      img.src = url;
+    });
+  }
+
+  /** Quadratischer Ausschnitt aus der Bildmitte, max. `size` Pixel. */
+  function squareCanvas(img, size) {
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const s = Math.min(w, h);
+    const out = Math.max(1, Math.min(size, s));
+    const c = document.createElement('canvas');
+    c.width = out;
+    c.height = out;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, out, out);
+    ctx.drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, out, out);
+    return c;
+  }
+
+  /** → { blob: JPEG 512 px (für Cloud Storage), dataUrl: JPEG 256 px (Vorschau/Ersatz ohne Storage) } */
+  async function prepareAvatar(file) {
+    const img = await loadImage(file);
+    const big = squareCanvas(img, 512);
+    const blob = await new Promise((r) => big.toBlob(r, 'image/jpeg', 0.84));
+    if (!blob) throw new Error('image');
+    const dataUrl = squareCanvas(img, 256).toDataURL('image/jpeg', 0.78);
+    return { blob, dataUrl };
+  }
+
+  function pickPhoto(camera) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    if (camera) input.setAttribute('capture', 'user');
+    input.addEventListener('change', async () => {
+      const f = input.files && input.files[0];
+      if (!f) return;
+      try {
+        const r = await prepareAvatar(f);
+        if (!ui.pedit) return;
+        Object.assign(ui.pedit, { blob: r.blob, dataUrl: r.dataUrl, changedPhoto: true });
+        render();
+      } catch (e) {
+        toast('Das Foto konnte nicht gelesen werden.');
+      }
+    });
+    input.click();
+  }
+
+  /* ---------- Bausteine ---------- */
+
+  function privacyHTML(first) {
+    return `
+      <section class="card privacy">
+        <h2 class="card-title">${ICON.shield}${first ? 'Deine Privatsphäre' : 'Was Freunde sehen'}</h2>
+        ${first ? '<p class="privacy-intro">Mit einem Profil kannst du Freunde hinzufügen und euch vergleichen. Das wird dafür geteilt:</p>' : ''}
+        <p class="privacy-h">Für bestätigte Freunde sichtbar</p>
+        <ul class="privacy-list">
+          <li>Benutzername und Profilfoto <small>– beides auch in der Suche für angemeldete Nutzer</small></li>
+          <li>Trainingskennzahlen: Einheiten pro Tag, Wochen-Serie, Gesamtzahl, Trainingsvolumen pro Tag</li>
+          <li>Rekorde (Bestgewicht, geschätztes 1RM) bei Übungen aus der Bibliothek <small>– abschaltbar</small></li>
+        </ul>
+        <p class="privacy-h">Bleibt privat</p>
+        <ul class="privacy-list private">
+          <li>Einzelne Sätze, Gewichte pro Satz, Notizen und Trainingspläne</li>
+          <li>Ernährung, Körpergewicht und Körpermaße</li>
+          <li>Deine E-Mail-Adresse</li>
+        </ul>
+        <p class="hint">Deine vollständigen Trainingsdaten sichert die App wie bisher nur für dich in deinem Konto (für deine Geräte) – Freunde haben darauf keinen Zugriff. Profil, Freundschaften und alle Cloud-Daten löschst du jederzeit unter Einstellungen → Konto.</p>
+      </section>`;
+  }
+
+  function statTilesHTML(m) {
+    return `
+      <div class="stats">
+        <div><strong>${m.streak ? ICON.flame : ''}${m.streak}</strong><small>${m.streak === 1 ? 'Woche' : 'Wochen'} Serie</small></div>
+        <div><strong>${m.week}/${m.goal}</strong><small>diese Woche</small></div>
+        <div><strong>${fmtInt(m.total)}</strong><small>Einheiten</small></div>
+      </div>`;
+  }
+
+  function favRecordHTML(st) {
+    const ex = st.fav && libById(st.fav);
+    const r = st.fav && st.records[st.fav];
+    if (!ex || !r) return '';
+    return `
+      <a class="list-item fav-rec" href="#/library/ex/${encodeURIComponent(ex.id)}">
+        <span class="lib-ic" aria-hidden="true">${ICON.trophy}</span>
+        <div class="li-main"><div class="li-sub">Lieblings-Rekord</div><div class="li-title">${esc(ex.name)}</div></div>
+        <div class="li-side"><strong>${fmtRecord(r)}</strong><small>${st.favCount}× trainiert</small></div>
+      </a>`;
+  }
+
+  /** Karte für alle, die (noch) kein Konto haben. */
+  function socialGuestHTML(text) {
+    return `
+      <section class="card social-cta">
+        <span class="social-cta-ic" aria-hidden="true">${ICON.users}</span>
+        <h2>Mit Freunden vergleichen</h2>
+        <p>${esc(text || 'Mit einem Konto kannst du Freunde über ihren Benutzernamen hinzufügen und Trainings, Serien und Rekorde vergleichen.')}</p>
+        <p class="muted">Training, Timer, Ernährung, Bibliothek und Verlauf funktionieren weiterhin komplett ohne Konto und offline.</p>
+        ${cloudConfigured
+          ? '<button class="btn primary block" data-action="open-login">Anmelden oder Konto erstellen</button>'
+          : '<div class="notice">Konten sind noch nicht eingerichtet (Firebase-Daten in <code>firebase-config.js</code> eintragen, siehe README.md).</div>'}
+      </section>`;
+  }
+
+  function setupPromptHTML(text) {
+    return `
+      <section class="card social-cta">
+        <span class="social-cta-ic" aria-hidden="true">${ICON.user}</span>
+        <h2>Profil einrichten</h2>
+        <p>${esc(text || 'Wähle einen Benutzernamen und ein Foto, damit Freunde dich finden können.')}</p>
+        <a class="btn primary block" href="#/profile/edit">Profil erstellen</a>
+      </section>`;
+  }
+
+  /** Prüft, ob Freunde-Funktionen nutzbar sind; sonst passenden Hinweis zeigen. */
+  function socialGate(view) {
+    if (!isUser()) { view.innerHTML = socialGuestHTML(); return false; }
+    if (Social.profile === undefined) {
+      view.innerHTML = navigator.onLine ? skeletonRows(3) : '<div class="empty"><p class="muted">Offline – dein Profil wird geladen, sobald du wieder online bist.</p></div>';
+      return false;
+    }
+    if (!Social.ready()) { view.innerHTML = setupPromptHTML(); return false; }
+    return true;
+  }
+
+  function personRowHTML(p, side, href, flip) {
+    const inner = avatarHTML(p.photo) +
+      `<div class="li-main"><div class="li-title break">${p.self ? 'Du' : '@' + esc(p.username)}</div>${p.sub ? `<div class="li-sub">${esc(p.sub)}</div>` : ''}</div>` + (side || '');
+    const fl = flip ? ` data-flip="${esc(flip)}"` : '';
+    return href ? `<a class="list-item person" href="${href}"${fl}>${inner}${ICON.chevron}</a>` : `<div class="list-item person"${fl}>${inner}</div>`;
+  }
+
+  /** Knopf je nach Beziehung (Suche, Einladung). */
+  function relationHTML(uid, big) {
+    const cls = big ? 'btn block lg' : 'btn sm';
+    switch (Social.relation(uid)) {
+      case 'self': return '<span class="tag">Du</span>';
+      case 'friend': return `<a class="${cls} soft" href="#/friend/${encodeURIComponent(uid)}">Vergleichen</a>`;
+      case 'outgoing': return big ? `<button class="${cls} soft" data-action="friend-cancel" data-uid="${esc(uid)}">Anfrage zurückziehen</button>` : '<span class="tag ghost">Angefragt</span>';
+      case 'incoming': return `<button class="${cls} primary" data-action="friend-accept" data-uid="${esc(uid)}">Annehmen</button>`;
+      default: return `<button class="${cls} primary" data-action="friend-request" data-uid="${esc(uid)}">${ICON.userPlus}${big ? 'Freundschaftsanfrage senden' : 'Anfragen'}</button>`;
+    }
+  }
+
+  /* ---------- Ansicht: Profil ---------- */
+
+  function renderProfile(view) {
+    setHeader({ title: 'Profil', large: true, actions: `<a class="hdr-btn" href="#/settings" aria-label="Einstellungen">${ICON.gear}</a>` });
+    const now = Date.now();
+    const full = myFullStats();
+    const m = Core.socialMetrics(full, now);
+    const settingsCard = `
+      <section class="card flush">
+        ${isUser() && Social.ready() ? menuRow('#/profile/edit', ICON.edit, 'Profil bearbeiten', '', 'Foto, Benutzername, Rekorde teilen') : ''}
+        ${isUser() ? `<button class="row menu-row" data-action="privacy-info"><span class="row-ic" aria-hidden="true">${ICON.shield}</span><span class="row-text"><span>Datenschutz</span><small>Was Freunde sehen – und was privat bleibt</small></span><span class="row-value">${ICON.chevron}</span></button>` : ''}
+        ${menuRow('#/settings', ICON.gear, 'Einstellungen', '', 'Training, Ernährung, Konto, Datensicherung')}
+      </section>`;
+
+    if (!isUser()) {
+      view.innerHTML = `
+        <section class="profile-hero">
+          ${avatarHTML(null, 'xl')}
+          <h2>Ohne Konto</h2>
+          <p>Deine Daten bleiben nur auf diesem Gerät.</p>
+        </section>
+        ${statTilesHTML(m)}
+        ${favRecordHTML(full)}
+        ${socialGuestHTML()}
+        ${settingsCard}`;
+      return;
+    }
+
+    let hero;
+    if (Social.profile === undefined) {
+      hero = `<section class="profile-hero"><div class="sk avatar xl"></div><div class="sk sk-title" style="width:40%;margin:12px auto 6px"></div><div class="sk sk-line" style="width:30%;margin:0 auto"></div></section>`;
+    } else if (!Social.profile) {
+      hero = `<section class="profile-hero">${avatarHTML(null, 'xl')}<h2 class="break">${esc(account.email || 'Dein Konto')}</h2><p>Noch kein Profil</p></section>`;
+    } else {
+      hero = `
+        <section class="profile-hero">
+          <a href="#/profile/edit" class="avatar-link" aria-label="Profil bearbeiten">${avatarHTML(Social.profile.photo, 'xl')}</a>
+          <h2 class="break">@${esc(Social.profile.username)}</h2>
+          <p>${esc(Core.activityText(m.last, now))}</p>
+          <a class="btn soft sm" href="#/profile/edit">${ICON.edit} Profil bearbeiten</a>
+        </section>`;
+    }
+
+    let friends = '';
+    if (Social.profile === null) {
+      friends = setupPromptHTML();
+    } else if (Social.profile) {
+      const nIn = (Social.incoming || []).length;
+      const list = Social.friends;
+      let body;
+      if (list === null) {
+        body = navigator.onLine ? skeletonRows(2) : '<p class="hint center">Freunde werden geladen, sobald du online bist.</p>';
+      } else if (!list.length) {
+        body = `<div class="empty"><p><strong>Noch keine Freunde</strong></p><p class="muted">Suche nach Benutzernamen oder teile deinen Einladungslink.</p></div>`;
+      } else {
+        const rows = list.map((f) => {
+          const p = Social.people[f.uid];
+          if (!p) return navigator.onLine ? skeletonRows(1) : '';
+          if (p.missing) return '';
+          const fm = p.stats ? Core.socialMetrics(p.stats, now) : null;
+          return personRowHTML({ username: p.username, photo: p.photo, sub: fm ? Core.activityText(fm.last, now) : 'noch keine Kennzahlen' },
+            fm ? `<div class="li-side"><strong>${fm.week}</strong><small>diese Woche</small></div>` : '', '#/friend/' + encodeURIComponent(f.uid), 'fr-' + f.uid);
+        }).join('');
+        body = `<div class="list">${rows}</div>`;
+      }
+      friends = `
+        <section class="card flush">
+          ${menuRow('#/friends/requests', ICON.inbox, 'Anfragen', nIn ? `<span class="count-badge">${nIn}</span>` : '', nIn ? (nIn === 1 ? '1 neue Anfrage' : nIn + ' neue Anfragen') : 'Eingehend und gesendet')}
+          ${menuRow('#/friends/add', ICON.userPlus, 'Freund hinzufügen', '', 'Suchen, Link teilen, QR-Code')}
+          ${menuRow('#/leaderboard', ICON.podium, 'Rangliste', '', 'Wer trainiert am meisten?')}
+        </section>
+        <p class="section-label">Freunde${list && list.length ? ' (' + list.length + ')' : ''}</p>
+        ${body}
+        ${offlineNote()}`;
+      Social.refreshPeople();
+    }
+
+    view.innerHTML = `
+      ${hero}
+      ${statTilesHTML(m)}
+      ${favRecordHTML(full)}
+      ${friends}
+      ${settingsCard}`;
+  }
+
+  /* ---------- Ansicht: Profil anlegen / bearbeiten ---------- */
+
+  let unameTimer = null;
+
+  function unameStatusHTML() {
+    const s = ui.pedit && ui.pedit.status;
+    if (!s) return '<span class="muted">3–20 Zeichen: a–z, 0–9, Punkt und Unterstrich.</span>';
+    return `<span class="${s.kind}">${s.kind === 'ok' ? ICON.check : s.kind === 'bad' ? ICON.warn : ''}${esc(s.text)}</span>`;
+  }
+
+  function setUnameStatus(s) {
+    if (ui.pedit) ui.pedit.status = s;
+    const el = $('#uname-status');
+    if (el) el.innerHTML = unameStatusHTML();
+  }
+
+  function onUsernameInput(el) {
+    const p = ui.pedit;
+    if (!p) return;
+    // Nur Kleinbuchstaben – ohne dass der Cursor springt
+    if (el.value !== el.value.toLowerCase()) {
+      const pos = el.selectionStart;
+      el.value = el.value.toLowerCase();
+      try { el.setSelectionRange(pos, pos); } catch (e) { /* */ }
+    }
+    p.username = el.value;
+    const name = Core.normUsername(el.value);
+    clearTimeout(unameTimer);
+    if (!el.value.trim()) { setUnameStatus(null); return; }
+    const err = Core.usernameError(name);
+    if (err) { setUnameStatus({ kind: 'bad', text: err }); return; }
+    if (Social.profile && Social.profile.username === name) { setUnameStatus({ kind: 'ok', text: 'Dein aktueller Benutzername' }); return; }
+    if (!navigator.onLine || !Social.api()) { setUnameStatus({ kind: 'info', text: 'Die Verfügbarkeit wird beim Speichern geprüft.' }); return; }
+    setUnameStatus({ kind: 'info', text: 'Prüfe Verfügbarkeit …' });
+    unameTimer = setTimeout(async () => {
+      try {
+        const free = await Social.api().isUsernameFree(name);
+        if (!ui.pedit || Core.normUsername(ui.pedit.username) !== name) return;
+        setUnameStatus(free ? { kind: 'ok', text: '@' + name + ' ist verfügbar' } : { kind: 'bad', text: '@' + name + ' ist leider schon vergeben' });
+      } catch (e) {
+        setUnameStatus({ kind: 'info', text: 'Die Verfügbarkeit wird beim Speichern geprüft.' });
+      }
+    }, 400);
+  }
+
+  function renderProfileEdit(view) {
+    if (!isUser()) { go('#/profile'); return; }
+    const first = !Social.ready();
+    if (ui.lastRoute !== '#/profile/edit') ui.pedit = null; // neu geöffnet → frisch beginnen
+    if (Social.profile === undefined && navigator.onLine) {
+      setHeader({ title: 'Profil', back: '#/profile' });
+      view.innerHTML = skeletonRows(2);
+      return;
+    }
+    if (!ui.pedit) {
+      ui.pedit = {
+        username: first ? '' : Social.profile.username, photo: first ? null : Social.profile.photo,
+        blob: null, dataUrl: null, changedPhoto: false, status: null, saving: false,
+      };
+    }
+    const p = ui.pedit;
+    setHeader({ title: first ? 'Profil erstellen' : 'Profil bearbeiten', back: '#/profile' });
+    const preview = p.changedPhoto ? p.dataUrl : p.photo;
+    view.innerHTML = `
+      ${first ? privacyHTML(true) : ''}
+      <section class="avatar-edit">
+        <button class="avatar-btn" type="button" data-action="photo-library" aria-label="Profilfoto wählen">
+          ${avatarHTML(preview, 'xl')}<span class="avatar-cam" aria-hidden="true">${ICON.camera}</span>
+        </button>
+        <div class="btn-row">
+          <button class="btn soft sm" type="button" data-action="photo-library">${ICON.image} Foto wählen</button>
+          <button class="btn soft sm" type="button" data-action="photo-camera">${ICON.camera} Kamera</button>
+        </div>
+        ${preview ? '<button class="btn ghost block sm" type="button" data-action="photo-remove">Foto entfernen</button>' : ''}
+      </section>
+      <form id="profile-form" class="auth-form" novalidate>
+        <label class="lbl">Benutzername
+          <span class="uname"><span class="uname-at" aria-hidden="true">@</span><input class="in" id="pedit-username" name="username" type="text"
+            autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="21"
+            value="${esc(p.username)}" placeholder="z. B. max.muster" enterkeyhint="done"></span>
+        </label>
+        <p class="uname-status" id="uname-status" aria-live="polite">${unameStatusHTML()}</p>
+        <section class="card flush">
+          ${switchRow('shareRecords', 'Rekorde mit Freunden teilen', 'Bestgewicht und 1RM je Übung aus der Bibliothek')}
+        </section>
+        <button class="btn primary block lg" type="submit" id="pedit-save">${first ? 'Profil erstellen' : 'Speichern'}</button>
+      </form>
+      ${first ? '<button class="btn ghost block" data-action="profile-later">Später</button>' : '<button class="btn ghost block" data-action="privacy-info">Was sehen meine Freunde?</button>'}`;
+  }
+
+  async function onProfileSubmit(form) {
+    const p = ui.pedit;
+    if (!p || p.saving) return;
+    const name = Core.normUsername(form.elements.username.value);
+    const err = Core.usernameError(name);
+    if (err) { setUnameStatus({ kind: 'bad', text: err }); form.elements.username.focus(); return; }
+    if (!needOnline()) return;
+    const api = Social.api();
+    const first = !Social.ready();
+    const btn = $('#pedit-save');
+    const label = btn.textContent;
+    p.saving = true;
+    btn.disabled = true;
+    btn.textContent = 'Wird gespeichert …';
+    try {
+      let photo = p.photo;
+      if (p.changedPhoto) {
+        photo = null;
+        if (p.blob) {
+          try {
+            photo = await withTimeout(api.uploadPhoto(p.blob), 20000);
+          } catch (e) {
+            // Ohne Cloud Storage (z. B. kostenloser Tarif ohne Storage): kleines Foto direkt im Profil speichern
+            photo = p.dataUrl;
+          }
+        } else {
+          api.deletePhoto().catch(() => {});
+        }
+      }
+      const stats = libLoaded ? sharedStats() : undefined;
+      await withTimeout(api.saveProfile({ username: name, photo, stats }), 20000);
+      Social.profile = { username: name, photo: photo || null };
+      if (stats) lsSet(SOCIAL_PUB + Social.uid, Sync.hash(Sync.stableStringify(stats)));
+      Social.persist();
+      Social.schedulePublish(1000);
+      ui.pedit = null;
+      Haptics.tap();
+      toast(first ? 'Profil erstellt – willkommen, @' + name + '!' : 'Profil gespeichert');
+      if (ui.pendingInvite) {
+        const n = ui.pendingInvite;
+        ui.pendingInvite = null;
+        go('#/invite/' + encodeURIComponent(n));
+      } else go('#/profile');
+    } catch (e) {
+      p.saving = false;
+      btn.disabled = false;
+      btn.textContent = label;
+      if (e && e.code === 'username-taken') setUnameStatus({ kind: 'bad', text: '@' + name + ' ist leider schon vergeben' });
+      else toast(socialErrorText(e));
+    }
+  }
+
+  /* ---------- Ansicht: Freund hinzufügen (Suche, Link, QR-Code) ---------- */
+
+  let searchTimer = null;
+
+  function friendResultsHTML() {
+    const s = ui.friendSearch;
+    const q = Core.normUsername(s.q);
+    if (q.length < 2) return '<p class="hint center">Gib mindestens 2 Zeichen des Benutzernamens ein.</p>';
+    if (!navigator.onLine) return '<p class="hint center">Suche nur mit Internetverbindung möglich.</p>';
+    if (s.error) return '<p class="hint center">Die Suche hat nicht geklappt. Bitte erneut versuchen.</p>';
+    if (!s.results) return skeletonRows(2);
+    if (!s.results.length) return `<p class="hint center">Niemand mit „${esc(q)}“ gefunden.</p>`;
+    return s.results.map((p) => personRowHTML({ username: p.username, photo: p.photo, self: p.uid === Social.uid }, relationHTML(p.uid))).join('');
+  }
+
+  function renderFriendResults() {
+    const el = $('#friend-results');
+    if (el) el.innerHTML = friendResultsHTML();
+  }
+
+  function onFriendSearch(el) {
+    const s = ui.friendSearch;
+    if (!s) return;
+    s.q = el.value;
+    const q = Core.normUsername(el.value);
+    clearTimeout(searchTimer);
+    s.results = null;
+    s.error = null;
+    renderFriendResults();
+    if (q.length < 2 || !navigator.onLine || !Social.api()) return;
+    searchTimer = setTimeout(async () => {
+      try {
+        const r = await Social.api().search(q);
+        if (Core.normUsername(s.q) !== q) return;
+        s.results = r;
+      } catch (e) {
+        s.error = e;
+      }
+      renderFriendResults();
+    }, 300);
+  }
+
+  function inviteLink() {
+    return location.origin + location.pathname + '#/invite/' + encodeURIComponent(Social.profile.username);
+  }
+
+  let qrLoader = null;
+  function loadQR() {
+    if (window.qrcode) return Promise.resolve(window.qrcode);
+    return qrLoader || (qrLoader = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/qrcode.js';
+      s.onload = () => resolve(window.qrcode);
+      s.onerror = () => { qrLoader = null; reject(new Error('qr')); };
+      document.head.appendChild(s);
+    }));
+  }
+
+  /** QR-Code als SVG – immer schwarz auf weiß, damit ihn jede Kamera lesen kann. */
+  async function drawInviteQR(el) {
+    if (!el) return;
+    try {
+      const qrcode = await loadQR();
+      const qr = qrcode(0, 'M');
+      qr.addData(inviteLink());
+      qr.make();
+      const n = qr.getModuleCount();
+      let d = '';
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += 'M' + (c + 3) + ' ' + (r + 3) + 'h1v1h-1z';
+      el.innerHTML = `<svg viewBox="0 0 ${n + 6} ${n + 6}" shape-rendering="crispEdges" aria-hidden="true"><rect width="${n + 6}" height="${n + 6}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+    } catch (e) {
+      el.innerHTML = '<p class="hint center">QR-Code nicht verfügbar.</p>';
+    }
+  }
+
+  function renderFriendsAdd(view) {
+    setHeader({ title: 'Freund hinzufügen', back: '#/profile' });
+    if (!socialGate(view)) return;
+    const s = ui.friendSearch || (ui.friendSearch = { q: '', results: null, error: null });
+    view.innerHTML = `
+      <label class="search">${ICON.search}<input class="in" id="friend-q" type="search" placeholder="Benutzernamen suchen" value="${esc(s.q)}"
+        autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search"></label>
+      <div class="list" id="friend-results">${friendResultsHTML()}</div>
+      <p class="section-label">Einladen</p>
+      <section class="card invite">
+        <div class="qr-tile" id="invite-qr" role="img" aria-label="QR-Code mit deinem Einladungslink"><div class="sk"></div></div>
+        <p class="invite-name">@${esc(Social.profile.username)}</p>
+        <p class="hint center">Lass deinen Freund den Code in der App unter „Freund hinzufügen → Scannen“ oder mit der iPhone-Kamera scannen – oder schick ihm den Link.</p>
+        <div class="btn-row">
+          <button class="btn primary" data-action="invite-share">${ICON.share} Link teilen</button>
+          <button class="btn soft" data-action="qr-scan">${ICON.qr} Scannen</button>
+        </div>
+      </section>`;
+    drawInviteQR($('#invite-qr', view));
+  }
+
+  /* ---------- Ansicht: Einladung (Link oder QR-Code) ---------- */
+
+  function renderInvite(view, raw) {
+    const name = Core.normUsername(raw);
+    setHeader({ title: 'Einladung', back: '#/profile' });
+    if (!isUser()) {
+      ui.pendingInvite = name;
+      view.innerHTML = socialGuestHTML('@' + name + ' möchte sich mit dir vergleichen. Melde dich an oder erstelle ein Konto, um die Anfrage zu senden.');
+      return;
+    }
+    if (Social.profile !== undefined && !Social.ready()) {
+      ui.pendingInvite = name;
+      view.innerHTML = setupPromptHTML('Lege zuerst dein Profil an – danach kannst du @' + name + ' direkt hinzufügen.');
+      return;
+    }
+    if (!socialGate(view)) return;
+    const c = ui.invite && ui.invite.name === name ? ui.invite : (ui.invite = { name, person: undefined, loading: false, error: null });
+    if (c.person === undefined && !c.loading && !c.error && navigator.onLine && Social.api()) {
+      c.loading = true;
+      Social.api().lookup(name).then((p) => { c.person = p; }, (e) => { c.error = e; })
+        .finally(() => { c.loading = false; if (parseRoute().name === 'invite') render(); });
+    }
+    let body;
+    if (c.person) {
+      body = `
+        <section class="profile-hero">
+          ${avatarHTML(c.person.photo, 'xl')}
+          <h2 class="break">@${esc(c.person.username)}</h2>
+          <p>${Social.relation(c.person.uid) === 'self' ? 'Das ist dein eigener Einladungslink.' : 'möchte sich mit dir im Training vergleichen.'}</p>
+        </section>
+        ${Social.relation(c.person.uid) === 'self' ? '<a class="btn soft block" href="#/friends/add">Eigenen Link teilen</a>' : relationHTML(c.person.uid, true)}`;
+    } else if (c.person === null) {
+      body = `<div class="empty"><p><strong>@${esc(name)} gibt es nicht (mehr).</strong></p><p class="muted">Vielleicht hat sich der Benutzername geändert.</p></div>
+        <a class="btn soft block" href="#/friends/add">Freunde suchen</a>`;
+    } else if (c.error || !navigator.onLine) {
+      body = `<div class="empty"><p class="muted">Die Einladung kann nur mit Internetverbindung geöffnet werden.</p></div>
+        <button class="btn soft block" data-action="invite-retry">Erneut versuchen</button>`;
+    } else {
+      body = `<section class="profile-hero"><div class="sk avatar xl"></div><div class="sk sk-title" style="width:40%;margin:12px auto"></div></section>`;
+    }
+    view.innerHTML = body;
+  }
+
+  /* ---------- Ansicht: Anfragen ---------- */
+
+  function renderRequests(view) {
+    setHeader({ title: 'Anfragen', back: '#/profile' });
+    if (!socialGate(view)) return;
+    const tab = ui.reqTab || 'in';
+    const inc = Social.incoming, out = Social.outgoing;
+    const seg = `
+      <div class="segmented" role="tablist">
+        <button role="tab" aria-selected="${tab === 'in'}" data-action="req-tab" data-tab="in">Erhalten${inc && inc.length ? ' (' + inc.length + ')' : ''}</button>
+        <button role="tab" aria-selected="${tab === 'out'}" data-action="req-tab" data-tab="out">Gesendet${out && out.length ? ' (' + out.length + ')' : ''}</button>
+      </div>`;
+    const list = tab === 'in' ? inc : out;
+    let body;
+    if (list === null) {
+      body = navigator.onLine ? skeletonRows(2) : '<p class="hint center">Anfragen werden geladen, sobald du online bist.</p>';
+    } else if (!list.length) {
+      body = `<div class="empty"><p class="muted">${tab === 'in' ? 'Keine offenen Anfragen.' : 'Du hast keine offenen Anfragen gesendet.'}</p></div>
+        ${tab === 'out' ? '<a class="btn soft block" href="#/friends/add">' + ICON.userPlus + ' Freund hinzufügen</a>' : ''}`;
+    } else if (tab === 'in') {
+      body = '<div class="list">' + list.map((r) => personRowHTML({ username: r.fromName, photo: r.fromPhoto, sub: r.at ? 'Anfrage ' + fmtRelative(r.at, Date.now()) : '' },
+        `<div class="req-actions">
+          <button class="icon-btn sm" data-action="friend-decline" data-uid="${esc(r.from)}" aria-label="Anfrage von @${esc(r.fromName)} ablehnen">${ICON.close}</button>
+          <button class="btn primary sm" data-action="friend-accept" data-uid="${esc(r.from)}">Annehmen</button>
+        </div>`, null, 'rq-' + r.id)).join('') + '</div>';
+    } else {
+      body = '<div class="list">' + list.map((r) => personRowHTML({ username: r.toName, photo: r.toPhoto, sub: 'wartet auf Antwort' },
+        `<button class="btn soft sm" data-action="friend-cancel" data-uid="${esc(r.to)}">Zurückziehen</button>`, null, 'rq-' + r.id)).join('') + '</div>';
+    }
+    view.innerHTML = seg + body + offlineNote();
+  }
+
+  /* ---------- Ansicht: Vergleich mit einem Freund ---------- */
+
+  function cmpRowHTML(label, a, b, fmt, them) {
+    const max = Math.max(a, b) || 1;
+    const lead = a === b ? '' : a > b ? ' lead-me' : ' lead-them';
+    return `
+      <div class="cmp${lead}">
+        <div class="cmp-label">${label}</div>
+        <div class="cmp-bar me"><span class="cmp-who">Du</span><span class="cmp-track"><i style="transform:scaleX(${(a / max).toFixed(4)})"></i></span><b>${fmt(a)}</b></div>
+        <div class="cmp-bar them"><span class="cmp-who">${esc(them)}</span><span class="cmp-track"><i style="transform:scaleX(${(b / max).toFixed(4)})"></i></span><b>${fmt(b)}</b></div>
+      </div>`;
+  }
+
+  function renderFriend(view, uid) {
+    const f = (Social.friends || []).find((x) => x.uid === uid);
+    const p = Social.people[uid];
+    const name = p && !p.missing ? '@' + p.username : 'Freund';
+    setHeader({
+      title: name, back: '#/profile',
+      actions: f ? `<button class="hdr-btn" data-action="friend-menu" data-uid="${esc(uid)}" aria-label="Optionen">${ICON.more}</button>` : '',
+    });
+    if (!socialGate(view)) return;
+    if (Social.friends !== null && !f) { go('#/profile'); return; }
+    Social.refreshPeople();
+    if (!p) {
+      view.innerHTML = navigator.onLine
+        ? `<section class="vs-hero"><div class="sk avatar lg"></div><span class="vs-mid">vs</span><div class="sk avatar lg"></div></section><div class="sk" style="height:220px;border-radius:20px;margin-bottom:12px"></div><div class="sk" style="height:160px;border-radius:20px"></div>`
+        : '<div class="empty"><p class="muted">Die Daten deines Freundes werden geladen, sobald du online bist.</p></div>';
+      return;
+    }
+    if (p.missing) {
+      view.innerHTML = '<div class="notice warn"><strong>Profil nicht verfügbar</strong>Dieses Konto wurde gelöscht oder hat die Freundschaft beendet.</div>';
+      return;
+    }
+    const now = Date.now();
+    const mine = myFullStats();
+    const me = Core.socialMetrics(mine, now);
+    const fr = Core.socialMetrics(p.stats, now);
+    const who = '@' + p.username;
+    const int = (v) => fmtInt(v);
+    const weeks = (v) => v + ' Wo.';
+
+    // Rekorde: nur bei Übungen, die beide teilen (feste Bibliotheks-ID)
+    let recs;
+    const mode = ui.recMode || 'w';
+    if (!db.settings.shareRecords) {
+      recs = `<p class="hint">Du teilst deine Rekorde nicht. Aktiviere „Rekorde mit Freunden teilen“ im Profil, um Rekorde zu vergleichen.</p>
+        <a class="btn soft block sm" href="#/profile/edit">Profil bearbeiten</a>`;
+    } else if (!p.stats || !p.stats.records || !Object.keys(p.stats.records).length) {
+      recs = `<p class="hint">${esc(who)} teilt (noch) keine Rekorde.</p>`;
+    } else {
+      const common = Core.commonRecords(mine, p.stats)
+        .map((c) => ({ ...c, ex: libById(c.id) }))
+        .filter((c) => c.ex && ((c.me[mode] || 0) || (c.them[mode] || 0)))
+        .sort((x, y) => x.ex.name.localeCompare(y.ex.name, 'de'));
+      recs = `
+        <div class="segmented small" role="tablist">
+          <button role="tab" aria-selected="${mode === 'w'}" data-action="rec-mode" data-mode="w">Bestgewicht</button>
+          <button role="tab" aria-selected="${mode === 'e'}" data-action="rec-mode" data-mode="e">1RM (geschätzt)</button>
+        </div>` + (common.length
+        ? common.map((c) => cmpRowHTML(esc(c.ex.name), c.me[mode] || 0, c.them[mode] || 0, (v) => (v ? fmtNum(v) + ' kg' : '–'), who)).join('')
+        : '<p class="hint">Noch keine gemeinsamen Übungen. Rekorde erscheinen hier, sobald ihr beide dieselbe Übung aus der Bibliothek trainiert habt.</p>');
+    }
+
+    view.innerHTML = `
+      <section class="vs-hero">
+        <div class="vs-side">${avatarHTML(Social.profile.photo, 'lg')}<b>Du</b></div>
+        <span class="vs-mid">vs</span>
+        <div class="vs-side">${avatarHTML(p.photo, 'lg')}<b class="break">${esc(who)}</b></div>
+      </section>
+      <p class="wk-meta center">${esc(who)}: ${esc(Core.activityText(fr.last, now))}${p.updatedAt ? ' · Stand ' + esc(fmtRelative(p.updatedAt, now)) : ''}</p>
+      <div class="cmp-legend" aria-hidden="true"><span class="me">Du</span><span class="them">${esc(who)}</span></div>
+      <section class="card">
+        <h2 class="card-title">Training</h2>
+        ${cmpRowHTML('Einheiten diese Woche', me.week, fr.week, int, who)}
+        ${cmpRowHTML('Einheiten diesen Monat', me.month, fr.month, int, who)}
+        ${cmpRowHTML('Aktuelle Serie (Wochen mit Wochenziel)', me.streak, fr.streak, weeks, who)}
+        ${cmpRowHTML('Trainings insgesamt', me.total, fr.total, int, who)}
+      </section>
+      <section class="card">
+        <h2 class="card-title">Volumen <small>Gewicht × Wiederholungen</small></h2>
+        ${cmpRowHTML('Letzte 7 Tage', me.vol7, fr.vol7, fmtVolume, who)}
+        ${cmpRowHTML('Letzte 30 Tage', me.vol30, fr.vol30, fmtVolume, who)}
+      </section>
+      <section class="card">
+        <h2 class="card-title">Rekorde bei gemeinsamen Übungen</h2>
+        ${recs}
+      </section>
+      <p class="hint center">Wochenziel: du ${me.goal}×, ${esc(who)} ${fr.goal}× pro Woche. Einzelne Sätze, Gewichte pro Satz und Ernährung bleiben privat.</p>
+      ${offlineNote()}`;
+  }
+
+  /* ---------- Ansicht: Rangliste ---------- */
+
+  const LB_METRICS = [['week', 'Diese Woche'], ['month', 'Dieser Monat'], ['streak', 'Serie'], ['total', 'Gesamt'], ['vol7', 'Volumen 7 T.'], ['vol30', 'Volumen 30 T.']];
+
+  function metricText(k, v) {
+    if (k === 'streak') return v + (v === 1 ? ' Woche' : ' Wochen');
+    if (k === 'vol7' || k === 'vol30') return fmtVolume(v);
+    return fmtInt(v) + (v === 1 ? ' Einheit' : ' Einheiten');
+  }
+
+  function renderLeaderboard(view) {
+    setHeader({ title: 'Rangliste', back: '#/profile' });
+    if (!socialGate(view)) return;
+    Social.refreshPeople();
+    const metric = ui.lbMetric || 'week';
+    const chips = '<div class="chips filter-chips lb-chips">' + LB_METRICS.map(([k, l]) => chip(l, k === metric, 'lb-metric', k)).join('') + '</div>';
+    if (Social.friends === null) {
+      view.innerHTML = chips + (navigator.onLine ? skeletonRows(3) : '<p class="hint center">Die Rangliste wird geladen, sobald du online bist.</p>');
+      return;
+    }
+    const now = Date.now();
+    const entries = [{ uid: Social.uid, name: Social.profile.username, photo: Social.profile.photo, me: true, metrics: Core.socialMetrics(myFullStats(), now) }];
+    let loading = 0;
+    for (const f of Social.friends) {
+      const p = Social.people[f.uid];
+      if (!p) { loading++; continue; }
+      if (p.missing) continue;
+      entries.push({ uid: f.uid, name: p.username, photo: p.photo, metrics: Core.socialMetrics(p.stats, now) });
+    }
+    const ranked = Core.rankBy(entries, metric);
+    const max = Math.max(1, ...ranked.map((e) => e.value));
+    const rows = ranked.map((e) => `
+      <a class="list-item lb-row${e.me ? ' me' : ''}${e.rank <= 3 && e.value ? ' top' : ''}" href="${e.me ? '#/profile' : '#/friend/' + encodeURIComponent(e.uid)}" data-flip="lb-${esc(e.uid)}">
+        <span class="lb-rank">${e.rank}</span>
+        ${avatarHTML(e.photo)}
+        <div class="li-main">
+          <div class="li-title break">${e.me ? 'Du' : '@' + esc(e.name)}</div>
+          <span class="cmp-track lb-track"><i style="transform:scaleX(${(e.value / max).toFixed(4)})"></i></span>
+        </div>
+        <strong class="lb-val">${metricText(metric, e.value)}</strong>
+      </a>`).join('');
+    view.innerHTML = chips + `<div class="list">${rows}${navigator.onLine && loading ? skeletonRows(Math.min(loading, 3)) : ''}</div>` +
+      (Social.friends.length ? '' : `<div class="empty"><p class="muted">Füge Freunde hinzu, um dich mit ihnen zu messen.</p></div><a class="btn primary block" href="#/friends/add">${ICON.userPlus} Freund hinzufügen</a>`) +
+      offlineNote();
+  }
+
+  /** Vergleichsbalken wachsen beim Öffnen von links auf. */
+  const SocialFx = {
+    bars(view) {
+      if (reduced()) return;
+      $$('.cmp-track i', view).forEach((el, i) => {
+        const to = el.style.transform;
+        anim(el, [{ transform: 'scaleX(0)' }, { transform: to }], { duration: 700, delay: Math.min(i, 12) * 35, easing: EASE.out, fill: 'backwards' });
+      });
+    },
+  };
+
+  /* ---------- Aktionen: Freunde ---------- */
+
+  /** Person zu einer uid aus Suche/Einladung (für Name & Foto in der Anfrage). */
+  function knownPerson(uid) {
+    const s = ui.friendSearch && ui.friendSearch.results && ui.friendSearch.results.find((p) => p.uid === uid);
+    if (s) return s;
+    if (ui.invite && ui.invite.person && ui.invite.person.uid === uid) return ui.invite.person;
+    return null;
+  }
+
+  /** Nach einer Aktion: Suchergebnisse direkt aktualisieren (Fokus bleibt), sonst neu zeichnen. */
+  function refreshSocialView() {
+    if ($('#friend-results')) renderFriendResults(); else render();
+  }
+
+  async function sendFriendRequest(uid) {
+    if (!Social.ready()) { toast('Lege zuerst dein Profil an.'); go('#/profile/edit'); return; }
+    const rel = Social.relation(uid);
+    if (rel === 'incoming') { acceptFriend(uid); return; }
+    if (rel !== 'none') return;
+    const person = knownPerson(uid);
+    if (!person || !needOnline()) return;
+    try {
+      await withTimeout(Social.api().sendRequest(uid, Social.profile, person), 20000);
+      Social.outgoing = (Social.outgoing || []).filter((r) => r.to !== uid).concat([{
+        id: Social.uid + '_' + uid, from: Social.uid, to: uid, fromName: Social.profile.username, fromPhoto: Social.profile.photo,
+        toName: person.username, toPhoto: person.photo || null, at: Date.now(),
+      }]);
+      Social.persist();
+      Haptics.tap();
+      toast('Anfrage an @' + person.username + ' gesendet');
+      refreshSocialView();
+    } catch (e) {
+      toast(socialErrorText(e));
+    }
+  }
+
+  async function acceptFriend(uid) {
+    if (!needOnline()) return;
+    const req = (Social.incoming || []).find((r) => r.from === uid);
+    const hasOut = (Social.outgoing || []).some((r) => r.to === uid);
+    try {
+      await withTimeout(Social.api().acceptRequest(uid, hasOut), 20000);
+      Social.incoming = (Social.incoming || []).filter((r) => r.from !== uid);
+      Social.outgoing = (Social.outgoing || []).filter((r) => r.to !== uid);
+      if (!(Social.friends || []).some((f) => f.uid === uid)) Social.friends = (Social.friends || []).concat([{ uid, since: Date.now() }]);
+      const known = Social.people[uid];
+      if (req && (!known || known.missing)) Social.people[uid] = { username: req.fromName, photo: req.fromPhoto, stats: null, updatedAt: null };
+      Social.persist();
+      Social.badge();
+      Haptics.tap();
+      toast(req ? 'Du und @' + req.fromName + ' seid jetzt befreundet' : 'Ihr seid jetzt befreundet');
+      Social.refreshPeople(true);
+      refreshSocialView();
+    } catch (e) {
+      toast(socialErrorText(e));
+    }
+  }
+
+  Object.assign(actions, {
+    'auth-apple': async (el) => {
+      const errEl = $('#apple-error');
+      const show = (msg) => { if (errEl) { errEl.textContent = msg; errEl.hidden = !msg; } else if (msg) toast(msg); };
+      if (!window.GymCloud) { show(authErrorText({ code: 'no-cloud' })); return; }
+      el.disabled = true;
+      show('');
+      try {
+        await window.GymCloud.signInWithApple(); // Erfolg meldet onAuthState → enterAccount()
+      } catch (e) {
+        const code = (e && e.code) || '';
+        if (code === 'auth/operation-not-allowed') show('„Mit Apple anmelden“ ist im Firebase-Projekt noch nicht aktiviert (siehe README.md).');
+        else if (!/popup-closed|cancelled-popup/.test(code)) show(authErrorText(e));
+      } finally {
+        el.disabled = false;
+      }
+    },
+    'privacy-info': () => openDialog({ html: privacyHTML(false), buttons: [{ label: 'Verstanden', style: 'primary' }] }),
+    'photo-library': () => pickPhoto(false),
+    'photo-camera': () => pickPhoto(true),
+    'photo-remove': () => {
+      if (!ui.pedit) return;
+      Object.assign(ui.pedit, { blob: null, dataUrl: null, changedPhoto: true });
+      render();
+    },
+    'profile-later': () => {
+      if (Social.uid) lsSet(SOCIAL_LATER + Social.uid, '1');
+      ui.pedit = null;
+      go('#/profile');
+      toast('Du kannst dein Profil jederzeit hier anlegen.');
+    },
+    'friend-request': (el) => sendFriendRequest(el.dataset.uid),
+    'friend-accept': (el) => acceptFriend(el.dataset.uid),
+    'friend-decline': async (el) => {
+      const uid = el.dataset.uid;
+      if (!needOnline()) return;
+      try {
+        await withTimeout(Social.api().declineRequest(uid), 20000);
+        Social.incoming = (Social.incoming || []).filter((r) => r.from !== uid);
+        Social.persist();
+        Social.badge();
+        toast('Anfrage abgelehnt');
+        refreshSocialView();
+      } catch (e) { toast(socialErrorText(e)); }
+    },
+    'friend-cancel': async (el) => {
+      const uid = el.dataset.uid;
+      if (!needOnline()) return;
+      try {
+        await withTimeout(Social.api().cancelRequest(uid), 20000);
+        Social.outgoing = (Social.outgoing || []).filter((r) => r.to !== uid);
+        Social.persist();
+        toast('Anfrage zurückgezogen');
+        refreshSocialView();
+      } catch (e) { toast(socialErrorText(e)); }
+    },
+    'friend-menu': async (el) => {
+      const uid = el.dataset.uid;
+      const p = Social.people[uid];
+      const name = p && p.username ? '@' + p.username : 'Freund';
+      const c = await actionSheet(name, [{ label: 'Freund entfernen', value: 'rm', danger: true }]);
+      if (c !== 'rm') return;
+      const ok = await confirmAction(name + ' entfernen?',
+        'Ihr seht danach gegenseitig keine Kennzahlen und Rekorde mehr. Du kannst jederzeit eine neue Anfrage senden.', 'Entfernen');
+      if (!ok || !needOnline()) return;
+      try {
+        await withTimeout(Social.api().removeFriend(uid), 20000);
+        Social.friends = (Social.friends || []).filter((f) => f.uid !== uid);
+        delete Social.people[uid];
+        Social.persist();
+        go('#/profile');
+        toast(name + ' entfernt');
+      } catch (e) { toast(socialErrorText(e)); }
+    },
+    'req-tab': (el) => { ui.reqTab = el.dataset.tab; ui.fadeContent = '.segmented'; render(); },
+    'rec-mode': (el) => { ui.recMode = el.dataset.mode; render(); },
+    'lb-metric': (el) => { ui.lbMetric = el.dataset.value; Haptics.tap(); render(); },
+    'invite-share': () => {
+      if (!Social.ready()) return;
+      shareText('Gym Tracker', 'Lass uns im Gym Tracker unsere Trainings vergleichen! Füge mich hinzu: @' + Social.profile.username + '\n\n' + inviteLink());
+    },
+    'invite-retry': () => { ui.invite = null; render(); },
+    'qr-scan': () => {
+      const onCode = (code) => {
+        const m = String(code || '').match(/#\/invite\/([^/?#\s]+)/);
+        let name = '';
+        try { name = Core.normUsername(m ? decodeURIComponent(m[1]) : code); } catch (e) { name = ''; }
+        if (!name || Core.usernameError(name)) { toast('Das ist kein Gym-Tracker-Einladungscode.'); return; }
+        ui.invite = null;
+        go('#/invite/' + encodeURIComponent(name));
+      };
+      openScanner(onCode, {
+        title: 'Code scannen', hint: 'Halte den QR-Code deines Freundes in den Rahmen.', manualLabel: 'Benutzernamen eingeben',
+        manual: (cb) => promptText('Benutzername', { placeholder: 'z. B. max.muster', okLabel: 'Weiter' }).then((v) => { if (v) cb(v); }),
+      });
+    },
+  });
 
   function blurActive() {
     const a = document.activeElement;
@@ -6472,6 +7821,8 @@
       if (list) list.innerHTML = adminListHTML();
       return;
     }
+    if (e.target.id === 'pedit-username') { onUsernameInput(e.target); return; }
+    if (e.target.id === 'friend-q') { onFriendSearch(e.target); return; }
     const f = e.target.dataset && e.target.dataset.field;
     if (!f) return;
     const row = e.target.closest('.set');
@@ -6494,7 +7845,9 @@
       Timer.check(true);
       Timer.render();
       Wake.acquire();
-      if (parseRoute().name === 'home' || parseRoute().name === 'settings') render();
+      const rn = parseRoute().name;
+      if (rn === 'home' || rn === 'settings' || rn === 'profile') render();
+      if (SOCIAL_ROUTES.has(rn)) Social.refreshPeople();
       // Home-Bildschirm-Apps werden oft nur "aufgeweckt" statt neu gestartet → dabei nach Updates schauen
       if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
     } else {
@@ -6521,10 +7874,11 @@
         return;
       }
       enterAccount(user);
-    } else if (isUser()) {
+    } else if (isUser() && !ui.deleting) {
       // Sitzung abgelaufen oder auf einem anderen Gerät Passwort geändert / Konto gelöscht.
       // Die lokale Kopie bleibt erhalten und wird beim nächsten Anmelden weiter abgeglichen.
       stopSync();
+      Social.detach();
       ui.authEmail = account.email;
       account = null;
       saveAccount();
@@ -6543,6 +7897,7 @@
     if (!account && !cloudConfigured) account = { mode: 'guest' };
     db = isUser() ? loadData(dataKey(), Core.emptyData) : loadData(STORAGE_KEY, Core.emptyData);
     writeLocal();
+    Social.attach(); // zuletzt geladene Freundesdaten (auch offline) – verbunden wird, sobald Firebase bereit ist
     applyTheme();
     darkQuery.addEventListener && darkQuery.addEventListener('change', applyTheme);
 
@@ -6580,9 +7935,18 @@
     document.addEventListener('submit', (e) => {
       if (e.target.id === 'auth-form') { e.preventDefault(); onAuthSubmit(e.target); }
       if (e.target.id === 'body-form') { e.preventDefault(); onBodySubmit(e.target); }
+      if (e.target.id === 'profile-form') { e.preventDefault(); onProfileSubmit(e.target); }
     });
-    window.addEventListener('online', () => { if (engine) engine.schedule(0); renderSyncStatus(); });
-    window.addEventListener('offline', renderSyncStatus);
+    window.addEventListener('online', () => { if (engine) engine.schedule(0); renderSyncStatus(); Social.onOnline(); });
+    window.addEventListener('offline', () => { renderSyncStatus(); Social.onOffline(); });
+    // Profilfoto nicht ladbar (offline, gelöscht) → grauer Platzhalter
+    document.addEventListener('error', (e) => {
+      const img = e.target;
+      if (img && img.tagName === 'IMG' && img.parentElement && img.parentElement.classList.contains('avatar')) {
+        img.parentElement.classList.add('avatar-empty');
+        img.replaceWith(document.createRange().createContextualFragment(ICON.user));
+      }
+    }, true);
 
     // Laufzeit des Trainings aktualisieren
     setInterval(() => {
@@ -6616,7 +7980,9 @@
 
     // Schnittstelle für cloud.js und für Tests in der Browser-Konsole
     window.GymApp = {
-      Core, TimerCore, Sync, Timer, save, render, onCloudReady, onAuthState, onBlocked, setAdmin,
+      Core, TimerCore, Sync, Timer, Social, save, render, onCloudReady, onAuthState, onBlocked, setAdmin,
+      /** Fehler bei „Mit Apple anmelden“ per Weiterleitung */
+      onAuthError(e) { if (e && !/popup-closed|cancelled-popup|no-auth-event/.test(e.code || '')) toast(authErrorText(e)); },
       get db() { return db; },
       get account() { return account; },
       get engine() { return engine; },

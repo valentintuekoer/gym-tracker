@@ -2,14 +2,18 @@ rules_version = '2';
 
 // Sicherheitsregeln für den Gym Tracker
 //
-//   users/{uid}                 → Trainingstage, Einstellungen, laufendes Training
-//   users/{uid}/sessions/{id}   → abgeschlossene Einheiten
-//   users/{uid}/body/{id}       → Körpermessungen
-//   profiles/{uid}              → E-Mail, registriert, zuletzt aktiv (für die Nutzerverwaltung)
-//   blocked/{uid}               → gesperrte Konten (nur Administratoren dürfen schreiben)
+//   users/{uid}                  → Trainingstage, Einstellungen, laufendes Training (nur der Nutzer selbst)
+//   users/{uid}/sessions/{id}    → abgeschlossene Einheiten                          (nur der Nutzer selbst)
+//   users/{uid}/body/{id}        → Körpermessungen                                   (nur der Nutzer selbst)
+//   users/{uid}/friends/{fid}    → Freundesliste
+//   profiles/{uid}               → E-Mail, registriert, zuletzt aktiv (für die Nutzerverwaltung)
+//   blocked/{uid}                → gesperrte Konten (nur Administratoren dürfen schreiben)
+//   usernames/{name}             → eindeutiger Benutzername + Foto (für die Suche, angemeldete Nutzer)
+//   publicProfiles/{uid}         → Benutzername, Foto, geteilte Kennzahlen (nur bestätigte Freunde)
+//   requests/{from}_{to}         → Freundschaftsanfragen (nur Absender und Empfänger)
 //
-// Jeder Nutzer darf nur seine eigenen Daten lesen und schreiben – solange er nicht gesperrt ist.
-// Administratoren dürfen alles lesen, schreiben und Konten sperren.
+// Jeder Nutzer darf nur seine eigenen Daten schreiben – solange er nicht gesperrt ist.
+// Fremde Profile sind nur für bestätigte Freunde lesbar. Administratoren dürfen alles.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -19,8 +23,12 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid in ['ADMIN-NUTZER-ID-HIER-EINTRAGEN'];
     }
 
+    function signedIn() {
+      return request.auth != null;
+    }
+
     function isOwner(uid) {
-      return request.auth != null && request.auth.uid == uid;
+      return signedIn() && request.auth.uid == uid;
     }
 
     function isBlocked(uid) {
@@ -32,12 +40,30 @@ service cloud.firestore {
       return isAdmin() || (isOwner(uid) && !isBlocked(uid));
     }
 
+    // Steht der anfragende Nutzer in der Freundesliste von uid?
+    function isFriendOf(uid) {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(uid)/friends/$(request.auth.uid));
+    }
+
+    function photoOk(d) {
+      return d.get('photo', null) == null || (d.photo is string && d.photo.size() < 300000);
+    }
+
     match /users/{uid} {
       allow read, write: if canUse(uid);
 
-      // alle Unter-Sammlungen des Kontos (sessions, body, …)
+      // alle Unter-Sammlungen des Kontos (sessions, body, nutrition, food, friends …)
       match /{collection}/{docId} {
         allow read, write: if canUse(uid);
+      }
+
+      // Freundschaft bestätigen: Der Empfänger einer Anfrage uid → fid trägt sich bei uid ein.
+      // Beenden darf sie jede Seite.
+      match /friends/{fid} {
+        allow create: if isOwner(fid) && !isBlocked(fid)
+          && exists(/databases/$(database)/documents/requests/$(uid + '_' + fid))
+          && request.resource.data.keys().hasOnly(['since']);
+        allow delete: if isOwner(fid);
       }
     }
 
@@ -54,6 +80,56 @@ service cloud.firestore {
     // nur zum Erkennen, ob jemand Administrator ist
     match /admin/{docId} {
       allow read, write: if isAdmin();
+    }
+
+    // ---------- Freunde ----------
+
+    match /usernames/{name} {
+      function validName() {
+        let d = request.resource.data;
+        return name.matches('^[a-z0-9][a-z0-9._]{2,19}$')
+          && d.uid == request.auth.uid && d.username == name
+          && d.keys().hasOnly(['uid', 'username', 'photo', 'updatedAt'])
+          && photoOk(d);
+      }
+      allow get: if signedIn();
+      allow list: if signedIn() && request.query.limit <= 20;
+      allow create: if signedIn() && !isBlocked(request.auth.uid) && validName();
+      allow update: if signedIn() && !isBlocked(request.auth.uid) && resource.data.uid == request.auth.uid && validName();
+      allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+    }
+
+    match /publicProfiles/{uid} {
+      function validProfile() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['username', 'photo', 'stats', 'updatedAt'])
+          && d.username is string
+          // der Benutzername muss wirklich diesem Konto gehören (auch innerhalb derselben Transaktion)
+          && getAfter(/databases/$(database)/documents/usernames/$(d.username)).data.uid == uid
+          && photoOk(d)
+          && (d.get('stats', null) == null || d.stats is map);
+      }
+      allow read: if isAdmin() || isOwner(uid) || isFriendOf(uid);
+      allow create, update: if canUse(uid) && validProfile();
+      allow delete: if canUse(uid);
+    }
+
+    match /requests/{id} {
+      function validRequest() {
+        let d = request.resource.data;
+        let mine = get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data;
+        return d.keys().hasOnly(['from', 'to', 'fromName', 'fromPhoto', 'toName', 'toPhoto', 'at'])
+          && d.from == request.auth.uid
+          && d.to is string && d.to != request.auth.uid
+          && id == request.auth.uid + '_' + d.to
+          // Absender kann sich nicht als jemand anderes ausgeben
+          && d.fromName == mine.username && d.get('fromPhoto', null) == mine.get('photo', null)
+          && photoOk({ 'photo': d.get('toPhoto', null) })
+          && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(d.to));
+      }
+      allow read: if isAdmin() || (signedIn() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid));
+      allow create: if signedIn() && !isBlocked(request.auth.uid) && validRequest();
+      allow delete: if isAdmin() || (signedIn() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid));
     }
   }
 }

@@ -2737,3 +2737,220 @@ button.setup-opt:active { transform: scale(0.97); }
 .wk-advance { margin-top: var(--s-2); }
 .wk-advance svg { width: 18px; height: 18px; }
 .wk-swipe-hint { margin-top: var(--s-2); }
+
+/* =========================================================
+ *  Freunde: Profil, Anfragen, Vergleich, Rangliste
+ *  Nur Schwarz/Weiß/Grau: „Du“ = invertierte Fläche (--inv), Freund = Grau (--muted)
+ * ========================================================= */
+
+/* Profilfoto: rund, ohne Foto grauer Platzhalter */
+.avatar {
+  flex: none;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--surface-3);
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; animation: fade-in var(--d-base) var(--ease-out) both; }
+.avatar svg { width: 24px; height: 24px; stroke-width: 1.6; }
+.avatar.md { width: 52px; height: 52px; }
+.avatar.md svg { width: 30px; height: 30px; }
+.avatar.lg { width: 72px; height: 72px; }
+.avatar.lg svg { width: 42px; height: 42px; stroke-width: 1.4; }
+.avatar.xl { width: 104px; height: 104px; }
+.avatar.xl svg { width: 60px; height: 60px; stroke-width: 1.2; }
+.avatar.sk { box-shadow: none; }
+.list-item .avatar { margin-left: -4px; }
+
+.profile-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--s-2) var(--s-4) var(--s-5);
+}
+.profile-hero .avatar { margin-bottom: var(--s-3); animation: hero-pop 600ms var(--spring) both; }
+.profile-hero h2 { margin: 0; font: 700 26px/1.2 var(--font-display); letter-spacing: -0.03em; }
+.profile-hero p { margin: 4px 0 var(--s-3); color: var(--muted); font-size: 15px; }
+.profile-hero .btn.sm { min-height: 38px; }
+.avatar-link { border-radius: 50%; }
+
+.stats strong svg { width: 0.85em; height: 0.85em; vertical-align: -0.08em; margin-right: 3px; }
+
+.card-title { display: flex; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-3); font: 650 17px/1.3 var(--font-display); letter-spacing: -0.02em; }
+.card-title svg { width: 20px; height: 20px; }
+.card-title small { color: var(--muted); font: 400 13px/1 var(--font); letter-spacing: 0; }
+
+.count-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: var(--r-pill);
+  background: var(--inv);
+  color: var(--on-inv);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fav-rec .li-sub { margin: 0 0 2px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.fav-rec .lib-ic svg { stroke-width: 1.7; }
+
+/* Hinweis-Karte: Konto nötig / Profil einrichten */
+.social-cta { text-align: center; padding: var(--s-5) var(--s-4); }
+.social-cta-ic {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--s-2);
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+.social-cta-ic svg { width: 28px; height: 28px; stroke-width: 1.6; }
+.social-cta h2 { margin: 0 0 var(--s-2); font: 700 20px/1.25 var(--font-display); letter-spacing: -0.02em; }
+.social-cta p { margin: 0 0 var(--s-2); color: var(--text-2); line-height: 1.45; }
+.social-cta p.muted { color: var(--muted); font-size: 14px; }
+
+/* Datenschutz */
+.privacy .privacy-intro { margin: 0 0 var(--s-3); color: var(--text-2); line-height: 1.45; }
+.privacy-h { margin: var(--s-3) 0 var(--s-1); font-size: 13px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.privacy-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.privacy-list li { position: relative; padding-left: 24px; line-height: 1.45; }
+.privacy-list li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text);
+}
+.privacy-list:not(.private) li::before { background: var(--inv); border-color: var(--inv); }
+.privacy-list small { color: var(--muted); }
+.modal-card .privacy { border: 0; padding: 0; background: none; margin: 0 0 var(--s-2); }
+
+/* Mit Apple anmelden (Apple-Vorgabe: schwarz bzw. weiß) */
+.btn.apple { background: var(--inv); color: var(--on-inv); gap: 6px; }
+.btn.apple .apple-logo { width: 19px; height: 19px; margin-top: -3px; }
+.auth .btn.apple { margin-top: 0; }
+#apple-error { margin-top: var(--s-3); }
+
+/* Profil bearbeiten */
+.avatar-edit { display: flex; flex-direction: column; align-items: center; margin: var(--s-2) 0 var(--s-5); }
+.avatar-edit .btn-row { width: 100%; max-width: 360px; }
+.avatar-edit .btn.ghost { max-width: 360px; margin-top: var(--s-1); }
+.avatar-btn { position: relative; border-radius: 50%; transition: transform var(--d-base) var(--spring); }
+.avatar-btn:active { transform: scale(0.95); transition-duration: var(--d-tap); }
+.avatar-cam {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--inv);
+  color: var(--on-inv);
+  box-shadow: 0 0 0 3px var(--bg);
+}
+.avatar-cam svg { width: 18px; height: 18px; }
+.uname { position: relative; display: block; }
+.uname-at { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 500; font-size: 17px; pointer-events: none; }
+.uname .in { padding-left: 32px; }
+.uname-status { margin: calc(var(--s-2) * -1) var(--s-1) 0; min-height: 20px; font-size: 14px; }
+.uname-status span { display: inline-flex; align-items: center; gap: 6px; }
+.uname-status svg { width: 16px; height: 16px; flex: none; }
+.uname-status .ok { color: var(--text); font-weight: 600; }
+.uname-status .bad { color: var(--text); }
+.uname-status .info { color: var(--muted); }
+
+/* Personen-Listen (Suche, Anfragen, Freunde) */
+.list-item.person { gap: var(--s-3); }
+.list-item.person .btn.sm { min-height: 36px; padding: 0 14px; font-size: 14px; flex: none; }
+.list-item.person .btn.sm svg { width: 17px; height: 17px; }
+.list-item.person .tag { flex: none; }
+.req-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+#friend-results { min-height: 66px; }
+#friend-results > .hint { margin: var(--s-3) var(--s-1); }
+
+/* Einladung per Link / QR-Code */
+.invite { display: flex; flex-direction: column; align-items: center; }
+.qr-tile {
+  width: min(220px, 62vw);
+  aspect-ratio: 1;
+  padding: 6px;
+  border-radius: var(--r-card-sm);
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.qr-tile svg { display: block; width: 100%; height: 100%; animation: fade-in var(--d-base) var(--ease-out) both; }
+.qr-tile .sk { width: 100%; height: 100%; }
+.invite-name { margin: var(--s-3) 0 0; font: 700 18px/1.2 var(--font-display); letter-spacing: -0.02em; }
+.invite .hint { margin: var(--s-2) 0 0; }
+.invite .btn-row { width: 100%; }
+
+.offline-note { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.offline-note svg { flex: none; width: 17px; height: 17px; }
+
+/* Vergleich: Du vs. Freund */
+.vs-hero { display: flex; align-items: center; justify-content: center; gap: var(--s-4); padding: var(--s-2) 0 var(--s-3); }
+.vs-side { display: flex; flex-direction: column; align-items: center; gap: var(--s-2); min-width: 0; max-width: 40%; text-align: center; }
+.vs-side b { font-size: 16px; font-weight: 650; letter-spacing: -0.01em; }
+.vs-side .avatar { animation: hero-pop 600ms var(--spring) both; }
+.vs-side:last-child .avatar { animation-delay: 80ms; }
+.vs-mid { color: var(--muted); font: 700 15px/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase; }
+
+.cmp-legend { display: flex; justify-content: center; gap: var(--s-4); margin: 0 0 var(--s-3); font-size: 13px; color: var(--muted); }
+.cmp-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cmp-legend span::before { content: ""; width: 12px; height: 12px; border-radius: 4px; }
+.cmp-legend .me::before { background: var(--inv); }
+.cmp-legend .them::before { background: var(--muted); }
+
+.cmp { padding: var(--s-3) 0; border-top: 1px solid var(--border); }
+.card-title + .cmp, .segmented + .cmp { border-top: 0; padding-top: 0; }
+.cmp-label { margin-bottom: var(--s-2); font-size: 14px; font-weight: 600; color: var(--text-2); }
+.cmp-bar { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 26px; }
+.cmp-bar + .cmp-bar { margin-top: 4px; }
+.cmp-who { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmp-bar.me .cmp-who { color: var(--text); font-weight: 600; }
+.cmp-track { position: relative; display: block; height: 12px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+.cmp-track i { position: absolute; inset: 0; border-radius: 6px; transform-origin: left center; }
+.cmp-bar.me .cmp-track i { background: var(--inv); }
+.cmp-bar.them .cmp-track i { background: var(--muted); }
+.cmp-bar b { min-width: 56px; text-align: right; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.cmp-bar.them b { color: var(--text-2); font-weight: 550; }
+.lead-me .cmp-bar.me b::after,
+.lead-them .cmp-bar.them b::after { content: " ▲"; font-size: 9px; vertical-align: 2px; color: var(--muted); }
+
+/* Rangliste */
+.lb-chips { margin-bottom: var(--s-3); }
+.lb-row { gap: var(--s-3); }
+.lb-row.me { border-color: var(--inv); box-shadow: inset 0 0 0 1px var(--inv); }
+.lb-rank { flex: none; width: 26px; text-align: center; font: 700 17px/1 var(--font-display); color: var(--muted); font-variant-numeric: tabular-nums; }
+.lb-row.top .lb-rank { color: var(--text); }
+.lb-row.top:first-child .lb-rank {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--inv);
+  color: var(--on-inv);
+  font-size: 15px;
+}
+.lb-track { height: 6px; margin-top: 7px; }
+.lb-track i { background: var(--muted); }
+.lb-row.me .lb-track i { background: var(--inv); }
+.lb-val { flex: none; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }

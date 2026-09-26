@@ -116,7 +116,7 @@
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
   --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
-  --spring: cubic-bezier(0.3, 1.35, 0.5, 1);   /* Fallback ohne linear() */
+  --spring: cubic-bezier(0.34, 1.12, 0.64, 1);  /* Fallback ohne linear(): gleiches, leichtes Nachfedern */
   --press-scale: 0.96;
 
   /* Tastatur (per visualViewport gesetzt) */
@@ -178,6 +178,21 @@ button, a, [role="button"], .tab, .chip, label.pick-row {
 }
 
 :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+/* Browser-Oberflächen gehören zum Design: Auswahl, Cursor, Formular-Akzent, Scrollleisten */
+::selection { background: var(--inv); color: var(--on-inv); }
+:root { accent-color: var(--text); scrollbar-color: var(--border-strong) transparent; }
+input, textarea { caret-color: var(--text); }
+/* Sortier-Griff: 44 pt Tippfläche (HIG), ohne das Layout zu verbreitern */
+.drag-handle::after { content: ""; position: absolute; inset: 0 -4px; }
+/* Kleine Bedienelemente: 44 pt Tippfläche, ohne sichtbar größer zu werden */
+.chip, .toast-btn, .uid-btn { position: relative; }
+.chip:not(.small)::after, .toast-btn::after, .uid-btn::after { content: ""; position: absolute; inset: -6px -2px; }
+
+/* Ausgewogene Zeilenumbrüche: keine einzelnen Wörter in der letzten Zeile */
+.large-title, .hdr-title, .modal-title, .setup-title, .intro-title, .auth-title, .card-title,
+.social-cta h2, .profile-hero h2, .empty strong, .summary-hero h2 { text-wrap: balance; }
+.hint, .modal-msg, .setup-text, .intro-text, .auth-sub, .notice, .social-cta p { text-wrap: pretty; }
 :focus:not(:focus-visible) { outline: none; }
 
 .muted { color: var(--muted); }
@@ -613,8 +628,9 @@ body.no-tabbar .view { padding-bottom: calc(var(--safe-bottom) + var(--s-6)); }
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
   width: 36px;
-  color: var(--faint);
+  color: var(--muted);
   touch-action: none;
   cursor: grab;
 }
@@ -811,7 +827,7 @@ input[type="search"].in::-webkit-search-cancel-button { -webkit-appearance: none
 }
 .in.note:focus { border-bottom-color: var(--text); }
 .in.effort { flex: none; width: 72px; min-height: 40px; padding: var(--s-2) 10px; text-align: center; font-variant-numeric: tabular-nums; }
-.set-sub .icon-btn { color: var(--faint); }
+.set-sub .icon-btn { color: var(--muted); }
 
 /* +/− unter dem aktuellen Satz (gedrückt halten = schneller) */
 .set-steps { margin-top: var(--s-2); animation: fade-up var(--d-base) var(--ease-out) both; }
@@ -1367,7 +1383,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   gap: 3px;
   padding-top: 2px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0;
   position: relative;
@@ -1619,7 +1635,7 @@ body.kb-open .toast.show { transform: translate(-50%, 0); }
 .fr-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fr-sub { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .fr-kcal { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.food-row .icon-btn { color: var(--faint); margin-right: -8px; }
+.food-row .icon-btn { color: var(--muted); margin-right: -8px; }
 
 /* Portion / Nährwert-Vorschau */
 .portion { display: flex; gap: 10px; align-items: flex-end; margin-bottom: var(--s-3); }
@@ -1721,7 +1737,7 @@ select.in {
 .modal-full .modal-card { max-height: min(92vh, calc(var(--vvh) - var(--safe-top) - 12px)); }
 
 /* Favoriten-Stern */
-.fav-btn { position: relative; flex: none; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--faint); }
+.fav-btn { position: relative; flex: none; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--muted); }
 .fav-btn svg { width: 22px; height: 22px; }
 .fav-btn.on { color: var(--text); }
 .fav-btn.on svg { fill: currentColor; }
@@ -1771,6 +1787,7 @@ select.in {
 .tag { border: 1px solid var(--border-strong); border-radius: var(--r-pill); padding: 4px 10px; font-size: 13px; font-weight: 500; }
 .tag.ghost { border-style: dashed; color: var(--muted); }
 .tag.accent { background: var(--inv); color: var(--on-inv); border-color: var(--inv); }
+.ex-tags-label { align-self: center; margin-right: 2px; font-size: 13px; color: var(--muted); }
 .lib-hero { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-3); }
 .lib-hero .lib-ic { width: 52px; height: 52px; }
 .lib-hero .lib-ic svg { width: 28px; height: 28px; }
@@ -2058,7 +2075,7 @@ html.theme-anim *::after {
   isolation: isolate;
 }
 .tab { z-index: 1; border-radius: var(--r-pill); padding-top: 0; gap: 2px; }
-.tab span { font-size: 10px; font-weight: 600; white-space: nowrap; }
+.tab span { font-size: 11px; font-weight: 600; white-space: nowrap; letter-spacing: -0.01em; }
 .tab:active { transform: scale(0.94); }
 .tab-lens {
   position: absolute;
@@ -2778,7 +2795,6 @@ button.setup-opt:active { transform: scale(0.97); }
 .profile-hero .avatar { margin-bottom: var(--s-3); animation: hero-pop 600ms var(--spring) both; }
 .profile-hero h2 { margin: 0; font: 700 26px/1.2 var(--font-display); letter-spacing: -0.03em; }
 .profile-hero p { margin: 4px 0 var(--s-3); color: var(--muted); font-size: 15px; }
-.profile-hero .btn.sm { min-height: 38px; }
 .avatar-link { border-radius: 50%; }
 
 .stats strong svg { width: 0.85em; height: 0.85em; vertical-align: -0.08em; margin-right: 3px; }
@@ -2878,7 +2894,7 @@ button.setup-opt:active { transform: scale(0.97); }
 
 /* Personen-Listen (Suche, Anfragen, Freunde) */
 .list-item.person { gap: var(--s-3); }
-.list-item.person .btn.sm { min-height: 36px; padding: 0 14px; font-size: 14px; flex: none; }
+.list-item.person .btn.sm { min-height: var(--tap); padding: 0 14px; font-size: 14px; flex: none; }
 .list-item.person .btn.sm svg { width: 17px; height: 17px; }
 .list-item.person .tag { flex: none; }
 .req-actions { display: flex; align-items: center; gap: 4px; flex: none; }
@@ -2904,7 +2920,7 @@ button.setup-opt:active { transform: scale(0.97); }
 .offline-note { display: flex; flex-direction: column; align-items: center; margin: var(--s-3) 0; }
 .offline-note .hint { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 var(--s-1) var(--s-2); }
 .offline-note .hint svg { flex: none; width: 17px; height: 17px; }
-.offline-note .btn.sm { min-height: 38px; }
+.offline-note .btn.sm { padding: 0 var(--s-4); }
 
 /* Vergleich: Du vs. Freund */
 .vs-hero { display: flex; align-items: center; justify-content: center; gap: var(--s-4); padding: var(--s-2) 0 var(--s-3); }
@@ -2933,8 +2949,10 @@ button.setup-opt:active { transform: scale(0.97); }
 .cmp-bar.them .cmp-track i { background: var(--muted); }
 .cmp-bar b { min-width: 56px; text-align: right; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .cmp-bar.them b { color: var(--text-2); font-weight: 550; }
-.lead-me .cmp-bar.me b::after,
-.lead-them .cmp-bar.them b::after { content: " ▲"; font-size: 9px; vertical-align: 2px; color: var(--muted); }
+/* Wer vorne liegt, steht kräftig da – der andere Wert tritt zurück (keine Symbole, keine Farbe) */
+.lead-me .cmp-bar.them b, .lead-them .cmp-bar.me b { color: var(--muted); font-weight: 500; }
+.lead-them .cmp-bar.them b { color: var(--text); font-weight: 700; }
+.lead-me .cmp-bar.me b { font-weight: 700; }
 
 /* Rangliste */
 .lb-chips { margin-bottom: var(--s-3); }
@@ -2956,3 +2974,31 @@ button.setup-opt:active { transform: scale(0.97); }
 .lb-track i { background: var(--muted); }
 .lb-row.me .lb-track i { background: var(--inv); }
 .lb-val { flex: none; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* =========================================================
+ *  Kontrast erhöhen (iOS-Bedienungshilfen „Kontrast erhöhen“ / prefers-contrast)
+ *  Nebentexte und Linien deutlicher, Glasflächen weniger durchscheinend.
+ * ========================================================= */
+
+@media (prefers-contrast: more) {
+  :root, :root[data-theme="dark"] {
+    --muted: #b3b3b3;
+    --faint: #8f8f8f;
+    --border: #3d3d3d;
+    --border-strong: #6b6b6b;
+    --input-border: #5a5a5a;
+    --glass: rgba(0, 0, 0, 0.94);
+    --glass-fill: rgba(40, 40, 40, 0.9);
+    --glass-edge: rgba(255, 255, 255, 0.4);
+  }
+  :root[data-theme="light"] {
+    --muted: #3d3d3d;
+    --faint: #636363;
+    --border: #b3b3b3;
+    --border-strong: #6b6b6b;
+    --input-border: #8a8a8a;
+    --glass: rgba(255, 255, 255, 0.96);
+    --glass-fill: rgba(255, 255, 255, 0.92);
+    --glass-edge: rgba(0, 0, 0, 0.3);
+  }
+}

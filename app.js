@@ -2268,7 +2268,7 @@
   // Leichte Feder für WAAPI (fällt auf eine Bezier-Kurve zurück, wo linear() fehlt)
   EASE.spring = (window.CSS && CSS.supports && CSS.supports('transition-timing-function', 'linear(0, 1)'))
     ? 'linear(0, 0.063, 0.237, 0.459, 0.662 15.5%, 0.81, 0.909, 0.974 29.4%, 1.012, 1.032 38.5%, 1.037 43%, 1.033 48.6%, 1.01 62.1%, 0.998 76.3%, 1)'
-    : 'cubic-bezier(0.3, 1.35, 0.5, 1)';
+    : 'cubic-bezier(0.34, 1.12, 0.64, 1)';
 
   /** Web Animations API mit Absicherung (ältere Browser: einfach nichts animieren). */
   function anim(el, frames, opts) {
@@ -3130,7 +3130,7 @@
           <div class="day-main">
             <div class="day-name">${esc(d.name)}</div>
             <div class="day-meta">${d.exercises.length} ${d.exercises.length === 1 ? 'Übung' : 'Übungen'} ·
-              ${isActive ? '<span class="accent">läuft gerade</span>' : last ? 'zuletzt ' + fmtRelative(last, now) + (fmtRelative(last, now) === fmtDate(last) ? '' : ' (' + fmtDate(last) + ')') : 'noch nicht trainiert'}</div>
+              ${isActive ? '<span class="accent">läuft gerade</span>' : last ? '<time datetime="' + new Date(last).toISOString() + '" title="' + fmtDate(last) + '">' + (fmtRelative(last, now) === fmtDate(last) ? 'zuletzt am ' : 'zuletzt ') + fmtRelative(last, now) + '</time>' : 'noch nicht trainiert'}</div>
             ${exNames ? `<div class="day-ex">${esc(exNames)}</div>` : ''}
           </div>
           <button class="icon-btn" data-action="day-menu" data-id="${esc(d.id)}" aria-label="Optionen für ${esc(d.name)}">${ICON.more}</button>
@@ -3214,7 +3214,7 @@
         <div><strong>${totalSets}</strong><small>Sätze</small></div>
         <div><strong>ca. ${mins} min</strong><small>Dauer</small></div>
       </div>
-      <p class="wk-meta">${last ? 'Zuletzt trainiert: ' + fmtRelative(last, Date.now()) + (fmtRelative(last, Date.now()) === fmtDate(last) ? '' : ' (' + fmtDate(last) + ')') : 'Noch nicht trainiert'}</p>
+      <p class="wk-meta">${last ? 'Zuletzt trainiert ' + (fmtRelative(last, Date.now()) === fmtDate(last) ? 'am ' : '') + fmtRelative(last, Date.now()) : 'Noch nicht trainiert'}</p>
       <section class="card flush"><ol class="pv-list">${items}</ol></section>
       <div class="pv-actions">
         <button class="btn primary block lg" data-action="open-day" data-id="${esc(day.id)}">${ICON.play} ${isActive ? 'Training fortsetzen' : 'Training starten'}</button>
@@ -3274,7 +3274,7 @@
       ${day.exercises.length ? `<ul class="ex-list" id="ex-list" data-day="${esc(day.id)}">${rows}</ul>`
         : '<div class="empty"><p class="muted">Noch keine Übungen. Füge die erste hinzu.</p></div>'}
       <button class="btn soft block" data-flip="ex-add" data-action="ex-add" data-id="${esc(day.id)}">${ICON.plus} Übung hinzufügen</button>
-      <p class="hint" data-flip="ex-hint">Tipp: Am Griff ${ICON.grip} ziehen oder die Pfeile nutzen, um die Reihenfolge zu ändern. Nach links wischen entfernt eine Übung. Tippe auf den Namen zum Umbenennen und auf die Chips für Sätze, Ziel-Wiederholungen, Satzpause und eine dauerhafte Notiz (z. B. Sitzeinstellung).</p>
+      <p class="hint" data-flip="ex-hint">Am Griff ${ICON.grip} ziehen zum Sortieren, nach links wischen zum Entfernen. Name antippen zum Umbenennen.</p>
       ${day.exercises.length ? `<button class="btn primary block lg" data-flip="ex-start" data-action="open-day" data-id="${esc(day.id)}">${ICON.play} ${isActive ? 'Zum laufenden Training' : 'Training starten'}</button>` : ''}`;
 
     const list = $('#ex-list');
@@ -5494,12 +5494,11 @@
       '<section class="card">' +
         '<div class="lib-hero"><span class="lib-ic" aria-hidden="true">' + muscleIcon(ex.muscle) + '</span>' +
           '<div><div class="li-title">' + esc(ex.muscle) + '</div><div class="li-sub">' + esc(ex.equipment) + ' · ' + esc(ex.type) + '</div></div></div>' +
-        '<div class="ex-tags">' +
-          '<span class="tag">' + esc(ex.muscle) + '</span>' +
+        ((ex.secondary && ex.secondary.length) || ex.custom ? '<div class="ex-tags">' +
+          ((ex.secondary || []).length ? '<span class="ex-tags-label">Auch beteiligt</span>' : '') +
           (ex.secondary || []).map((sMx) => '<span class="tag ghost">' + esc(sMx) + '</span>').join('') +
-          '<span class="tag">' + esc(ex.equipment) + '</span><span class="tag">' + esc(ex.type) + '</span>' +
           (ex.custom ? '<span class="tag accent">eigene Übung</span>' : '') +
-        '</div>' +
+        '</div>' : '') +
         (ex.steps && ex.steps.length ? '<p class="section-label" style="margin-left:0">Ausführung</p><ul class="steps-list">' + ex.steps.map((st) => '<li>' + esc(st) + '</li>').join('') + '</ul>' : '<p class="hint">Keine Beschreibung hinterlegt.</p>') +
       '</section>' +
       (hist.length ?
@@ -6666,12 +6665,14 @@
     return null;
   }
 
+  const AVATAR_PX = { '': 42, md: 52, lg: 72, xl: 104 };
+
   /** Rundes Profilfoto – ohne Foto ein grauer Platzhalter. size: '' (42px) | 'md' | 'lg' | 'xl' */
   function avatarHTML(photo, size) {
     const src = safePhoto(photo);
     const cls = 'avatar' + (size ? ' ' + size : '');
     return src
-      ? `<span class="${cls}"><img src="${esc(src)}" alt="" loading="lazy" decoding="async"></span>`
+      ? `<span class="${cls}"><img src="${esc(src)}" alt="" width="${AVATAR_PX[size || ''] || 42}" height="${AVATAR_PX[size || ''] || 42}" loading="lazy" decoding="async"></span>`
       : `<span class="${cls} avatar-empty" aria-hidden="true">${ICON.user}</span>`;
   }
 

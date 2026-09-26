@@ -129,3 +129,20 @@ test('Einstellung „Rekorde teilen“ ist standardmäßig an und übersteht nor
   assert.equal(Core.normalize({ days: [], settings: { shareRecords: false } }).settings.shareRecords, false);
   assert.equal(Core.normalize({ days: [] }).settings.shareRecords, true);
 });
+
+test('Umbenennen verknüpft die Übung neu mit der Bibliothek (Rekorde zählen zur richtigen Übung)', () => {
+  const db = Core.emptyData();
+  const day = Core.addDay(db, 'Push');
+  const ex = Core.addExercise(db, day.id, 'Bankdrücken', 90, 3, 'bankdruecken-lh');
+  Core.renameExercise(db, day.id, ex.id, 'Kniebeugen', false, LIB);
+  assert.equal(Core.findExercise(db, day.id, ex.id).libId, 'kniebeuge-lh');
+  Core.renameExercise(db, day.id, ex.id, 'Meine Spezialübung', false, LIB);
+  const custom = Core.findExercise(db, day.id, ex.id).libId;
+  assert.ok(custom && db.customExercises.some((c) => c.id === custom));
+  Core.renameExercise(db, day.id, ex.id, 'meine spezialübung', false, LIB); // nur Groß/Klein → ID bleibt
+  assert.equal(Core.findExercise(db, day.id, ex.id).libId, custom);
+  Core.renameExercise(db, day.id, ex.id, 'Bankdrücken', false); // Bibliothek noch nicht geladen → später neu verknüpfen
+  assert.equal(Core.findExercise(db, day.id, ex.id).libId, null);
+  Core.linkPlanToLibrary(db, LIB);
+  assert.equal(Core.findExercise(db, day.id, ex.id).libId, 'bankdruecken-lh');
+});

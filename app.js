@@ -44,6 +44,7 @@
     fatGoal: 70,
     effort: 'off',     // Anstrengung pro Satz erfassen: 'off' | 'rir' | 'rpe'
     shareRecords: true, // Freunde: Rekorde je Übung teilen (Kennzahlen wie Einheiten/Serie immer)
+    gym: null,          // Mein Gym: { name, address, lat, lng, maps: 'apple'|'google' } – nur privat, nie für Freunde
   };
 
   /** Körpermaße: Schlüssel, Bezeichnung, Einheit */
@@ -368,6 +369,7 @@
     db.settings.weeklyGoal = Math.min(7, Math.max(1, Math.round(Number(db.settings.weeklyGoal)) || DEFAULT_SETTINGS.weeklyGoal));
     if (!['off', 'rir', 'rpe'].includes(db.settings.effort)) db.settings.effort = 'off';
     db.settings.shareRecords = db.settings.shareRecords !== false;
+    db.settings.gym = normGym(db.settings.gym);
     db.settings.calorieGoal = parseGoal(db.settings.calorieGoal);
     db.settings.proteinGoal = parseGoal(db.settings.proteinGoal);
     db.settings.carbGoal = parseGoal(db.settings.carbGoal);
@@ -513,13 +515,18 @@
     return db.sessions.some((s) => s.exercises.some((e) => normName(e.name) === key));
   };
 
-  /** Umbenennen; optional werden auch alle Verlaufseinträge mit dem alten Namen umbenannt. */
-  Core.renameExercise = function (db, dayId, exId, name, renameHistory) {
+  /**
+   * Umbenennen; optional werden auch alle Verlaufseinträge mit dem alten Namen umbenannt.
+   * Die feste Bibliotheks-ID folgt dem neuen Namen (sonst zählten z. B. Rekorde beim Freunde-
+   * Vergleich weiter zur alten Übung). Ohne geladene Bibliothek wird sie später neu verknüpft.
+   */
+  Core.renameExercise = function (db, dayId, exId, name, renameHistory, library) {
     const ex = Core.findExercise(db, dayId, exId);
     const newName = String(name).trim();
     if (!ex || !newName) return false;
     const oldKey = normName(ex.name);
     ex.name = newName;
+    if (normName(newName) !== oldKey) ex.libId = library && library.length ? Core.resolveExercise(db, newName, library) : null;
     if (renameHistory) {
       for (const s of db.sessions) for (const e of s.exercises) if (normName(e.name) === oldKey) e.name = newName;
     }
@@ -1458,6 +1465,48 @@
   };
 
   /** "heute trainiert", "vor 3 Tagen trainiert" … */
+  /* ---------- Mein Gym: Route mit Apple Karten / Google Maps ---------- */
+
+  const ROUTE_MODES = ['driving', 'walking', 'transit', 'cycling'];
+
+  /** Gym bereinigen: Name/Adresse als Text, Koordinaten nur wenn gültig. Ohne Adresse und Standort → null. */
+  function normGym(g) {
+    if (!g || typeof g !== 'object') return null;
+    const lat = Number(g.lat), lng = Number(g.lng);
+    const hasPos = g.lat !== null && g.lat !== undefined && g.lng !== null && g.lng !== undefined &&
+      Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+    const out = {
+      name: String(g.name || '').trim().slice(0, 60),
+      address: String(g.address || '').trim().replace(/\s+/g, ' ').slice(0, 200),
+      lat: hasPos ? Math.round(lat * 1e6) / 1e6 : null,
+      lng: hasPos ? Math.round(lng * 1e6) / 1e6 : null,
+      maps: g.maps === 'google' ? 'google' : g.maps === 'apple' ? 'apple' : null,
+    };
+    return out.address || out.lat !== null ? out : null;
+  }
+  Core.normGym = normGym;
+
+  /**
+   * Link, der die schnellste Route ab dem aktuellen Standort in der Karten-App öffnet.
+   * Ziel: Adresse (lesbarer Name in der Karten-App), sonst Koordinaten.
+   * Apple: dokumentiertes Map-Links-Format (daddr/dirflg); Fahrrad über /directions?mode=cycling.
+   * Google: Maps URLs (api=1, travelmode).
+   */
+  Core.routeUrl = function (gym, mode, provider) {
+    const g = normGym(gym);
+    if (!g) return null;
+    const m = ROUTE_MODES.includes(mode) ? mode : 'driving';
+    const coords = g.lat !== null ? g.lat + ',' + g.lng : '';
+    const dest = g.address ? [g.name, g.address].filter(Boolean).join(', ') : coords;
+    const enc = encodeURIComponent;
+    if (provider === 'google') {
+      const gm = { driving: 'driving', walking: 'walking', transit: 'transit', cycling: 'bicycling' }[m];
+      return 'https://www.google.com/maps/dir/?api=1&destination=' + enc(coords || dest) + '&travelmode=' + gm;
+    }
+    if (m === 'cycling') return 'https://maps.apple.com/directions?destination=' + enc(coords || dest) + '&mode=cycling';
+    return 'https://maps.apple.com/?daddr=' + enc(coords || dest) + '&dirflg=' + { driving: 'd', walking: 'w', transit: 'r' }[m];
+  };
+
   Core.activityText = function (last, now) {
     if (!last) return 'noch kein Training';
     const r = fmtRelative(last, now);
@@ -3142,6 +3191,7 @@
     view.innerHTML = `
       ${active}
       ${db.sessions.length ? weekCard() : ''}
+      ${db.days.length ? gymCard() : ''}
       ${db.days.length ? `
         <div class="day-list">${cards}</div>
         <button class="btn soft block" data-action="add-day">${ICON.plus} Neuer Trainingstag</button>
@@ -4811,6 +4861,10 @@
             <span class="row-text"><span>Wochenziel</span><small>Trainings pro Woche – für Serie &amp; Kalender</small></span>
             <span class="row-value">${st.weeklyGoal}× ${ICON.chevron}</span>
           </button>
+          <button class="row" data-action="gym-edit">
+            <span class="row-text"><span>Mein Gym</span><small>für die Route mit einem Tipp</small></span>
+            <span class="row-value break">${st.gym ? esc(st.gym.name || 'festgelegt') : 'nicht festgelegt'} ${ICON.chevron}</span>
+          </button>
         </section>
         <p class="section-label">Pausentimer</p>
         <section class="card flush">
@@ -5181,8 +5235,13 @@
   }
 
   async function openQuick(meal) {
-    const name = await promptText('Schnelleingabe', { placeholder: 'z. B. Restaurant-Essen', message: 'Name optional, danach die Kalorien.', okLabel: 'Weiter' });
-    if (name === null && name !== '') { /* Abbruch */ }
+    const raw = await openDialog({
+      title: 'Schnelleingabe', message: 'Name optional, danach die Kalorien.',
+      input: { placeholder: 'z. B. Restaurant-Essen' },
+      buttons: [{ label: 'Abbrechen', style: 'ghost' }, { label: 'Weiter', style: 'primary', submit: true }],
+    });
+    if (raw === null) return; // abgebrochen
+    const name = String(raw).trim();
     const kcalStr = await promptText('Kalorien', { placeholder: 'kcal', inputmode: 'numeric', okLabel: 'Speichern' });
     if (kcalStr === null) return;
     const kcal = parseNum(kcalStr);
@@ -5829,7 +5888,7 @@
         `Im Verlauf gibt es Einträge für „${ex.name}“. Sollen sie ebenfalls „${name}“ heißen? ` +
         'Sonst beginnt für den neuen Namen ein eigener Verlauf.', 'Ja, mit umbenennen', false);
     }
-    Core.renameExercise(db, dayId, exId, name, renameHistory);
+    Core.renameExercise(db, dayId, exId, name, renameHistory, LIB);
     save(); render();
   }
 
@@ -6657,6 +6716,129 @@
   };
 
   /* =========================================================
+   *  Mein Gym: Adresse speichern, schnellste Route in der Karten-App
+   *  Eine Web-App kann keine Live-Routen mit Verkehr berechnen – das übernimmt die
+   *  Karten-App (Apple Karten auf dem iPhone, sonst Google Maps) ab dem aktuellen Standort.
+   * ========================================================= */
+
+  Object.assign(ICON, {
+    pin: svgI('<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/>'),
+    route: svgI('<circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/>'),
+    car: svgI('<path d="M5 16.5V12l1.8-4.6A2 2 0 0 1 8.7 6h6.6a2 2 0 0 1 1.9 1.4L19 12v4.5M5 12h14M5 16.5h14v2H5zM8 14.5h.01M16 14.5h.01"/>'),
+    walk: svgI('<circle cx="13" cy="4.5" r="1.8"/><path d="M11 21l2-6-3-2.5.8-4.5 3 2.5 3 1M10.8 8.5 8 10.5v3M13 15l2.5 2 1 4"/>'),
+    transit: svgI('<rect x="6" y="3.5" width="12" height="13" rx="3"/><path d="M6 11h12M9 14h.01M15 14h.01M8.5 16.5 7 20M15.5 16.5 17 20"/>'),
+    bike: svgI('<circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5l3 7M10 9l2.5 7H6M14 6h2.5"/>'),
+  });
+
+  const ROUTE_LABEL = { driving: 'Auto', walking: 'Zu Fuß', transit: 'Öffentliche Verkehrsmittel', cycling: 'Fahrrad' };
+  const defaultMaps = () => (isIOS || /Macintosh/.test(navigator.userAgent) ? 'apple' : 'google');
+
+  function gymCard() {
+    const g = db.settings.gym;
+    if (!g) {
+      return `<button class="gym-card gym-empty" data-action="gym-edit">
+        <span class="gym-ic" aria-hidden="true">${ICON.pin}</span>
+        <span class="gym-text"><b>Mein Gym festlegen</b><small>Dann zeigt dir ein Tipp die schnellste Route.</small></span>
+        ${ICON.chevron}
+      </button>`;
+    }
+    return `<div class="gym-card">
+      <button class="gym-main" data-action="gym-edit" aria-label="${esc((g.name || 'Mein Gym') + ', ' + (g.address || 'Standort gespeichert'))} – bearbeiten">
+        <span class="gym-ic" aria-hidden="true">${ICON.pin}</span>
+        <span class="gym-text"><b>${esc(g.name || 'Mein Gym')}</b><small>${esc(g.address || 'Standort gespeichert')}</small></span>
+      </button>
+      <button class="btn primary sm gym-go" data-action="gym-route">${ICON.route} Route</button>
+    </div>`;
+  }
+
+  /** Karten-App mit der Route öffnen (als Link, damit iOS direkt in Apple Karten / Google Maps springt). */
+  function openRoute(mode) {
+    const g = db.settings.gym;
+    const url = g && Core.routeUrl(g, mode, g.maps || defaultMaps());
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  function openGymForm() {
+    const g = db.settings.gym || {};
+    const state = { lat: g.lat ?? null, lng: g.lng ?? null, acc: null, maps: g.maps || defaultMaps() };
+    const posText = () => (state.lat !== null
+      ? `${ICON.check}<span>Standort gespeichert${state.acc ? ' (± ' + fmtInt(state.acc) + ' m)' : ''}</span>`
+      : '<span class="muted">Optional: im Gym tippen, dann führt die Route genau hierher.</span>');
+    const m = customModal(
+      '<h2 class="modal-title">Mein Gym</h2>' +
+      '<p class="modal-msg">Die Route öffnet sich in der Karten-App – mit der schnellsten Verbindung ab deinem aktuellen Standort, inklusive Verkehrslage.</p>' +
+      '<form id="gym-form" class="ff">' +
+        '<label class="lbl">Name<input class="in" name="name" autocomplete="organization" placeholder="z. B. FitX Mitte" value="' + esc(g.name || '') + '"></label>' +
+        '<label class="lbl">Adresse<input class="in" name="address" autocomplete="street-address" placeholder="Straße Hausnummer, PLZ Ort" value="' + esc(g.address || '') + '"></label>' +
+        '<button type="button" class="btn soft block sm" data-locate>' + ICON.pin + ' Aktuellen Standort verwenden</button>' +
+        '<p class="gym-pos" id="gym-pos" aria-live="polite">' + posText() + '</p>' +
+        '<div class="lbl">Karten-App<div class="segmented small" id="gym-maps" role="radiogroup">' +
+          '<button type="button" role="radio" data-maps="apple" aria-checked="' + (state.maps === 'apple') + '" aria-selected="' + (state.maps === 'apple') + '">Apple Karten</button>' +
+          '<button type="button" role="radio" data-maps="google" aria-checked="' + (state.maps === 'google') + '" aria-selected="' + (state.maps === 'google') + '">Google Maps</button>' +
+        '</div></div>' +
+        '<div class="modal-actions"><button type="button" class="btn ghost" data-close>Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>' +
+        (db.settings.gym ? '<button type="button" class="btn ghost block sm danger-text" data-remove>Gym entfernen</button>' : '') +
+      '</form>');
+    const posEl = m.card.querySelector('#gym-pos');
+    const segEl = m.card.querySelector('#gym-maps');
+    segEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-maps]');
+      if (!b) return;
+      state.maps = b.dataset.maps;
+      [...segEl.children].forEach((c) => { c.setAttribute('aria-checked', c === b); c.setAttribute('aria-selected', c === b); });
+    });
+    m.card.querySelector('[data-locate]').addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      if (!navigator.geolocation) { toast('Standort ist hier nicht verfügbar.'); return; }
+      btn.disabled = true;
+      posEl.innerHTML = '<span class="muted">Standort wird bestimmt …</span>';
+      navigator.geolocation.getCurrentPosition((pos) => {
+        btn.disabled = false;
+        Object.assign(state, { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy) });
+        posEl.innerHTML = posText();
+        Haptics.tap();
+      }, (err) => {
+        btn.disabled = false;
+        posEl.innerHTML = '<span>' + (err && err.code === 1
+          ? 'Standortzugriff nicht erlaubt – auf dem iPhone: Einstellungen → Datenschutz → Ortungsdienste → Safari-Websites.'
+          : 'Standort konnte nicht bestimmt werden. Die Adresse reicht aber auch.') + '</span>';
+      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    });
+    const rm = m.card.querySelector('[data-remove]');
+    if (rm) rm.addEventListener('click', () => { db.settings.gym = null; save(); m.close(); render(); toast('Gym entfernt'); });
+    m.card.querySelector('#gym-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const el = e.target.elements;
+      const gym = Core.normGym({ name: el.name.value, address: el.address.value, lat: state.lat, lng: state.lng, maps: state.maps });
+      if (!gym) { toast('Bitte eine Adresse eingeben oder den Standort verwenden.'); el.address.focus(); return; }
+      db.settings.gym = gym;
+      save(); m.close(); render();
+      toast('Gym gespeichert');
+    });
+  }
+
+  Object.assign(actions, {
+    'gym-edit': () => openGymForm(),
+    'gym-route': async () => {
+      if (!db.settings.gym) { openGymForm(); return; }
+      const c = await actionSheet('Route zu ' + (db.settings.gym.name || 'deinem Gym'), [
+        { label: ROUTE_LABEL.driving, value: 'driving', icon: ICON.car },
+        { label: ROUTE_LABEL.walking, value: 'walking', icon: ICON.walk },
+        { label: ROUTE_LABEL.transit, value: 'transit', icon: ICON.transit },
+        { label: ROUTE_LABEL.cycling, value: 'cycling', icon: ICON.bike },
+      ]);
+      if (c) openRoute(c);
+    },
+  });
+
+  /* =========================================================
    *  Freunde: Profil, Anfragen, Vergleich, Rangliste
    *  Alles hier braucht ein Konto. Ohne Konto bleibt der Rest der App unverändert offline nutzbar.
    * ========================================================= */
@@ -6800,10 +6982,21 @@
 
     persist() {
       if (!this.uid) return;
-      lsSet(SOCIAL_KEY + this.uid, JSON.stringify({
+      const snap = {
         profile: this.profile, friends: this.friends, people: this.people,
         incoming: this.incoming, outgoing: this.outgoing, fetchedAt: this.fetchedAt,
-      }));
+      };
+      let json = JSON.stringify(snap);
+      // localStorage teilt sich ~5 MB mit den Trainingsdaten: eingebettete Fotos der anderen
+      // weglassen, wenn der Zwischenspeicher groß wird (offline dann grauer Platzhalter)
+      if (json.length > 300000) {
+        const own = snap.profile;
+        json = JSON.stringify(snap, function (k, v) {
+          const photoKey = k === 'photo' || k === 'fromPhoto' || k === 'toPhoto';
+          return photoKey && this !== own && typeof v === 'string' && v.startsWith('data:') ? null : v;
+        });
+      }
+      if (!lsSet(SOCIAL_KEY + this.uid, json)) lsDel(SOCIAL_KEY + this.uid);
     },
 
     gotServer() { this.error = null; this.fetchedAt = Date.now(); this.persist(); },

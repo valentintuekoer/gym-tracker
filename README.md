@@ -165,6 +165,15 @@ Ohne Internet zeigt die App die zuletzt geladenen Freundesdaten mit „zuletzt a
 
 Speicherorte: `usernames/{name}`, `publicProfiles/{uid}`, `users/{uid}/friends/{fid}`, `requests/{von}_{an}`, Storage `avatars/{uid}.jpg`.
 
+## Mein Gym & Route
+
+*Training*-Reiter → *Mein Gym festlegen* (auch unter *Einstellungen → Training*): Name, Adresse und/oder
+„Aktuellen Standort verwenden“ (am besten einmal im Gym tippen). Danach öffnet *Route* die Karten-App
+(Apple Karten oder Google Maps, wählbar) mit der schnellsten Verbindung ab deinem Standort – Auto, zu Fuß,
+öffentliche Verkehrsmittel oder Fahrrad, inklusive aktueller Verkehrslage. Die Route berechnet die Karten-App;
+die App selbst braucht dafür keinen Kartendienst und keinen API-Schlüssel. Das Gym wird nur in deinen eigenen
+Daten gespeichert und nie mit Freunden geteilt.
+
 ---
 
 ## Wie Konto & Speicherung funktionieren

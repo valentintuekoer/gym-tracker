@@ -203,6 +203,7 @@ Radien: 4/8 für Kleinteile · Eingabe 12 · kleine Karte/Listeneintrag 16 · Ka
 - **Vergleichsbalken (`.cmp`):** Beschriftung „Du“/„@name“, Track `--surface-2`, Füllung per `scaleX`.
 - **Toast:** unten über der Tab-Leiste, optional mit „Rückgängig“ (5 s).
 - **Laufendes Training:** Die Seite steht fest (`body.wk-lock`) – kein vertikales Scrollen, nur seitliches Wischen zwischen den Übungskarten. Jede Karte füllt den freien Bereich bis zur Tab-Leiste bzw. zum Pausentimer; ist sie länger, scrollt nur sie (unten weich ausgeblendet). Nach dem Abhaken rollt die Karte zum nächsten offenen Satz. Weitere Aktionen (Übung hinzufügen, Plan bearbeiten, Verwerfen) im „⋯“-Menü der Kopfzeile neben „Beenden“.
+- **Mein Gym (`.gym-card`):** Karte auf der Startseite unter dem Wochenziel – links Pin-Kreis + Name/Adresse (je eine Zeile, Ellipse), rechts „Route“ als `primary sm`. Noch nicht festgelegt: gestrichelter Umriss (`.gym-empty`) mit Chevron. „Route“ öffnet ein Sheet mit Auto / Zu Fuß / ÖPNV / Fahrrad.
 
 ## Do's and Don'ts
 

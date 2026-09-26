@@ -202,6 +202,7 @@ Radien: 4/8 für Kleinteile · Eingabe 12 · kleine Karte/Listeneintrag 16 · Ka
 - **Profilfoto (`.avatar`):** rund, 42/52/72/104 px; ohne Foto grauer Personen-Platzhalter (`.avatar-empty`).
 - **Vergleichsbalken (`.cmp`):** Beschriftung „Du“/„@name“, Track `--surface-2`, Füllung per `scaleX`.
 - **Toast:** unten über der Tab-Leiste, optional mit „Rückgängig“ (5 s).
+- **Laufendes Training:** Die Seite steht fest (`body.wk-lock`) – kein vertikales Scrollen, nur seitliches Wischen zwischen den Übungskarten. Jede Karte füllt den freien Bereich bis zur Tab-Leiste bzw. zum Pausentimer; ist sie länger, scrollt nur sie (unten weich ausgeblendet). Nach dem Abhaken rollt die Karte zum nächsten offenen Satz. Weitere Aktionen (Übung hinzufügen, Plan bearbeiten, Verwerfen) im „⋯“-Menü der Kopfzeile neben „Beenden“.
 
 ## Do's and Don'ts
 

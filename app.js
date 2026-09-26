@@ -3063,6 +3063,8 @@
       }
     }
     const rn = parseRoute().name;
+    // Im Training steht die Seite fest: nur seitlich wischen, lange Karten scrollen in sich
+    document.body.classList.toggle('wk-lock', rn === 'workout' && !!$('#wk-track', view));
     if (rn === 'food') FoodFx.play(view, sameRoute);
     if (!sameRoute && (rn === 'friend' || rn === 'leaderboard')) SocialFx.bars(view);
     if (rn === 'workout') WorkoutPager.init(view); else WorkoutPager.stop();
@@ -3435,7 +3437,7 @@
     if (!s) { go('#/'); return; }
     setHeader({
       title: s.dayName, back: '#/',
-      actions: `<button class="hdr-btn accent" data-action="finish">Beenden</button>`,
+      actions: `<button class="hdr-btn" data-action="wk-menu" aria-label="Weitere Aktionen">${ICON.more}</button><button class="hdr-btn accent" data-action="finish">Beenden</button>`,
     });
 
     const cardList = s.exercises.map((se, idx) => {
@@ -3533,8 +3535,7 @@
         <div class="wk-pills">${s.exercises.map((se, i) => `<button class="wk-pill ${doneState(se)}" data-action="wk-go" data-index="${i}" aria-label="${i + 1}. ${esc(se.name)}"></button>`).join('')}</div>
         <div class="wk-pager-row"><span id="wk-pos">Übung 1 von ${cardList.length}</span><button class="wk-next-link" id="wk-next" data-action="wk-go" data-index="1" hidden></button></div>
       </div>
-      <div class="wk-track" id="wk-track">${cardList.map((c, i) => `<div class="wk-slide" data-se="${esc(s.exercises[i].id)}">${c}</div>`).join('')}</div>
-      <p class="hint center wk-swipe-hint">Nach links wischen für die nächste Übung</p>` : '';
+      <div class="wk-track" id="wk-track">${cardList.map((c, i) => `<div class="wk-slide" data-se="${esc(s.exercises[i].id)}">${c}</div>`).join('')}</div>` : '';
 
     const wakeHint = !Wake.supported ? `
       <p class="hint warn">Dein Browser kann den Bildschirm nicht automatisch anlassen. Tipp: iPhone-Einstellungen → Anzeige &amp; Helligkeit → Automatische Sperre verlängern.</p>` : '';
@@ -3542,13 +3543,8 @@
     view.innerHTML = `
       <div class="wk-meta">Gestartet ${fmtTime(s.startedAt)} Uhr · <span id="elapsed">${fmtDuration(Date.now() - s.startedAt)}</span></div>
       ${wakeHint}
-      ${cards || '<div class="empty"><p class="muted">Dieser Tag hat noch keine Übungen.</p></div>'}
-      <button class="btn soft block" data-flip="w-add" data-action="w-add-ex">${ICON.plus} Übung hinzufügen</button>
-      <a class="btn ghost block" data-flip="w-plan" href="#/day/${encodeURIComponent(s.dayId || '')}">${ICON.edit} Plan bearbeiten</a>
-      <div class="wk-end" data-flip="w-end">
-        <button class="btn primary block lg" data-action="finish">Training beenden &amp; speichern</button>
-        <button class="btn ghost block danger-text" data-action="discard">Training verwerfen</button>
-      </div>`;
+      ${cards || `<div class="empty"><p class="muted">Dieser Tag hat noch keine Übungen.</p>
+        <button class="btn primary block" data-action="w-add-ex">${ICON.plus} Übung hinzufügen</button></div>`}`;
   }
 
   /**
@@ -3585,16 +3581,19 @@
           if (nx) { nextBtn.dataset.index = String(i + 1); nextBtn.innerHTML = '<span>Als Nächstes: ' + esc(nx.name) + '</span>' + ICON.chevron; }
         }
       };
-      const syncHeight = (animate) => {
-        const sl = slides[cur];
-        if (!sl || !track.isConnected) return;
-        track.style.transition = animate && !reduced() ? '' : 'none';
-        track.style.height = sl.offsetHeight + 'px';
-      };
       track.scrollLeft = cur * width();
       labels(cur);
-      syncHeight(false);
-      let raf = 0, settle = 0;
+      // Jede Karte behält ihre Scrollposition über Neuzeichnungen hinweg …
+      const mem = ui.wkScroll || (ui.wkScroll = {});
+      slides.forEach((sl) => {
+        if (mem[sl.dataset.se]) sl.scrollTop = mem[sl.dataset.se];
+        sl.addEventListener('scroll', () => { mem[sl.dataset.se] = sl.scrollTop; }, { passive: true });
+      });
+      // … und zeigt den Satz, an dem du gerade arbeitest (nach dem Abhaken: den nächsten)
+      const reveal = ui.wkReveal;
+      ui.wkReveal = null;
+      slides.forEach((sl) => this.reveal(sl, reveal && reveal.se === sl.dataset.se ? reveal : null));
+      let raf = 0;
       const frame = () => {
         raf = 0;
         const p = track.scrollLeft / width();
@@ -3609,14 +3608,26 @@
         }
         const i = Math.max(0, Math.min(slides.length - 1, Math.round(p)));
         if (i !== cur) { cur = i; labels(i); }
-        clearTimeout(settle);
-        settle = setTimeout(() => syncHeight(true), 80);
       };
       track.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(frame); }, { passive: true });
+      // Beim Drehen/Größenänderung auf der aktuellen Übung bleiben
       if (window.ResizeObserver) {
-        this.ro = new ResizeObserver(() => syncHeight(true));
-        slides.forEach((sl) => this.ro.observe(sl));
+        this.ro = new ResizeObserver(() => { track.scrollLeft = cur * width(); });
+        this.ro.observe(track);
       }
+    },
+    /** Aktiven (bzw. neu hinzugefügten) Satz in der Karte sichtbar machen – nur wenn er verdeckt ist. */
+    reveal(slide, req) {
+      const sets = [...slide.querySelectorAll('.set')];
+      const target = req && req.what === 'last' ? sets[sets.length - 1]
+        : slide.querySelector('.set:not(.done)') || slide.querySelector('.wk-advance');
+      if (!target) return;
+      const r = target.getBoundingClientRect(), sr = slide.getBoundingClientRect();
+      const top = r.top - sr.top + slide.scrollTop, bottom = top + r.height;
+      const viewTop = slide.scrollTop, viewBottom = viewTop + slide.clientHeight - 24;
+      if (top >= viewTop && bottom <= viewBottom) return;
+      const to = Math.max(0, top - Math.max(12, (slide.clientHeight - r.height) * 0.3));
+      if (req && req.smooth && !reduced()) slide.scrollTo({ top: to, behavior: 'smooth' }); else slide.scrollTop = to;
     },
     go(i) {
       const t = this.track;
@@ -6085,7 +6096,7 @@
         root.setProperty('--kb', (kb > 60 ? kb : 0) + 'px');
         root.setProperty('--vvh', Math.round(vv.height) + 'px');
         const a = document.activeElement;
-        if (kb > 60 && a && a.closest && a.closest('.modal-card')) {
+        if (kb > 60 && a && a.closest && a.closest('.modal-card, .wk-slide')) {
           setTimeout(() => { try { a.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }); } catch (e) { /* */ } }, 320);
         }
       };
@@ -6177,12 +6188,14 @@
       save();
       Haptics.tap();
       if (res.done && res.rest > 0) Timer.start(res.rest, res.name);
+      ui.wkReveal = { se: row.dataset.se, smooth: true };
       ui.popSet = { id: row.dataset.set };
       render();
       ui.popSet = null;
     },
     'set-add': (el) => {
       Core.addSet(db, el.dataset.se);
+      ui.wkReveal = { se: el.dataset.se, what: 'last', smooth: true };
       save(); render();
     },
     'set-del': async (el) => {
@@ -6405,6 +6418,18 @@
     'effort': (el) => { db.settings.effort = el.dataset.value; save(); render(); },
     'food-date': (el) => { ui.foodDate = el.dataset.key; render(); },
     'w-add-ex': () => addExercise(db.activeSession.dayId),
+    'wk-menu': async () => {
+      const s = db.activeSession;
+      if (!s) return;
+      const c = await actionSheet(s.dayName, [
+        { label: 'Übung hinzufügen', value: 'add', icon: ICON.plus },
+        { label: 'Plan bearbeiten', value: 'plan', icon: ICON.edit },
+        { label: 'Training verwerfen', value: 'discard', danger: true },
+      ]);
+      if (c === 'add') addExercise(s.dayId);
+      else if (c === 'plan') go('#/day/' + encodeURIComponent(s.dayId || ''));
+      else if (c === 'discard') actions.discard();
+    },
     'finish': async () => {
       const s = db.activeSession;
       if (!s) return;

@@ -2753,7 +2753,47 @@ button.setup-opt:active { transform: scale(0.97); }
 .wk-slide > .card { margin-bottom: var(--s-2); transform-origin: center top; }
 .wk-advance { margin-top: var(--s-2); }
 .wk-advance svg { width: 18px; height: 18px; }
-.wk-swipe-hint { margin-top: var(--s-2); }
+
+/* ---------- Laufendes Training: Seite steht fest, nur seitlich wischen ----------
+ * Die Ansicht ist genau so hoch wie der freie Bereich zwischen Kopfzeile und Tab-Leiste
+ * (bzw. Pausentimer oder Tastatur). Die Übungskarte füllt ihn; ist sie länger, scrollt nur sie. */
+html:has(body.wk-lock),
+body.wk-lock,
+html.standalone body.wk-lock { overflow: hidden; overscroll-behavior: none; }
+body.wk-lock .view {
+  --wk-bottom: calc(var(--tabbar-h) + var(--tabbar-bottom) + var(--s-3));
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--hdr-h) - var(--safe-top));
+  height: calc(100dvh - var(--hdr-h) - var(--safe-top));
+  padding-bottom: var(--wk-bottom);
+  overflow: hidden;
+}
+body.wk-lock.timer-on .view { --wk-bottom: calc(var(--tabbar-h) + var(--timer-h) + var(--tabbar-bottom) + var(--s-2)); }
+/* Tastatur offen: Tab-Leiste und Timer sind weg, sichtbar ist nur noch der Bereich über der Tastatur */
+body.wk-lock.kb-open .view { height: calc(var(--vvh) - var(--hdr-h) - var(--safe-top)); --wk-bottom: var(--s-2); }
+body.wk-lock .view > * { flex: none; }
+body.wk-lock .wk-pager { position: relative; top: auto; }
+body.wk-lock .wk-track {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  align-items: stretch;
+  transition: none;
+}
+body.wk-lock .wk-slide {
+  position: relative;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: var(--s-2);
+  /* weich ausblenden, wenn eine lange Karte unter den unteren Rand läuft */
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 20px), transparent);
+  mask-image: linear-gradient(180deg, #000 calc(100% - 20px), transparent);
+}
+body.wk-lock .wk-slide::-webkit-scrollbar { display: none; }
+body.wk-lock .wk-slide > .card { margin-bottom: var(--s-4); }
 
 /* =========================================================
  *  Freunde: Profil, Anfragen, Vergleich, Rangliste

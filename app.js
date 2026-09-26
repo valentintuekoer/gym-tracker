@@ -513,13 +513,18 @@
     return db.sessions.some((s) => s.exercises.some((e) => normName(e.name) === key));
   };
 
-  /** Umbenennen; optional werden auch alle Verlaufseinträge mit dem alten Namen umbenannt. */
-  Core.renameExercise = function (db, dayId, exId, name, renameHistory) {
+  /**
+   * Umbenennen; optional werden auch alle Verlaufseinträge mit dem alten Namen umbenannt.
+   * Die feste Bibliotheks-ID folgt dem neuen Namen (sonst zählten z. B. Rekorde beim Freunde-
+   * Vergleich weiter zur alten Übung). Ohne geladene Bibliothek wird sie später neu verknüpft.
+   */
+  Core.renameExercise = function (db, dayId, exId, name, renameHistory, library) {
     const ex = Core.findExercise(db, dayId, exId);
     const newName = String(name).trim();
     if (!ex || !newName) return false;
     const oldKey = normName(ex.name);
     ex.name = newName;
+    if (normName(newName) !== oldKey) ex.libId = library && library.length ? Core.resolveExercise(db, newName, library) : null;
     if (renameHistory) {
       for (const s of db.sessions) for (const e of s.exercises) if (normName(e.name) === oldKey) e.name = newName;
     }
@@ -5181,8 +5186,13 @@
   }
 
   async function openQuick(meal) {
-    const name = await promptText('Schnelleingabe', { placeholder: 'z. B. Restaurant-Essen', message: 'Name optional, danach die Kalorien.', okLabel: 'Weiter' });
-    if (name === null && name !== '') { /* Abbruch */ }
+    const raw = await openDialog({
+      title: 'Schnelleingabe', message: 'Name optional, danach die Kalorien.',
+      input: { placeholder: 'z. B. Restaurant-Essen' },
+      buttons: [{ label: 'Abbrechen', style: 'ghost' }, { label: 'Weiter', style: 'primary', submit: true }],
+    });
+    if (raw === null) return; // abgebrochen
+    const name = String(raw).trim();
     const kcalStr = await promptText('Kalorien', { placeholder: 'kcal', inputmode: 'numeric', okLabel: 'Speichern' });
     if (kcalStr === null) return;
     const kcal = parseNum(kcalStr);
@@ -5829,7 +5839,7 @@
         `Im Verlauf gibt es Einträge für „${ex.name}“. Sollen sie ebenfalls „${name}“ heißen? ` +
         'Sonst beginnt für den neuen Namen ein eigener Verlauf.', 'Ja, mit umbenennen', false);
     }
-    Core.renameExercise(db, dayId, exId, name, renameHistory);
+    Core.renameExercise(db, dayId, exId, name, renameHistory, LIB);
     save(); render();
   }
 
@@ -6800,10 +6810,21 @@
 
     persist() {
       if (!this.uid) return;
-      lsSet(SOCIAL_KEY + this.uid, JSON.stringify({
+      const snap = {
         profile: this.profile, friends: this.friends, people: this.people,
         incoming: this.incoming, outgoing: this.outgoing, fetchedAt: this.fetchedAt,
-      }));
+      };
+      let json = JSON.stringify(snap);
+      // localStorage teilt sich ~5 MB mit den Trainingsdaten: eingebettete Fotos der anderen
+      // weglassen, wenn der Zwischenspeicher groß wird (offline dann grauer Platzhalter)
+      if (json.length > 300000) {
+        const own = snap.profile;
+        json = JSON.stringify(snap, function (k, v) {
+          const photoKey = k === 'photo' || k === 'fromPhoto' || k === 'toPhoto';
+          return photoKey && this !== own && typeof v === 'string' && v.startsWith('data:') ? null : v;
+        });
+      }
+      if (!lsSet(SOCIAL_KEY + this.uid, json)) lsDel(SOCIAL_KEY + this.uid);
     },
 
     gotServer() { this.error = null; this.fetchedAt = Date.now(); this.persist(); },

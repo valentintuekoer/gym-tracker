@@ -6693,18 +6693,7 @@
     api() { return window.GymCloud && window.GymCloud.social; },
     ready() { return !!(this.uid && this.profile && this.profile.username); },
     /** Zeigen wir gerade zwischengespeicherte Daten (offline bzw. Verbindung gestört)? */
-    stale() { return !!this.reason(); },
-    /**
-     * Warum gerade keine Live-Daten? 'offline' | 'update' (neue App, aber noch alte Cloud-Anbindung
-     * aus dem Cache) | 'loading' (Firebase noch nicht geladen) | 'error' | null (alles verbunden)
-     */
-    reason() {
-      if (!navigator.onLine) return 'offline';
-      if (window.GymCloud && !window.GymCloud.social) return 'update';
-      if (!window.GymCloud) return 'loading';
-      if (this.error) return 'error';
-      return null;
-    },
+    stale() { return !navigator.onLine || !!this.error || !this.api(); },
 
     /** Zwischengespeicherte Daten des angemeldeten Kontos laden (ohne Netz). */
     attach() {
@@ -6728,37 +6717,27 @@
     connect() {
       this.attach();
       if (!this.uid || !this.api() || this.unsub) return;
-      // Beim App-Start ist Firebase oft schon geladen, die gespeicherte Anmeldung aber noch nicht
-      // wiederhergestellt → warten; onAuthState ruft connect() erneut auf.
-      const cur = window.GymCloud.currentUser && window.GymCloud.currentUser();
-      if (!cur || cur.uid !== this.uid) return;
       const uid = this.uid;
       this.fetchProfile();
-      try {
-        this.unsub = this.api().watch({
-          friends: (list) => {
-            if (uid !== this.uid) return;
-            this.friends = list;
-            for (const k of Object.keys(this.people)) if (!list.some((f) => f.uid === k)) delete this.people[k];
-            this.gotServer();
-            this.refreshPeople(true);
-            this.changed();
-          },
-          incoming: (list) => { if (uid === this.uid) { this.incoming = list; this.gotServer(); this.changed(); } },
-          outgoing: (list) => { if (uid === this.uid) { this.outgoing = list; this.gotServer(); this.changed(); } },
-        }, (err) => {
+      this.unsub = this.api().watch({
+        friends: (list) => {
           if (uid !== this.uid) return;
-          this.error = err;
-          if (this.unsub) { this.unsub(); this.unsub = null; }
-          clearTimeout(this.retryTimer);
-          this.retryTimer = setTimeout(() => this.connect(), 15000);
+          this.friends = list;
+          for (const k of Object.keys(this.people)) if (!list.some((f) => f.uid === k)) delete this.people[k];
+          this.gotServer();
+          this.refreshPeople(true);
           this.changed();
-        });
-      } catch (e) {
-        // darf nie die übrige Cloud-Anbindung (Abgleich der Trainingsdaten) mitreißen
-        this.error = e;
-        this.unsub = null;
-      }
+        },
+        incoming: (list) => { if (uid === this.uid) { this.incoming = list; this.gotServer(); this.changed(); } },
+        outgoing: (list) => { if (uid === this.uid) { this.outgoing = list; this.gotServer(); this.changed(); } },
+      }, (err) => {
+        if (uid !== this.uid) return;
+        this.error = err;
+        if (this.unsub) { this.unsub(); this.unsub = null; }
+        clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => this.connect(), 15000);
+        this.changed();
+      });
     },
 
     detach() {
@@ -6907,32 +6886,11 @@
     return '–';
   }
 
-  /** Hinweis, warum die Freundesdaten nicht live sind – mit Grund und (wo sinnvoll) „Erneut versuchen“. */
   function offlineNote() {
-    const why = Social.reason();
-    if (!why) return '';
+    if (!Social.stale()) return '';
     const t = Social.fetchedAt;
-    const code = Social.error && Social.error.code ? ' (' + Social.error.code + ')' : '';
-    const text = {
-      offline: 'Offline',
-      update: 'Die App wurde aktualisiert – bitte einmal neu laden',
-      loading: 'Verbindung zur Cloud wird aufgebaut …',
-      error: 'Keine Verbindung zum Server' + code,
-    }[why];
-    const retry = why === 'update' || why === 'error'
-      ? `<button class="btn soft sm" data-action="social-retry">${ICON.reload} ${why === 'update' ? 'Neu laden' : 'Erneut versuchen'}</button>` : '';
-    return `<div class="offline-note"><p class="hint center">${ICON.cloudOff}<span>${text}${t
-      ? ' – zuletzt aktualisiert am ' + fmtDate(t) + ' um ' + fmtTime(t) + ' Uhr' : ''}</span></p>${retry}</div>`;
-  }
-
-  /** Neue App-Version komplett laden (Service Worker aktualisieren, dann neu starten). */
-  async function reloadForUpdate() {
-    try {
-      const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
-      if (reg) await reg.update();
-    } catch (e) { /* offline o. Ä. */ }
-    save();
-    location.reload();
+    return `<p class="hint center offline-note">${ICON.cloudOff}<span>${navigator.onLine ? 'Keine Verbindung zum Server' : 'Offline'}${t
+      ? ' – zuletzt aktualisiert am ' + fmtDate(t) + ' um ' + fmtTime(t) + ' Uhr' : ''}</span></p>`;
   }
 
   function skeletonRows(n) {
@@ -6947,7 +6905,6 @@
   }
 
   function needOnline() {
-    if (Social.reason() === 'update') { toast('Die App wurde aktualisiert – sie lädt jetzt neu.'); setTimeout(reloadForUpdate, 1200); return false; }
     if (!Social.api()) { toast(authErrorText({ code: 'no-cloud' })); return false; }
     if (!navigator.onLine) { toast('Keine Internetverbindung – bitte später erneut versuchen.'); return false; }
     return true;
@@ -7801,14 +7758,6 @@
       shareText('Gym Tracker', 'Lass uns im Gym Tracker unsere Trainings vergleichen! Füge mich hinzu: @' + Social.profile.username + '\n\n' + inviteLink());
     },
     'invite-retry': () => { ui.invite = null; render(); },
-    'social-retry': () => {
-      if (Social.reason() === 'update') { reloadForUpdate(); return; }
-      Social.error = null;
-      if (!Social.unsub) Social.connect(); else Social.fetchProfile();
-      Social.refreshPeople(true);
-      render();
-      toast('Verbinde …');
-    },
     'qr-scan': () => {
       const onCode = (code) => {
         const m = String(code || '').match(/#\/invite\/([^/?#\s]+)/);
@@ -7912,15 +7861,8 @@
 
   /** Firebase ist geladen → falls angemeldet, Abgleich starten. */
   function onCloudReady() {
-    // Nach einem Update kann kurz eine alte Cloud-Anbindung (ohne Freunde) aus dem Cache kommen → einmal neu laden
-    if (window.GymCloud && !window.GymCloud.social) {
-      let tried = false;
-      try { tried = sessionStorage.getItem('gymtracker.updateReload') === '1'; sessionStorage.setItem('gymtracker.updateReload', '1'); } catch (e) { tried = true; }
-      if (!tried) { reloadForUpdate(); return; }
-    }
     startSync();
     if (parseRoute().name === 'settings') renderSyncStatus();
-    Social.changed(); // Hinweis „Verbindung wird aufgebaut“ bzw. Update-Hinweis aktualisieren
   }
 
   /** Firebase meldet den aktuellen Anmeldestatus (beim Start und nach jeder Änderung). */
@@ -7929,8 +7871,6 @@
       if (isUser() && account.uid === user.uid) {
         if (user.email && account.email !== user.email) { account.email = user.email; saveAccount(); }
         startSync();
-        Social.connect(); // Anmeldung ist jetzt wiederhergestellt → Freunde verbinden
-        Social.changed();
         return;
       }
       enterAccount(user);

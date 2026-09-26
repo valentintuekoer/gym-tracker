@@ -154,8 +154,27 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Ernährung, Bibliothek, Ver
   await set.locator('input[data-field="reps"]').fill('10');
   await set.locator('[data-action="set-toggle"]').click();
   await page.locator('#timer-bar.show').waitFor();
+  // Im Training steht die Seite fest: kein Scrollen nach unten, nur seitlich wischen
+  const lock = await page.evaluate(async () => {
+    window.scrollTo(0, 400);
+    await new Promise((r) => setTimeout(r, 50));
+    const se = document.scrollingElement;
+    return { y: window.scrollY, fits: se.scrollHeight <= window.innerHeight + 1, cls: document.body.classList.contains('wk-lock') };
+  });
+  assert.deepEqual(lock, { y: 0, fits: true, cls: true });
+  await page.locator('.wk-next-link').click(); // zur nächsten Übung
+  await page.waitForFunction(() => document.getElementById('wk-track').scrollLeft > 100);
+  assert.match(await page.locator('#wk-pos').innerText(), /2/);
+  // Viele Sätze → nur die Karte scrollt, die Seite bleibt stehen
+  await page.evaluate(() => { const s = window.GymApp.db.activeSession; for (let i = 0; i < 8; i++) window.GymApp.Core.addSet(window.GymApp.db, s.exercises[1].id); window.GymApp.render(); });
+  const inner = await page.evaluate(() => {
+    const sl = document.querySelectorAll('.wk-slide')[1];
+    sl.scrollTop = 300;
+    return { slide: sl.scrollTop > 0, page: document.scrollingElement.scrollHeight <= window.innerHeight + 1 };
+  });
+  assert.deepEqual(inner, { slide: true, page: true });
   await page.locator('[data-timer="skip"]').click();
-  await page.locator('.wk-end [data-action="finish"]').click();
+  await page.locator('.app-header [data-action="finish"]').click();
   await dlgButton(page, 'Speichern').click();
   await waitHash(page, /#\/summary\//);
   await page.locator('[data-action="summary-done"]').first().click();

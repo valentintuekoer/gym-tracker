@@ -7,6 +7,7 @@ Reines HTML/CSS/JavaScript, kein Build-Schritt.
 | Datei | Inhalt |
 |---|---|
 | `index.html`, `style.css`, `app.js` | die App |
+| `DESIGN.md` | Designsystem (Farben, Typografie, Abstände, Glas, Bewegung, Regeln) – Vorlage für neue Bildschirme |
 | `cloud.js` | Anbindung an Firebase (Konto, „Mit Apple anmelden“, Cloud-Speicher) |
 | `social.js` | Freunde: Benutzername, Profilfoto, Anfragen, geteilte Kennzahlen |
 | `firebase-config.js` | **hier trägst du dein Firebase-Projekt ein** |

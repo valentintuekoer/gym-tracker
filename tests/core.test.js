@@ -824,3 +824,26 @@ test('Open Food Facts: kJ-Umrechnung, Portionswerte und deutsche Namen', () => {
   assert.equal(de.name, 'Milch');
   assert.equal(de.serving, 250);
 });
+
+/* ---------- Mein Gym ---------- */
+
+test('Mein Gym: bereinigen und Routen-Links für Apple Karten und Google Maps', () => {
+  assert.equal(Core.normGym(null), null);
+  assert.equal(Core.normGym({ name: 'Nur Name' }), null); // ohne Adresse/Standort nicht routbar
+  assert.equal(Core.normGym({ address: 'x', lat: 999, lng: 0 }).lat, null); // ungültige Koordinaten verworfen
+  const gym = { name: 'McFit', address: '  Hauptstraße 1,\n 10115 Berlin ', maps: 'apple' };
+  assert.equal(Core.normGym(gym).address, 'Hauptstraße 1, 10115 Berlin');
+  assert.equal(Core.routeUrl(gym, 'driving', 'apple'), 'https://maps.apple.com/?daddr=' + encodeURIComponent('McFit, Hauptstraße 1, 10115 Berlin') + '&dirflg=d');
+  assert.match(Core.routeUrl(gym, 'walking', 'apple'), /dirflg=w$/);
+  assert.match(Core.routeUrl(gym, 'transit', 'apple'), /dirflg=r$/);
+  assert.match(Core.routeUrl(gym, 'cycling', 'apple'), /^https:\/\/maps\.apple\.com\/directions\?destination=.+&mode=cycling$/);
+  // Mit Standort: Koordinaten sind eindeutig und werden bevorzugt
+  const pos = { name: 'Gym', address: 'Hauptstraße 1', lat: 52.5200081, lng: 13.4049541 };
+  assert.equal(Core.routeUrl(pos, 'transit', 'google'), 'https://www.google.com/maps/dir/?api=1&destination=52.520008%2C13.404954&travelmode=transit');
+  assert.match(Core.routeUrl(pos, 'cycling', 'google'), /travelmode=bicycling$/);
+  assert.equal(Core.routeUrl({ lat: 1, lng: 2 }, 'unbekannt', 'apple'), 'https://maps.apple.com/?daddr=1%2C2&dirflg=d');
+  // Übersteht normalize und wird nicht an Freunde geteilt
+  const db = Core.normalize({ days: [], settings: { gym: pos } });
+  assert.equal(db.settings.gym.lat, 52.520008);
+  assert.ok(!JSON.stringify(Core.socialStats(db, Date.now(), [])).includes('52.52'));
+});

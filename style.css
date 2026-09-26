@@ -3042,3 +3042,44 @@ body.wk-lock .wk-slide > .card { margin-bottom: var(--s-4); }
     --glass-edge: rgba(0, 0, 0, 0.3);
   }
 }
+
+/* =========================================================
+ *  Mein Gym (Startseite): Name, Adresse, Route
+ * ========================================================= */
+
+.gym-card {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  margin-bottom: var(--s-3);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-3);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.gym-card.gym-empty { border-style: dashed; border-color: var(--border-strong); background: transparent; min-height: 64px; padding-right: var(--s-3); }
+.gym-card.gym-empty > svg { width: 18px; height: 18px; color: var(--faint); }
+.gym-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-3); min-height: 48px; text-align: left; border-radius: var(--r-card-sm); }
+.gym-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+.gym-ic svg { width: 21px; height: 21px; }
+.gym-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gym-text b, .gym-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gym-text b { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.gym-empty .gym-text small { white-space: normal; }
+.gym-text small { color: var(--muted); font-size: 13px; }
+.gym-go { flex: none; }
+.gym-go svg { width: 18px; height: 18px; }
+.gym-pos { display: flex; align-items: flex-start; gap: 6px; margin: 0 2px; min-height: 20px; font-size: 14px; line-height: 1.4; }
+.gym-pos svg { flex: none; width: 17px; height: 17px; margin-top: 1px; }
+#gym-form .segmented { margin: 6px 0 0; }

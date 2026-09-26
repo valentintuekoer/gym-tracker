@@ -28,7 +28,10 @@ async function resetEmulators() {
 
 /** Neues „Gerät“: eigener Browser-Kontext. cloud=false → Firebase nicht erreichbar (nur offline/ohne Konto). */
 async function device(name, { cloud = true } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', locale: 'de-DE', reducedMotion: 'reduce' });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', locale: 'de-DE', reducedMotion: 'reduce',
+    geolocation: { latitude: 52.5200081, longitude: 13.4049541, accuracy: 12 }, permissions: ['geolocation'] });
+  await ctx.route('https://maps.apple.com/**', (r) => r.fulfill({ contentType: 'text/html', body: 'Apple Karten' }));
+  await ctx.route('https://www.google.com/maps/**', (r) => r.fulfill({ contentType: 'text/html', body: 'Google Maps' }));
   await ctx.route('**/firebase-config.js', (r) => r.fulfill({ contentType: 'text/javascript', body: EMU_CONFIG }));
   await ctx.route('https://www.gstatic.com/firebasejs/**', (r) => {
     if (!cloud) return r.abort();
@@ -63,6 +66,10 @@ const toastText = (page) => page.locator('#toast .toast-msg');
 
 async function waitHash(page, re) {
   await page.waitForFunction((src) => new RegExp(src).test(location.hash), re.source);
+  // Seitenübergang abwarten: währenddessen nimmt der Browser keine Taps an (Playwright würde sonst mit
+  // erzwungenem Scrollen erneut klicken – im Training springt das Karussell dabei zur nächsten Übung)
+  await page.evaluate(() => new Promise((r) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(r)), 0)));
+  await page.waitForFunction(() => !document.documentElement.dataset.nav);
 }
 
 /** Einführung überspringen → Anmeldeseite */
@@ -164,7 +171,7 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Ernährung, Bibliothek, Ver
   assert.deepEqual(lock, { y: 0, fits: true, cls: true });
   await page.locator('.wk-next-link').click(); // zur nächsten Übung
   await page.waitForFunction(() => document.getElementById('wk-track').scrollLeft > 100);
-  assert.match(await page.locator('#wk-pos').innerText(), /2/);
+  await page.locator('#wk-pos', { hasText: /2 von/i }).waitFor(); // Beschriftung folgt im nächsten Frame
   // Viele Sätze → nur die Karte scrollt, die Seite bleibt stehen
   await page.evaluate(() => { const s = window.GymApp.db.activeSession; for (let i = 0; i < 8; i++) window.GymApp.Core.addSet(window.GymApp.db, s.exercises[1].id); window.GymApp.render(); });
   const inner = await page.evaluate(() => {
@@ -178,6 +185,21 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Ernährung, Bibliothek, Ver
   await dlgButton(page, 'Speichern').click();
   await waitHash(page, /#\/summary\//);
   await page.locator('[data-action="summary-done"]').first().click();
+  // Mein Gym: festlegen (Adresse + GPS-Standort) → Route öffnet die Karten-App
+  await page.locator('[data-action="gym-edit"]').click();
+  await page.fill('#gym-form input[name="name"]', 'FitX Mitte');
+  await page.fill('#gym-form input[name="address"]', 'Hauptstraße 1, 10115 Berlin');
+  await page.locator('#gym-form [data-locate]').click();
+  await page.locator('#gym-pos', { hasText: 'Standort gespeichert' }).waitFor();
+  await page.locator('#gym-maps [data-maps="apple"]').click();
+  await page.locator('#gym-form button[type="submit"]').click();
+  await page.locator('.gym-card', { hasText: 'FitX Mitte' }).waitFor();
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    (async () => { await page.locator('[data-action="gym-route"]').click(); await dlgButton(page, 'Zu Fuß').click(); })(),
+  ]);
+  assert.equal(popup.url().split('#')[0], 'https://maps.apple.com/?daddr=52.520008%2C13.404954&dirflg=w');
+  await popup.close();
   // Ernährung: Schnelleingabe
   await page.locator('.tab[data-tab="food"]').click();
   await page.locator('[data-action="food-add"][data-meal="lunch"]').click();

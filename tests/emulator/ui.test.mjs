@@ -155,8 +155,15 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Ernährung, Bibliothek, Ver
   await page.locator('.day-card', { hasText: 'Push' }).click();
   await page.locator('[data-action="open-day"]').click();
   await waitHash(page, /#\/workout/);
+  // Aufwärmsätze aus dem Arbeitsgewicht berechnen lassen
+  await page.locator('.wk-slide').first().locator('[data-action="w-warmup"]').click();
+  await page.fill('#warm-form [name="work"]', '80');
+  await page.locator('#warm-preview li').nth(2).waitFor();
+  await dlgButton(page, 'Einfügen').click();
+  await page.locator('.wk-slide').first().locator('.set.warm').nth(2).waitFor();
+  assert.match(await page.locator('.wk-slide').first().locator('.ex-head .count').innerText(), /^0\/\d$/); // zählt nur Arbeitssätze
   // Satz eintragen und abhaken → Pausentimer läuft
-  const set = page.locator('.wk-slide').first().locator('.set').first();
+  const set = page.locator('.wk-slide').first().locator('.set:not(.warm)').first();
   await set.locator('input[data-field="weight"]').fill('60');
   await set.locator('input[data-field="reps"]').fill('10');
   await set.locator('[data-action="set-toggle"]').click();

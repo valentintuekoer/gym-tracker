@@ -165,6 +165,15 @@ Ohne Internet zeigt die App die zuletzt geladenen Freundesdaten mit „zuletzt a
 
 Speicherorte: `usernames/{name}`, `publicProfiles/{uid}`, `users/{uid}/friends/{fid}`, `requests/{von}_{an}`, Storage `avatars/{uid}.jpg`.
 
+## Aufwärmsätze
+
+Im Training unter jeder Übung: *Aufwärmen* → Arbeitsgewicht eingeben (ist meist schon vorausgefüllt) → die App
+schlägt steigende Sätze vor: leere Stange × 10 (bei Langhantel-Übungen, abschaltbar), dann ca. 40 % × 5,
+60 % × 3 und 80 % × 2 – gerundet auf deinen Gewichtsschritt. *Einfügen* setzt sie als **A1, A2 …** vor die
+Arbeitssätze; *Leeren Aufwärmsatz hinzufügen* geht auch. Aufwärmsätze zählen nicht zu Sätzen, Volumen, Rekorden,
+dem Steigerungsvorschlag oder der Freunde-Statistik und haben nur 1 min Pause. Gespeichert werden nur abgehakte;
+beim nächsten Training stehen sie mit den Werten vom letzten Mal wieder da.
+
 ## Mein Gym & Route
 
 *Training*-Reiter → *Mein Gym festlegen* (auch unter *Einstellungen → Training*): Name, Adresse und/oder

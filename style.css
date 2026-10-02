@@ -3083,3 +3083,20 @@ body.wk-lock .wk-slide > .card { margin-bottom: var(--s-4); }
 .gym-pos { display: flex; align-items: flex-start; gap: 6px; margin: 0 2px; min-height: 20px; font-size: 14px; line-height: 1.4; }
 .gym-pos svg { flex: none; width: 17px; height: 17px; margin-top: 1px; }
 #gym-form .segmented { margin: 6px 0 0; }
+
+/* ---------- Aufwärmsätze ---------- */
+.set-adds { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); margin-top: var(--s-3); }
+.set-adds .btn { width: 100%; }
+.set-adds .btn svg { width: 18px; height: 18px; }
+.set.warm .set-no { font-size: 13px; font-weight: 600; letter-spacing: -0.02em; }
+.set-table li.warm { counter-increment: none; color: var(--muted); }
+.set-table li.warm::before { content: 'A'; }
+.set-table li.warm .st-val { font-weight: 500; }
+.st-tag { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); }
+#warm-form .field { margin-top: 6px; }
+#warm-form .switch-row { margin: var(--s-3) 0 0; padding-left: 0; padding-right: 0; background: none; }
+.warm-preview { min-height: 132px; margin-top: var(--s-2); }
+.warm-preview .set-table { margin: 0; }
+.warm-preview p { margin: var(--s-3) 2px; font-size: 15px; }
+.set.passed .set-main .field,
+.set.passed .set-no { opacity: 0.42; }

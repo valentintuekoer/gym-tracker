@@ -847,3 +847,95 @@ test('Mein Gym: bereinigen und Routen-Links für Apple Karten und Google Maps', 
   assert.equal(db.settings.gym.lat, 52.520008);
   assert.ok(!JSON.stringify(Core.socialStats(db, Date.now(), [])).includes('52.52'));
 });
+
+test('Aufwärmsätze: Vorschlag aus dem Arbeitsgewicht', () => {
+  assert.deepEqual(Core.warmupPlan(80, { inc: 2.5, bar: 20 }), [
+    { weight: 20, reps: 10 }, { weight: 32.5, reps: 5 }, { weight: 47.5, reps: 3 }, { weight: 65, reps: 2 },
+  ]);
+  // Ohne Stange (z. B. Kurzhantel): nur die Prozent-Stufen
+  assert.deepEqual(Core.warmupPlan('12', { inc: 2.5 }), [{ weight: 5, reps: 5 }, { weight: 7.5, reps: 3 }, { weight: 10, reps: 2 }]);
+  // Leichte Langhantel: nichts unter der leeren Stange, nichts doppelt, nichts so schwer wie der Arbeitssatz
+  assert.deepEqual(Core.warmupPlan(25, { inc: 2.5, bar: 20 }), [{ weight: 20, reps: 2 }]);
+  assert.deepEqual(Core.warmupPlan(2.5, { inc: 2.5 }), []);
+  assert.deepEqual(Core.warmupPlan(null), []);
+  assert.deepEqual(Core.warmupPlan('abc'), []);
+});
+
+test('Aufwärmsätze zählen nicht für Sätze, Volumen, Rekorde und Steigerung – und kommen beim nächsten Mal wieder', () => {
+  const { db, push } = freshDb();
+  const day = db.days[0];
+  Core.setRepTarget(db, push.id, day.exercises[0].id, 8, 10);
+  // 1. Einheit: Aufwärmen + 3 Arbeitssätze
+  const s = Core.startSession(db, push.id, T0);
+  const se = s.exercises[0];
+  assert.equal(se.sets.some((st) => st.warmup), false); // noch nie aufgewärmt → keine Aufwärmsätze
+  Core.setWarmups(db, se.id, Core.warmupPlan(80, { inc: 2.5, bar: 20 }));
+  assert.equal(se.sets.length, 4 + 3);
+  assert.deepEqual(se.sets.slice(0, 4).map((st) => st.warmup), [true, true, true, true]);
+  // Neuer Aufwärmsatz landet hinter den Aufwärmsätzen, vor dem ersten Arbeitssatz
+  const extra = Core.addSet(db, se.id, true);
+  assert.equal(se.sets.indexOf(extra), 4);
+  Core.removeSet(db, se.id, extra.id);
+  for (const st of se.sets) {
+    if (!st.warmup) { Core.updateSet(db, se.id, st.id, 'weight', 80); Core.updateSet(db, se.id, st.id, 'reps', 10); }
+    const r = Core.toggleSet(db, se.id, st.id, T0 + MIN);
+    assert.equal(r.rest, st.warmup ? 60 : 120); // nach dem Aufwärmen nur kurze Pause
+  }
+  const done = Core.finishSession(db, T0 + 60 * MIN);
+  const st = Core.sessionStats(done);
+  assert.equal(st.sets, 3);
+  assert.equal(st.volume, 3 * 800);
+  assert.equal(done.exercises[0].sets.filter((x) => x.warmup).length, 4);
+
+  // Letztes Mal = nur Arbeitssätze; Aufwärmsätze separat
+  const prev = Core.lastPerformance(db, 'Bankdrücken');
+  assert.equal(prev.sets.length, 3);
+  assert.equal(prev.warmups.length, 4);
+  // Alle Sätze am oberen Ende → Gewicht hoch (Aufwärmsätze mit 2–10 Wdh. stören nicht)
+  assert.equal(Core.progression(prev, { min: 8, max: 10 }, 2.5, 3).kind, 'increase');
+
+  // 2. Einheit: Aufwärmsätze werden wieder angelegt, Vorlagen passen zur Satzart
+  const s2 = Core.startSession(db, push.id, T0 + 2 * 86400000);
+  const se2 = s2.exercises[0];
+  assert.deepEqual(se2.sets.map((x) => !!x.warmup), [true, true, true, true, false, false, false]);
+  const ctx = Core.exerciseContext(db, se2);
+  assert.deepEqual(Core.placeholderFor(ctx.prev, se2, 0, ctx), { weight: 20, reps: 10, note: '' });
+  assert.deepEqual(Core.placeholderFor(ctx.prev, se2, 3, ctx), { weight: 65, reps: 2, note: '' });
+  assert.equal(Core.placeholderFor(ctx.prev, se2, 4, ctx).weight, 82.5); // 1. Arbeitssatz: Steigerung
+  // Satzanzahl im Plan ändern betrifft nur Arbeitssätze
+  Core.setSetCount(db, push.id, se2.exId, 2);
+  assert.equal(se2.sets.length, 4 + 2);
+  assert.equal(Core.workSetCount(se2.sets), 2);
+  // Nicht abgehakte Aufwärmsätze (übersprungen) werden nicht gespeichert
+  const s3db = Core.normalize(JSON.parse(JSON.stringify(db)));
+  const se3 = s3db.activeSession.exercises[0];
+  for (const x of se3.sets) if (!x.warmup) { Core.updateSet(s3db, se3.id, x.id, 'weight', 80); Core.updateSet(s3db, se3.id, x.id, 'reps', 8); Core.toggleSet(s3db, se3.id, x.id, T0); }
+  assert.equal(Core.workDone(se3), true);
+  assert.equal(Core.warmupPassed(se3, se3.sets[0]), true);
+  Core.updateSet(s3db, se3.id, se3.sets[0].id, 'weight', 20);
+  assert.equal(Core.countLoggedSets(s3db.activeSession), 2); // 2 Arbeitssätze (Plan oben auf 2 gesetzt), Aufwärmsätze offen
+  assert.equal(Core.finishSession(s3db, T0 + 3 * 86400000).exercises[0].sets.some((x) => x.warmup), false);
+  // Offene Aufwärmsätze entfernen; abgehakte bleiben
+  Core.toggleSet(db, se2.id, se2.sets[0].id, T0);
+  Core.setWarmups(db, se2.id, []);
+  assert.deepEqual(se2.sets.map((x) => !!x.warmup), [true, false, false]);
+
+  // Rekorde: ein schwerer Aufwärmsatz ist kein Rekord
+  Core.updateSet(db, se2.id, se2.sets[0].id, 'weight', 200);
+  Core.updateSet(db, se2.id, se2.sets[0].id, 'reps', 1);
+  for (const x of se2.sets.slice(1)) { Core.updateSet(db, se2.id, x.id, 'weight', 80); Core.updateSet(db, se2.id, x.id, 'reps', 8); }
+  const d2 = Core.finishSession(db, T0 + 2 * 86400000 + 3600000);
+  assert.deepEqual(Core.sessionRecords(db, d2), []);
+  assert.equal(Core.exerciseStats(db)[0].best.weight, 80);
+});
+
+test('Aufwärmsätze überstehen Export/Import, alte Daten bleiben unverändert', () => {
+  const { db, push } = freshDb();
+  const s = Core.startSession(db, push.id, T0);
+  Core.setWarmups(db, s.exercises[0].id, [{ weight: 20, reps: 10 }]);
+  const again = Core.normalize(JSON.parse(JSON.stringify(db)));
+  assert.equal(again.activeSession.exercises[0].sets[0].warmup, true);
+  assert.equal('warmup' in again.activeSession.exercises[0].sets[1], false);
+  const old = Core.normalize({ days: [], sessions: [{ id: 'a', finishedAt: T0, exercises: [{ name: 'X', sets: [{ weight: 50, reps: 5 }] }] }] });
+  assert.equal('warmup' in old.sessions[0].exercises[0].sets[0], false);
+});

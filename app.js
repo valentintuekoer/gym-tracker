@@ -2169,10 +2169,23 @@
   const Sound = {
     ctx: null,
 
+    /**
+     * Ton mischt sich mit laufender Musik (Spotify, Apple Musik, Podcasts …), statt sie anzuhalten.
+     * iOS 16.4+ (Audio Session API): „ambient“ – wie ein Spiel-Soundeffekt; folgt dem Lautlos-Schalter.
+     * Muss gesetzt sein, bevor die App zum ersten Mal Ton ausgibt.
+     */
+    mix() {
+      try {
+        const as = navigator.audioSession;
+        if (as && as.type !== 'ambient') as.type = 'ambient';
+      } catch (e) { /* ignorieren */ }
+    },
+
     /** Muss aus einer Nutzerinteraktion heraus aufgerufen werden (iOS-Vorgabe). */
     unlock() {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
+      this.mix();
       try {
         if (!this.ctx) this.ctx = new AC();
         if (this.ctx.state !== 'running') this.ctx.resume();
@@ -2213,7 +2226,7 @@
             this.tone(t0 + g * 0.85 + i * 0.16, 0.11, i === 2 ? 1318 : 1046, 0.35);
           }
         }
-        if (loud) setTimeout(() => { try { navigator.audioSession.type = 'auto'; } catch (_) { /* */ } }, 3000);
+        if (loud) setTimeout(() => Sound.mix(), 3000); // danach wieder mit der Musik mischen
       } catch (e) { /* ignorieren */ }
     },
   };
@@ -2306,6 +2319,7 @@
       this.state = TimerCore.create(sec, Date.now(), label);
       this.persist();
       this.swScheduled = Notify.schedule(this.state.endAt, label ? 'Nächster Satz: ' + label : '');
+      if (db.settings.sound) Sound.unlock(); // aus dem Tipp auf „Satz erledigt“ heraus: jetzt wird der Signalton gebraucht
       this.run();
     },
 
@@ -6660,6 +6674,7 @@
       save(); render();
     },
     'test-sound': () => {
+      Sound.unlock();
       Sound.alarm();
       if (navigator.vibrate && db.settings.vibrate) navigator.vibrate([400, 150, 400]);
     },
@@ -8343,8 +8358,12 @@
     applyTheme();
     darkQuery.addEventListener && darkQuery.addEventListener('change', applyTheme);
 
-    // Audio bei jeder Interaktion (falls nötig) freischalten – iOS erlaubt Ton nur nach einer Geste.
-    const unlock = () => { if (!Sound.ctx || Sound.ctx.state !== 'running') Sound.unlock(); };
+    // Ton mit laufender Musik mischen (iOS) – und den Audiokanal erst öffnen, wenn ein Pausentimer läuft:
+    // Schon das Öffnen würde Musik aus anderen Apps pausieren, auch ohne dass die App etwas abspielt.
+    Sound.mix();
+    // iOS erlaubt Ton nur nach einer Geste → beim ersten Tippen freischalten, solange eine Pause läuft
+    // (beim Start der Pause selbst: Timer.start).
+    const unlock = () => { if (Timer.state && db.settings.sound && (!Sound.ctx || Sound.ctx.state !== 'running')) Sound.unlock(); };
     ['touchend', 'pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, unlock, { passive: true }));
 
     document.addEventListener('click', onClick);

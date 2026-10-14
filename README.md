@@ -166,6 +166,13 @@ Ohne Internet zeigt die App die zuletzt geladenen Freundesdaten mit „zuletzt a
 
 Speicherorte: `usernames/{name}`, `publicProfiles/{uid}`, `users/{uid}/friends/{fid}`, `requests/{von}_{an}`, Storage `avatars/{uid}.jpg`.
 
+## Liquid-Glass-Demo
+
+Eigenständige Demo für ein Glas-Material im Apple-Stil mit schwebender Tab-Leiste, Feder-Physik („Liquid Stretch“) und
+Richtungs-Übergängen – als Web Components ohne Framework. Ohne Einfluss auf die App.
+Öffnen: [`liquid-glass/liquid-glass-demo.html`](liquid-glass/liquid-glass-demo.html) (eine Datei, Doppelklick genügt) bzw.
+nach dem Veröffentlichen `…/liquid-glass/index.html`. Doku: [`liquid-glass/README.md`](liquid-glass/README.md).
+
 ## Mitglieder-Chat
 
 Neuer Reiter **Chat** (nur mit Konto und Profil): ein gemeinsamer Raum für alle Mitglieder, um sich fürs Training zu verabreden.
@@ -247,6 +254,8 @@ Daten gespeichert und nie mit Freunden geteilt.
 ## Tests
 
 - Logik (ohne Browser, ohne Firebase): `node --test tests/*.test.js`
+- Liquid-Glass-Demo (eigenständig, siehe [`liquid-glass/`](liquid-glass/README.md)): `node --test tests/liquid-glass.test.mjs`
+  (Logik) und `node --test tests/liquid-glass.ui.mjs` (Chromium)
 - Mit dem Firebase-Emulator (Java nötig): `cd tests/emulator && npm install`, dann
   `npm test` (Sicherheitsregeln + Freunde- und Chat-Funktionen mit mehreren Nutzern) und
   `npm run test:ui` (die echte App in Chromium: ohne Konto, Registrierung, Profilfoto, Anfragen, Vergleich,

@@ -1,0 +1,396 @@
+/* =========================================================
+ *  Liquid Glass – Material, Tab-Leiste, Panels
+ *
+ *  Das Material besteht aus fünf Schichten (von hinten nach vorn):
+ *    1. Backdrop-Filter  – starke Unschärfe (40 px) + Sättigung: der Hintergrund „verläuft“ hinter dem Glas
+ *    2. Deckschicht      – leicht transluzente, getönte Fläche (--lg-fill)
+ *    3. Specular         – ::before, Radial-/Linearverlauf: Wölbung und Glanzpunkt oben links
+ *    4. Lichtkante       – ::after, 1-px-Verlaufsrahmen: oben Lichteinfall, unten Schattenkante, Ecken brechen das Licht
+ *    5. Schatten         – Randlicht innen (inset) + vier gestaffelte Schatten außen: das Glas schwebt
+ *
+ *  Alle Farben sind Tokens. Die Werte sind mit contrast.js gegen WCAG AA geprüft (tests/liquid-glass.test.mjs):
+ *  Bei Glas ist der Hintergrund unbekannt, deshalb gilt der Nachweis für jeden Hintergrund zwischen Schwarz und Weiß.
+ *  Dunkles Glas ist daher deckender (0,74) als helles (0,55): Weißer Text braucht dahinter eine dunklere Fläche.
+ * ========================================================= */
+
+:root {
+  /* Material */
+  --lg-blur: 40px;
+  --lg-saturate: 1.8;
+  --lg-brightness: 1.04;
+  --lg-fill: rgba(255, 255, 255, 0.55);          /* Leiste */
+  --lg-card-fill: rgba(255, 255, 255, 0.72);     /* Karten mit Fließtext: deckender */
+  --lg-pill-fill: rgba(255, 255, 255, 0.88);     /* aktive Pille liegt auf der Leiste */
+  --lg-fill-solid: rgb(244, 244, 247);           /* Fallback ohne backdrop-filter / bei „Transparenz reduzieren“ */
+  --lg-card-fill-solid: rgb(250, 250, 252);
+  --lg-spec-label: 0.1;                          /* stärkstes Specular-Weiß unter Text (Kontrastprüfung) */
+  --lg-pill-spec: rgba(255, 255, 255, 0.55);     /* Glanz auf der Pille */
+  --lg-hover-a: rgba(255, 255, 255, 0.7);        /* Lichtschein beim Überfahren */
+
+  /* Text & Symbole */
+  --lg-text: #1d1d1f;
+  --lg-text-2: #3a3a3f;
+  --lg-text-active: #0832a8;
+  --lg-focus: #0832a8;
+
+  /* Lichtkante (1 px, Verlauf) und Randlicht */
+  --lg-edge-top: rgba(255, 255, 255, 0.9);
+  --lg-edge-mid: rgba(255, 255, 255, 0.22);
+  --lg-edge-bottom: rgba(0, 0, 0, 0.2);
+  --lg-edge-corner: rgba(255, 255, 255, 0.6);
+  --lg-rim-top: rgba(255, 255, 255, 0.75);
+  --lg-rim-bottom: rgba(0, 0, 0, 0.07);
+  --lg-glow: rgba(255, 255, 255, 0.2);
+  --lg-hairline: rgba(0, 0, 0, 0.07);
+
+  /* Specular-Highlight */
+  --lg-spec-dome: rgba(255, 255, 255, 0.55);
+  --lg-spec-spot: rgba(255, 255, 255, 0.4);
+  --lg-spec-sheen: rgba(255, 255, 255, 0.18);
+
+  /* Schatten (vier Stufen: Kontakt → weit) */
+  --lg-shadow-a: rgba(20, 28, 48, 0.06);
+  --lg-shadow-b: rgba(20, 28, 48, 0.07);
+  --lg-shadow-c: rgba(20, 28, 48, 0.09);
+  --lg-shadow-d: rgba(20, 28, 48, 0.14);
+
+  --lg-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --lg-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --lg-fill: rgba(28, 28, 32, 0.74);
+    --lg-card-fill: rgba(28, 28, 32, 0.8);
+    --lg-pill-fill: rgba(255, 255, 255, 0.08);
+    --lg-fill-solid: rgb(34, 34, 38);
+    --lg-card-fill-solid: rgb(30, 30, 34);
+    --lg-spec-label: 0.06;
+    --lg-pill-spec: rgba(255, 255, 255, 0.03);
+    --lg-hover-a: rgba(255, 255, 255, 0.1);
+    --lg-text: #ffffff;
+    --lg-text-2: #f2f2f7;
+    --lg-text-active: #ffffff;
+    --lg-focus: #ffffff;
+    --lg-edge-top: rgba(255, 255, 255, 0.42);
+    --lg-edge-mid: rgba(255, 255, 255, 0.1);
+    --lg-edge-bottom: rgba(0, 0, 0, 0.55);
+    --lg-edge-corner: rgba(255, 255, 255, 0.28);
+    --lg-rim-top: rgba(255, 255, 255, 0.28);
+    --lg-rim-bottom: rgba(0, 0, 0, 0.5);
+    --lg-glow: rgba(255, 255, 255, 0.05);
+    --lg-hairline: rgba(255, 255, 255, 0.08);
+    --lg-spec-dome: rgba(255, 255, 255, 0.14);
+    --lg-spec-spot: rgba(255, 255, 255, 0.12);
+    --lg-spec-sheen: rgba(255, 255, 255, 0.05);
+    --lg-shadow-a: rgba(0, 0, 0, 0.18);
+    --lg-shadow-b: rgba(0, 0, 0, 0.2);
+    --lg-shadow-c: rgba(0, 0, 0, 0.28);
+    --lg-shadow-d: rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --lg-fill: rgba(28, 28, 32, 0.74);
+  --lg-card-fill: rgba(28, 28, 32, 0.8);
+  --lg-pill-fill: rgba(255, 255, 255, 0.08);
+  --lg-fill-solid: rgb(34, 34, 38);
+  --lg-card-fill-solid: rgb(30, 30, 34);
+  --lg-spec-label: 0.06;
+  --lg-pill-spec: rgba(255, 255, 255, 0.03);
+  --lg-hover-a: rgba(255, 255, 255, 0.1);
+  --lg-text: #ffffff;
+  --lg-text-2: #f2f2f7;
+  --lg-text-active: #ffffff;
+  --lg-focus: #ffffff;
+  --lg-edge-top: rgba(255, 255, 255, 0.42);
+  --lg-edge-mid: rgba(255, 255, 255, 0.1);
+  --lg-edge-bottom: rgba(0, 0, 0, 0.55);
+  --lg-edge-corner: rgba(255, 255, 255, 0.28);
+  --lg-rim-top: rgba(255, 255, 255, 0.28);
+  --lg-rim-bottom: rgba(0, 0, 0, 0.5);
+  --lg-glow: rgba(255, 255, 255, 0.05);
+  --lg-hairline: rgba(255, 255, 255, 0.08);
+  --lg-spec-dome: rgba(255, 255, 255, 0.14);
+  --lg-spec-spot: rgba(255, 255, 255, 0.12);
+  --lg-spec-sheen: rgba(255, 255, 255, 0.05);
+  --lg-shadow-a: rgba(0, 0, 0, 0.18);
+  --lg-shadow-b: rgba(0, 0, 0, 0.2);
+  --lg-shadow-c: rgba(0, 0, 0, 0.28);
+  --lg-shadow-d: rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+/* =========================================================
+ *  Material: .lg-surface (Leisten, Schaltflächen) · .lg-card (Flächen mit Fließtext)
+ * ========================================================= */
+
+.lg-surface {
+  --lg-surface-fill: var(--lg-fill);
+  --lg-surface-solid: var(--lg-fill-solid);
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--lg-radius, 28px);
+  color: var(--lg-text);
+  background-color: var(--lg-surface-fill);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),            /* Randlicht oben */
+    inset 0 -1px 0 var(--lg-rim-bottom),        /* Schattenkante unten */
+    inset 0 0 22px var(--lg-glow),              /* weiches Innenlicht: das Glas hat Dicke */
+    0 0 0 0.5px var(--lg-hairline),             /* äußere Haarlinie */
+    0 1px 2px var(--lg-shadow-a),
+    0 4px 10px var(--lg-shadow-b),
+    0 14px 28px var(--lg-shadow-c),
+    0 28px 56px var(--lg-shadow-d);
+}
+
+.lg-card {
+  --lg-surface-fill: var(--lg-card-fill);
+  --lg-surface-solid: var(--lg-card-fill-solid);
+  --lg-radius: 24px;
+  --lg-blur: 32px;
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    inset 0 0 18px var(--lg-glow),
+    0 0 0 0.5px var(--lg-hairline),
+    0 1px 2px var(--lg-shadow-a),
+    0 6px 16px var(--lg-shadow-b),
+    0 18px 36px var(--lg-shadow-c);
+}
+
+/* 3 · Specular: Kuppel oben, Glanzpunkt oben links, Glanzkante. Läuft innerhalb des oberen Drittels aus. */
+.lg-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 70% at 50% -22%, var(--lg-spec-dome) 0%, transparent 62%),
+    radial-gradient(46% 62% at 11% 6%, var(--lg-spec-spot) 0%, transparent 72%),
+    linear-gradient(180deg, var(--lg-spec-sheen) 0%, transparent 42%);
+}
+
+/* 4 · Lichtkante: 1-px-Rahmen als Verlauf (nur der Rand wird gezeichnet, das Innere ausgestanzt) */
+.lg-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, var(--lg-edge-corner) 0%, transparent 28%, transparent 72%, var(--lg-edge-corner) 100%),
+    linear-gradient(180deg, var(--lg-edge-top) 0%, var(--lg-edge-mid) 38%, transparent 58%, var(--lg-edge-bottom) 100%);
+  -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  -webkit-mask-clip: content-box, border-box;
+  -webkit-mask-composite: xor;
+  mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  mask-clip: content-box, border-box;
+  mask-composite: exclude;
+}
+
+/* ---------- Fallbacks: ohne Glas wird die Fläche deckend, Text bleibt lesbar ---------- */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .lg-surface { background-color: var(--lg-surface-solid); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .lg-surface {
+    background-color: var(--lg-surface-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+.lg-surface[data-solid] {
+  background-color: var(--lg-surface-solid);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* „Kontrast erhöhen“: deckende Fläche und kräftige Kontur */
+@media (prefers-contrast: more) {
+  .lg-surface {
+    background-color: var(--lg-surface-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .lg-surface::after {
+    padding: 2px;
+    background: linear-gradient(var(--lg-text), var(--lg-text));
+  }
+}
+/* Windows-Kontrastmodus */
+@media (forced-colors: active) {
+  .lg-surface {
+    background-color: Canvas;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+    border: 1px solid CanvasText;
+  }
+  .lg-surface::before, .lg-surface::after { display: none; }
+  .lg-pill { background: Highlight !important; box-shadow: none !important; forced-color-adjust: none; }
+  .lg-copy { color: HighlightText; }
+}
+
+/* =========================================================
+ *  <glass-tabs>
+ * ========================================================= */
+
+.lg-tabs {
+  --lg-pad: 6px;
+  --lg-radius: 999px;
+  display: inline-block;
+  padding: var(--lg-pad);
+  max-width: 100%;
+  contain: layout style;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Beschriftungen und ihr Klon teilen sich dasselbe Gitter: gleiche Spalten, gleiche Maße */
+.lg-labels,
+.lg-copy {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: stretch;
+}
+.lg-labels { position: relative; z-index: 2; }
+.lg-copy {
+  position: absolute;
+  inset: var(--lg-pad);
+  z-index: 3;
+  pointer-events: none;
+  color: var(--lg-text-active);
+  clip-path: inset(0 100% 0 0);   /* bis JavaScript die Pille misst: nichts zeigen */
+}
+
+.lg-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 76px;
+  min-height: 56px;                /* ≥ 44 px Tippfläche */
+  padding: 0 14px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--lg-text);
+  font: 600 11px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: transform 190ms var(--lg-ease-out);
+}
+.lg-copy .lg-tab { color: inherit; cursor: default; }
+.lg-tab .lg-icon {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lg-tab.is-pressed { transform: scale(0.97); }      /* sinkt ein – sofort beim Drücken */
+
+/* Pille: das bewegte Glas. Breite und Position setzt JavaScript (Federn), alles andere ist Material. */
+.lg-pill {
+  position: absolute;
+  top: var(--lg-pad);
+  bottom: var(--lg-pad);
+  left: var(--lg-pad);
+  width: 0;
+  z-index: 1;
+  border-radius: 999px;
+  pointer-events: none;
+  transform-origin: 0 50%;
+  scale: 1;
+  transition: scale 190ms var(--lg-ease-out);
+  background:
+    radial-gradient(90% 80% at 30% -10%, var(--lg-pill-spec), transparent 65%),
+    var(--lg-pill-fill);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    0 0 0 0.5px var(--lg-hairline),
+    0 1px 1px var(--lg-shadow-a),
+    0 4px 10px var(--lg-shadow-b),
+    0 8px 20px var(--lg-shadow-c);
+}
+.lg-tabs[data-press] .lg-pill { scale: 0.97; }
+
+/* Hover: sanfter Lichtschein, folgt dem Zeiger. Nur mit Maus/Stift – Touch löst sonst falsche Hover aus. */
+.lg-tab::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 240ms var(--lg-ease-out);
+  background: radial-gradient(110px circle at var(--mx, 50%) var(--my, 30%), var(--lg-hover-a) 0%, transparent 70%);
+}
+@media (hover: hover) and (pointer: fine) {
+  .lg-labels .lg-tab:not([aria-selected="true"]):hover::before { opacity: 1; }
+}
+
+.lg-tab:focus-visible {
+  outline: 2px solid var(--lg-focus);
+  outline-offset: -3px;
+}
+.lg-tab:focus { outline-offset: -3px; }
+
+/* ---------- Schmale Bildschirme: Spalten richten sich nach dem Inhalt statt alle so breit wie die längste Beschriftung ---------- */
+@media (max-width: 399px) {
+  .lg-tabs:not([variant="segmented"]) .lg-labels,
+  .lg-tabs:not([variant="segmented"]) .lg-copy { grid-auto-columns: auto; }
+  .lg-tabs:not([variant="segmented"]) .lg-tab { min-width: 0; padding: 0 9px; }
+}
+@media (max-width: 359px) {
+  .lg-tabs:not([variant="segmented"]) { --lg-pad: 4px; }
+  .lg-tabs:not([variant="segmented"]) .lg-tab { padding: 0 6px; letter-spacing: 0; }
+}
+
+/* ---------- Segmented Control: nur Text, kompakt ---------- */
+.lg-tabs[variant="segmented"] { --lg-pad: 3px; }
+.lg-tabs[variant="segmented"] .lg-tab {
+  flex-direction: row;
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0 16px;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+.lg-tabs[variant="segmented"] .lg-icon { display: none; }
+
+/* ---------- Reduzierte Bewegung: keine Pille in Bewegung (Wechsel ist sofort), Rückmeldung bleibt ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .lg-tab, .lg-pill, .lg-tab::before { transition-duration: 1ms; }
+}
+.lg-tabs[reduced-motion] .lg-tab,
+.lg-tabs[reduced-motion] .lg-pill,
+.lg-tabs[reduced-motion] .lg-tab::before { transition-duration: 1ms; }
+
+/* =========================================================
+ *  <glass-panels>
+ * ========================================================= */
+
+.lg-panels { display: grid; }
+.lg-panels > [role="tabpanel"] { grid-area: 1 / 1; min-width: 0; }
+.lg-panels > [role="tabpanel"]:focus-visible { outline: 2px solid var(--lg-focus); outline-offset: 4px; border-radius: 12px; }
+.lg-panels > [data-state] { will-change: transform, opacity; }   /* nur solange ein Übergang läuft */

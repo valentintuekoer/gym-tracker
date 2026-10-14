@@ -1,0 +1,1371 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Liquid Glass</title>
+<meta name="description" content="Liquid-Glass-Material, schwebende Tab-Leiste mit Feder-Physik und Richtungs-Übergängen als Web Components.">
+<link rel="icon" href="data:,">
+<!-- Erzeugt mit: node scripts/build-liquid-glass.mjs – Quellen liegen in liquid-glass/src und liquid-glass/demo -->
+<style>
+/* =========================================================
+ *  Liquid Glass – Material, Tab-Leiste, Panels
+ *
+ *  Das Material besteht aus fünf Schichten (von hinten nach vorn):
+ *    1. Backdrop-Filter  – starke Unschärfe (40 px) + Sättigung: der Hintergrund „verläuft“ hinter dem Glas
+ *    2. Deckschicht      – leicht transluzente, getönte Fläche (--lg-fill)
+ *    3. Specular         – ::before, Radial-/Linearverlauf: Wölbung und Glanzpunkt oben links
+ *    4. Lichtkante       – ::after, 1-px-Verlaufsrahmen: oben Lichteinfall, unten Schattenkante, Ecken brechen das Licht
+ *    5. Schatten         – Randlicht innen (inset) + vier gestaffelte Schatten außen: das Glas schwebt
+ *
+ *  Alle Farben sind Tokens. Die Werte sind mit contrast.js gegen WCAG AA geprüft (tests/liquid-glass.test.mjs):
+ *  Bei Glas ist der Hintergrund unbekannt, deshalb gilt der Nachweis für jeden Hintergrund zwischen Schwarz und Weiß.
+ *  Dunkles Glas ist daher deckender (0,74) als helles (0,55): Weißer Text braucht dahinter eine dunklere Fläche.
+ * ========================================================= */
+
+:root {
+  /* Material */
+  --lg-blur: 40px;
+  --lg-saturate: 1.8;
+  --lg-brightness: 1.04;
+  --lg-fill: rgba(255, 255, 255, 0.55);          /* Leiste */
+  --lg-card-fill: rgba(255, 255, 255, 0.72);     /* Karten mit Fließtext: deckender */
+  --lg-pill-fill: rgba(255, 255, 255, 0.88);     /* aktive Pille liegt auf der Leiste */
+  --lg-fill-solid: rgb(244, 244, 247);           /* Fallback ohne backdrop-filter / bei „Transparenz reduzieren“ */
+  --lg-card-fill-solid: rgb(250, 250, 252);
+  --lg-spec-label: 0.1;                          /* stärkstes Specular-Weiß unter Text (Kontrastprüfung) */
+  --lg-pill-spec: rgba(255, 255, 255, 0.55);     /* Glanz auf der Pille */
+  --lg-hover-a: rgba(255, 255, 255, 0.7);        /* Lichtschein beim Überfahren */
+
+  /* Text & Symbole */
+  --lg-text: #1d1d1f;
+  --lg-text-2: #3a3a3f;
+  --lg-text-active: #0832a8;
+  --lg-focus: #0832a8;
+
+  /* Lichtkante (1 px, Verlauf) und Randlicht */
+  --lg-edge-top: rgba(255, 255, 255, 0.9);
+  --lg-edge-mid: rgba(255, 255, 255, 0.22);
+  --lg-edge-bottom: rgba(0, 0, 0, 0.2);
+  --lg-edge-corner: rgba(255, 255, 255, 0.6);
+  --lg-rim-top: rgba(255, 255, 255, 0.75);
+  --lg-rim-bottom: rgba(0, 0, 0, 0.07);
+  --lg-glow: rgba(255, 255, 255, 0.2);
+  --lg-hairline: rgba(0, 0, 0, 0.07);
+
+  /* Specular-Highlight */
+  --lg-spec-dome: rgba(255, 255, 255, 0.55);
+  --lg-spec-spot: rgba(255, 255, 255, 0.4);
+  --lg-spec-sheen: rgba(255, 255, 255, 0.18);
+
+  /* Schatten (vier Stufen: Kontakt → weit) */
+  --lg-shadow-a: rgba(20, 28, 48, 0.06);
+  --lg-shadow-b: rgba(20, 28, 48, 0.07);
+  --lg-shadow-c: rgba(20, 28, 48, 0.09);
+  --lg-shadow-d: rgba(20, 28, 48, 0.14);
+
+  --lg-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --lg-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --lg-fill: rgba(28, 28, 32, 0.74);
+    --lg-card-fill: rgba(28, 28, 32, 0.8);
+    --lg-pill-fill: rgba(255, 255, 255, 0.08);
+    --lg-fill-solid: rgb(34, 34, 38);
+    --lg-card-fill-solid: rgb(30, 30, 34);
+    --lg-spec-label: 0.06;
+    --lg-pill-spec: rgba(255, 255, 255, 0.03);
+    --lg-hover-a: rgba(255, 255, 255, 0.1);
+    --lg-text: #ffffff;
+    --lg-text-2: #f2f2f7;
+    --lg-text-active: #ffffff;
+    --lg-focus: #ffffff;
+    --lg-edge-top: rgba(255, 255, 255, 0.42);
+    --lg-edge-mid: rgba(255, 255, 255, 0.1);
+    --lg-edge-bottom: rgba(0, 0, 0, 0.55);
+    --lg-edge-corner: rgba(255, 255, 255, 0.28);
+    --lg-rim-top: rgba(255, 255, 255, 0.28);
+    --lg-rim-bottom: rgba(0, 0, 0, 0.5);
+    --lg-glow: rgba(255, 255, 255, 0.05);
+    --lg-hairline: rgba(255, 255, 255, 0.08);
+    --lg-spec-dome: rgba(255, 255, 255, 0.14);
+    --lg-spec-spot: rgba(255, 255, 255, 0.12);
+    --lg-spec-sheen: rgba(255, 255, 255, 0.05);
+    --lg-shadow-a: rgba(0, 0, 0, 0.18);
+    --lg-shadow-b: rgba(0, 0, 0, 0.2);
+    --lg-shadow-c: rgba(0, 0, 0, 0.28);
+    --lg-shadow-d: rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --lg-fill: rgba(28, 28, 32, 0.74);
+  --lg-card-fill: rgba(28, 28, 32, 0.8);
+  --lg-pill-fill: rgba(255, 255, 255, 0.08);
+  --lg-fill-solid: rgb(34, 34, 38);
+  --lg-card-fill-solid: rgb(30, 30, 34);
+  --lg-spec-label: 0.06;
+  --lg-pill-spec: rgba(255, 255, 255, 0.03);
+  --lg-hover-a: rgba(255, 255, 255, 0.1);
+  --lg-text: #ffffff;
+  --lg-text-2: #f2f2f7;
+  --lg-text-active: #ffffff;
+  --lg-focus: #ffffff;
+  --lg-edge-top: rgba(255, 255, 255, 0.42);
+  --lg-edge-mid: rgba(255, 255, 255, 0.1);
+  --lg-edge-bottom: rgba(0, 0, 0, 0.55);
+  --lg-edge-corner: rgba(255, 255, 255, 0.28);
+  --lg-rim-top: rgba(255, 255, 255, 0.28);
+  --lg-rim-bottom: rgba(0, 0, 0, 0.5);
+  --lg-glow: rgba(255, 255, 255, 0.05);
+  --lg-hairline: rgba(255, 255, 255, 0.08);
+  --lg-spec-dome: rgba(255, 255, 255, 0.14);
+  --lg-spec-spot: rgba(255, 255, 255, 0.12);
+  --lg-spec-sheen: rgba(255, 255, 255, 0.05);
+  --lg-shadow-a: rgba(0, 0, 0, 0.18);
+  --lg-shadow-b: rgba(0, 0, 0, 0.2);
+  --lg-shadow-c: rgba(0, 0, 0, 0.28);
+  --lg-shadow-d: rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+/* =========================================================
+ *  Material: .lg-surface (Leisten, Schaltflächen) · .lg-card (Flächen mit Fließtext)
+ * ========================================================= */
+
+.lg-surface {
+  --lg-surface-fill: var(--lg-fill);
+  --lg-surface-solid: var(--lg-fill-solid);
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--lg-radius, 28px);
+  color: var(--lg-text);
+  background-color: var(--lg-surface-fill);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),            /* Randlicht oben */
+    inset 0 -1px 0 var(--lg-rim-bottom),        /* Schattenkante unten */
+    inset 0 0 22px var(--lg-glow),              /* weiches Innenlicht: das Glas hat Dicke */
+    0 0 0 0.5px var(--lg-hairline),             /* äußere Haarlinie */
+    0 1px 2px var(--lg-shadow-a),
+    0 4px 10px var(--lg-shadow-b),
+    0 14px 28px var(--lg-shadow-c),
+    0 28px 56px var(--lg-shadow-d);
+}
+
+.lg-card {
+  --lg-surface-fill: var(--lg-card-fill);
+  --lg-surface-solid: var(--lg-card-fill-solid);
+  --lg-radius: 24px;
+  --lg-blur: 32px;
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    inset 0 0 18px var(--lg-glow),
+    0 0 0 0.5px var(--lg-hairline),
+    0 1px 2px var(--lg-shadow-a),
+    0 6px 16px var(--lg-shadow-b),
+    0 18px 36px var(--lg-shadow-c);
+}
+
+/* 3 · Specular: Kuppel oben, Glanzpunkt oben links, Glanzkante. Läuft innerhalb des oberen Drittels aus. */
+.lg-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 70% at 50% -22%, var(--lg-spec-dome) 0%, transparent 62%),
+    radial-gradient(46% 62% at 11% 6%, var(--lg-spec-spot) 0%, transparent 72%),
+    linear-gradient(180deg, var(--lg-spec-sheen) 0%, transparent 42%);
+}
+
+/* 4 · Lichtkante: 1-px-Rahmen als Verlauf (nur der Rand wird gezeichnet, das Innere ausgestanzt) */
+.lg-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, var(--lg-edge-corner) 0%, transparent 28%, transparent 72%, var(--lg-edge-corner) 100%),
+    linear-gradient(180deg, var(--lg-edge-top) 0%, var(--lg-edge-mid) 38%, transparent 58%, var(--lg-edge-bottom) 100%);
+  -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  -webkit-mask-clip: content-box, border-box;
+  -webkit-mask-composite: xor;
+  mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  mask-clip: content-box, border-box;
+  mask-composite: exclude;
+}
+
+/* ---------- Fallbacks: ohne Glas wird die Fläche deckend, Text bleibt lesbar ---------- */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .lg-surface { background-color: var(--lg-surface-solid); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .lg-surface {
+    background-color: var(--lg-surface-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+.lg-surface[data-solid] {
+  background-color: var(--lg-surface-solid);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* „Kontrast erhöhen“: deckende Fläche und kräftige Kontur */
+@media (prefers-contrast: more) {
+  .lg-surface {
+    background-color: var(--lg-surface-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .lg-surface::after {
+    padding: 2px;
+    background: linear-gradient(var(--lg-text), var(--lg-text));
+  }
+}
+/* Windows-Kontrastmodus */
+@media (forced-colors: active) {
+  .lg-surface {
+    background-color: Canvas;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+    border: 1px solid CanvasText;
+  }
+  .lg-surface::before, .lg-surface::after { display: none; }
+  .lg-pill { background: Highlight !important; box-shadow: none !important; forced-color-adjust: none; }
+  .lg-copy { color: HighlightText; }
+}
+
+/* =========================================================
+ *  <glass-tabs>
+ * ========================================================= */
+
+.lg-tabs {
+  --lg-pad: 6px;
+  --lg-radius: 999px;
+  display: inline-block;
+  padding: var(--lg-pad);
+  max-width: 100%;
+  contain: layout style;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Beschriftungen und ihr Klon teilen sich dasselbe Gitter: gleiche Spalten, gleiche Maße */
+.lg-labels,
+.lg-copy {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: stretch;
+}
+.lg-labels { position: relative; z-index: 2; }
+.lg-copy {
+  position: absolute;
+  inset: var(--lg-pad);
+  z-index: 3;
+  pointer-events: none;
+  color: var(--lg-text-active);
+  clip-path: inset(0 100% 0 0);   /* bis JavaScript die Pille misst: nichts zeigen */
+}
+
+.lg-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 76px;
+  min-height: 56px;                /* ≥ 44 px Tippfläche */
+  padding: 0 14px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--lg-text);
+  font: 600 11px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: transform 190ms var(--lg-ease-out);
+}
+.lg-copy .lg-tab { color: inherit; cursor: default; }
+.lg-tab .lg-icon {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lg-tab.is-pressed { transform: scale(0.97); }      /* sinkt ein – sofort beim Drücken */
+
+/* Pille: das bewegte Glas. Breite und Position setzt JavaScript (Federn), alles andere ist Material. */
+.lg-pill {
+  position: absolute;
+  top: var(--lg-pad);
+  bottom: var(--lg-pad);
+  left: var(--lg-pad);
+  width: 0;
+  z-index: 1;
+  border-radius: 999px;
+  pointer-events: none;
+  transform-origin: 0 50%;
+  scale: 1;
+  transition: scale 190ms var(--lg-ease-out);
+  background:
+    radial-gradient(90% 80% at 30% -10%, var(--lg-pill-spec), transparent 65%),
+    var(--lg-pill-fill);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    0 0 0 0.5px var(--lg-hairline),
+    0 1px 1px var(--lg-shadow-a),
+    0 4px 10px var(--lg-shadow-b),
+    0 8px 20px var(--lg-shadow-c);
+}
+.lg-tabs[data-press] .lg-pill { scale: 0.97; }
+
+/* Hover: sanfter Lichtschein, folgt dem Zeiger. Nur mit Maus/Stift – Touch löst sonst falsche Hover aus. */
+.lg-tab::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 240ms var(--lg-ease-out);
+  background: radial-gradient(110px circle at var(--mx, 50%) var(--my, 30%), var(--lg-hover-a) 0%, transparent 70%);
+}
+@media (hover: hover) and (pointer: fine) {
+  .lg-labels .lg-tab:not([aria-selected="true"]):hover::before { opacity: 1; }
+}
+
+.lg-tab:focus-visible {
+  outline: 2px solid var(--lg-focus);
+  outline-offset: -3px;
+}
+.lg-tab:focus { outline-offset: -3px; }
+
+/* ---------- Schmale Bildschirme: Spalten richten sich nach dem Inhalt statt alle so breit wie die längste Beschriftung ---------- */
+@media (max-width: 399px) {
+  .lg-tabs:not([variant="segmented"]) .lg-labels,
+  .lg-tabs:not([variant="segmented"]) .lg-copy { grid-auto-columns: auto; }
+  .lg-tabs:not([variant="segmented"]) .lg-tab { min-width: 0; padding: 0 9px; }
+}
+@media (max-width: 359px) {
+  .lg-tabs:not([variant="segmented"]) { --lg-pad: 4px; }
+  .lg-tabs:not([variant="segmented"]) .lg-tab { padding: 0 6px; letter-spacing: 0; }
+}
+
+/* ---------- Segmented Control: nur Text, kompakt ---------- */
+.lg-tabs[variant="segmented"] { --lg-pad: 3px; }
+.lg-tabs[variant="segmented"] .lg-tab {
+  flex-direction: row;
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0 16px;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+.lg-tabs[variant="segmented"] .lg-icon { display: none; }
+
+/* ---------- Reduzierte Bewegung: keine Pille in Bewegung (Wechsel ist sofort), Rückmeldung bleibt ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .lg-tab, .lg-pill, .lg-tab::before { transition-duration: 1ms; }
+}
+.lg-tabs[reduced-motion] .lg-tab,
+.lg-tabs[reduced-motion] .lg-pill,
+.lg-tabs[reduced-motion] .lg-tab::before { transition-duration: 1ms; }
+
+/* =========================================================
+ *  <glass-panels>
+ * ========================================================= */
+
+.lg-panels { display: grid; }
+.lg-panels > [role="tabpanel"] { grid-area: 1 / 1; min-width: 0; }
+.lg-panels > [role="tabpanel"]:focus-visible { outline: 2px solid var(--lg-focus); outline-offset: 4px; border-radius: 12px; }
+.lg-panels > [data-state] { will-change: transform, opacity; }   /* nur solange ein Übergang läuft */
+
+/* Demo-Seite für Liquid Glass – nur Gestaltung der Beispielinhalte. Das Material steckt in ../src/liquid-glass.css. */
+
+:root {
+  --bg-a: #eaf3ff;
+  --bg-b: #fbf1e4;
+  --orb-1: #6fb7ff;
+  --orb-2: #7fe3c6;
+  --orb-3: #ffbe8a;
+  --ring-track: rgba(29, 29, 31, 0.14);
+  --bar: #0832a8;
+  --grid: rgba(29, 29, 31, 0.16);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-a: #060d1c;
+    --bg-b: #0b1626;
+    --orb-1: #1b6dff;
+    --orb-2: #0fb89a;
+    --orb-3: #e0762f;
+    --ring-track: rgba(255, 255, 255, 0.2);
+    --bar: #ffffff;
+    --grid: rgba(255, 255, 255, 0.22);
+  }
+}
+:root[data-theme="dark"] {
+  --bg-a: #060d1c;
+  --bg-b: #0b1626;
+  --orb-1: #1b6dff;
+  --orb-2: #0fb89a;
+  --orb-3: #e0762f;
+  --ring-track: rgba(255, 255, 255, 0.2);
+  --bar: #ffffff;
+  --grid: rgba(255, 255, 255, 0.22);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  color: var(--lg-text);
+  background: linear-gradient(165deg, var(--bg-a), var(--bg-b));
+  font: 400 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+[hidden] { display: none !important; }
+p, h1, h2, ul { margin: 0; }
+ul { padding: 0; list-style: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ---------- Hintergrund: ruhige Farbflächen, bewusst unbewegt (keine Dauerbewegung hinter Glas) ---------- */
+.stage { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.orb { position: absolute; width: 74vmax; height: 74vmax; border-radius: 50%; }
+.o1 { top: -26vmax; left: -22vmax; background: radial-gradient(closest-side, var(--orb-1), transparent); opacity: 0.85; }
+.o2 { top: 22vh; right: -34vmax; background: radial-gradient(closest-side, var(--orb-2), transparent); opacity: 0.8; }
+.o3 { bottom: -34vmax; left: -6vmax; background: radial-gradient(closest-side, var(--orb-3), transparent); opacity: 0.8; }
+
+/* ---------- Kopf ---------- */
+.top {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 640px;
+  margin: 0 auto;
+  padding-block: 12px;
+}
+.brand {
+  --lg-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 20px 0 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.brand-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--lg-text); box-shadow: 0 0 0 3px var(--lg-fill-solid), 0 0 0 4px var(--lg-text); }
+.theme {
+  --lg-radius: 999px;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  color: var(--lg-text);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 190ms var(--lg-ease-out);
+}
+.theme:active { transform: scale(0.94); }
+.theme:focus-visible { outline: 2px solid var(--lg-focus); outline-offset: 3px; }
+.theme .lg-icon { grid-area: 1 / 1; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.theme .moon { display: none; }
+:root[data-theme="dark"] .theme .sun { display: none; }
+:root[data-theme="dark"] .theme .moon { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme .sun { display: none; }
+  :root:not([data-theme="light"]) .theme .moon { display: block; }
+}
+
+/* ---------- Seite ---------- */
+.page { max-width: 640px; margin: 0 auto; padding-block: 8px 148px; }
+.lg-panels > section { display: grid; gap: 14px; align-content: start; }
+.eyebrow { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--lg-text-2); }
+.title { font-size: clamp(34px, 9vw, 44px); line-height: 1.05; letter-spacing: -0.03em; font-weight: 750; text-wrap: balance; margin-bottom: 4px; }
+.h2 { font-size: 17px; line-height: 1.3; letter-spacing: -0.02em; font-weight: 650; }
+.label { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--lg-text-2); }
+.muted { font-size: 14px; line-height: 1.45; color: var(--lg-text-2); text-wrap: pretty; }
+.strong { font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
+.big { display: flex; align-items: baseline; gap: 4px; }
+.num { font-size: 52px; line-height: 1; font-weight: 750; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.num2 { font-size: 24px; line-height: 1.15; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.of { font-size: 22px; font-weight: 600; color: var(--lg-text-2); font-variant-numeric: tabular-nums; }
+.val { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.card { padding: 18px 20px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+.hero { grid-template-columns: auto 1fr; align-items: center; gap: 20px; }
+.hero-text { display: grid; gap: 6px; }
+.ring { width: 112px; height: 112px; }
+.ring circle { fill: none; stroke-width: 10; }
+.ring-bg { stroke: var(--ring-track); }
+.ring-fg { stroke: var(--lg-text-active); stroke-linecap: round; transition: stroke-dashoffset 800ms var(--lg-ease-spring); }
+.next { grid-template-columns: 1fr auto; align-items: center; }
+.chip { padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--lg-text); box-shadow: inset 0 0 0 1.5px var(--lg-text-2); white-space: nowrap; }
+.kpis { grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* ---------- Diagramm ---------- */
+.chart-head { display: flex; margin: 0 0 6px; }
+.chart-head glass-tabs { --lg-radius: 999px; }
+.chart { position: relative; margin-top: 10px; display: grid; grid-template-columns: 34px 1fr; grid-template-rows: 150px auto; column-gap: 8px; row-gap: 8px; }
+.y { grid-column: 1; grid-row: 1; position: relative; font-size: 11px; font-weight: 500; color: var(--lg-text-2); font-variant-numeric: tabular-nums; text-align: right; }
+.y span { position: absolute; right: 0; transform: translateY(50%); }
+.plot { grid-column: 2; grid-row: 1; position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-items: end; gap: var(--gap, 8px); border-bottom: 1.5px solid var(--grid); }
+.plot::before, .plot::after { content: ""; position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--grid); pointer-events: none; }
+.plot::before { top: 0; }
+.plot::after { top: 50%; }
+.bar { height: 100%; align-self: end; display: flex; align-items: flex-end; }
+.bar i { display: block; width: 100%; border-radius: 8px 8px 3px 3px; background: var(--bar); transform-origin: 50% 100%; transition: transform 620ms var(--lg-ease-spring); min-height: 3px; }
+.bar.zero i { opacity: 0.35; }
+.x { grid-column: 2; grid-row: 2; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: var(--gap, 8px); font-size: 12px; font-weight: 500; color: var(--lg-text-2); text-align: center; }
+
+/* ---------- Liste ---------- */
+.list { display: grid; gap: 12px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; min-width: 0; }
+.row > div { min-width: 0; }
+
+/* ---------- Schalter ---------- */
+.switches { gap: 14px; }
+.sw-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.sw-row > div { min-width: 0; }
+.switch {
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.switch::before {
+  content: "";
+  position: absolute;
+  left: 2px; right: 2px; top: 7px; bottom: 7px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--lg-text-2);
+  background: transparent;
+  transition: background-color 220ms var(--lg-ease-out), box-shadow 220ms var(--lg-ease-out);
+}
+.switch i {
+  position: absolute;
+  top: 11px; left: 6px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--lg-text-2);
+  transition: transform 260ms var(--lg-ease-spring), background-color 220ms var(--lg-ease-out), width 140ms var(--lg-ease-out);
+}
+.switch:active i { width: 28px; }
+.switch[aria-checked="true"]::before { background: var(--lg-text-active); box-shadow: inset 0 0 0 1.5px var(--lg-text-active); }
+.switch[aria-checked="true"] i { transform: translateX(22px); background: var(--lg-fill-solid); }
+.switch[aria-checked="true"]:active i { transform: translateX(16px); }
+.switch:focus-visible { outline: 2px solid var(--lg-focus); outline-offset: 2px; border-radius: 999px; }
+
+/* ---------- Kontrast-Tabelle ---------- */
+.contrast { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.contrast th { padding: 6px 0; text-align: left; font-weight: 600; color: var(--lg-text-2); border-bottom: 1px solid var(--grid); }
+.contrast td { padding: 8px 0; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+.contrast .r { text-align: right; padding-left: 10px; white-space: nowrap; }
+.contrast tbody tr:last-child td { border-bottom: 0; }
+.badge { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; box-shadow: inset 0 0 0 1.5px var(--lg-text); }
+.badge.bad { background: var(--lg-text); color: var(--lg-fill-solid); }
+.badge svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- Dock: schwebende Leiste, am unteren Rand mittig ---------- */
+.dock {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: center;
+  padding: 0 max(12px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  pointer-events: none;
+}
+.dock glass-tabs { pointer-events: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-fg, .bar i, .switch::before, .switch i { transition-duration: 1ms; }
+}
+body.demo-reduced .ring-fg, body.demo-reduced .bar i, body.demo-reduced .switch::before, body.demo-reduced .switch i { transition-duration: 1ms; }
+@media (forced-colors: active) {
+  .ring-fg { stroke: Highlight; } .ring-bg { stroke: GrayText; } .bar i { background: Highlight; }
+}
+
+</style>
+</head>
+<body>
+<!-- Bunter Hintergrund, damit man sieht, was das Glas mit ihm macht -->
+  <div class="stage" aria-hidden="true"><i class="orb o1"></i><i class="orb o2"></i><i class="orb o3"></i></div>
+
+  <header class="top">
+    <div class="brand lg-surface"><span class="brand-dot" aria-hidden="true"></span><span>Liquid Glass</span></div>
+    <button type="button" class="theme lg-surface" id="theme" aria-label="Zwischen hell und dunkel wechseln">
+      <svg class="lg-icon sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></svg>
+      <svg class="lg-icon moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+    </button>
+  </header>
+
+  <main class="page">
+    <glass-panels for="nav">
+
+      <!-- Übersicht -->
+      <section role="tabpanel" id="panel-uebersicht" data-panel="uebersicht" aria-labelledby="tab-uebersicht">
+        <p class="eyebrow" data-depth="1">Diese Woche</p>
+        <h1 class="title" data-depth="1">Übersicht</h1>
+        <article class="lg-surface lg-card card hero" data-depth="1.6">
+          <svg class="ring" viewBox="0 0 120 120" role="img" aria-label="3 von 4 Einheiten geschafft">
+            <circle class="ring-bg" cx="60" cy="60" r="50"/>
+            <circle class="ring-fg" id="ring" cx="60" cy="60" r="50" transform="rotate(-90 60 60)" stroke-dasharray="314.16" stroke-dashoffset="78.54"/>
+          </svg>
+          <div class="hero-text">
+            <p class="big"><span class="num">3</span><span class="of"> / 4</span></p>
+            <p class="muted">Einheiten diese Woche. Noch eine bis zum Wochenziel.</p>
+          </div>
+        </article>
+        <div class="pair" data-depth="2">
+          <article class="lg-surface lg-card card"><p class="label">Volumen</p><p class="num2">12 480 kg</p><p class="muted">+8 % zur Vorwoche</p></article>
+          <article class="lg-surface lg-card card"><p class="label">Serie</p><p class="num2">6 Wochen</p><p class="muted">Ziel jede Woche erreicht</p></article>
+        </div>
+        <article class="lg-surface lg-card card next" data-depth="2.4">
+          <div><p class="label">Als Nächstes</p><p class="strong">Pull Day</p><p class="muted">Freitag, 18:00 Uhr · 6 Übungen</p></div>
+          <span class="chip">in 2 Tagen</span>
+        </article>
+      </section>
+
+      <!-- Analytics -->
+      <section role="tabpanel" id="panel-analytics" data-panel="analytics" aria-labelledby="tab-analytics">
+        <p class="eyebrow" data-depth="1">Trainingsvolumen</p>
+        <h1 class="title" data-depth="1">Analytics</h1>
+        <article class="lg-surface lg-card card chart-card" data-depth="1.6">
+          <div class="chart-head">
+            <glass-tabs id="range" variant="segmented" label="Zeitraum" value="week">
+              <button type="button" role="tab" data-value="week" id="r-week"><span class="lg-label">7 Tage</span></button>
+              <button type="button" role="tab" data-value="month" id="r-month"><span class="lg-label">30 Tage</span></button>
+              <button type="button" role="tab" data-value="year" id="r-year"><span class="lg-label">Jahr</span></button>
+            </glass-tabs>
+          </div>
+          <p class="big"><span class="num" id="chart-total">13 480</span><span class="of"> kg</span></p>
+          <p class="muted" id="chart-sub">Gesamtvolumen der letzten 7 Tage</p>
+          <div class="chart" id="chart" role="img" aria-label="Balkendiagramm Trainingsvolumen"></div>
+        </article>
+        <article class="lg-surface lg-card card kpis" data-depth="2.2">
+          <div><p class="label">Bestes Training</p><p class="strong" id="kpi-best">4 010 kg</p></div>
+          <div><p class="label">Durchschnitt</p><p class="strong" id="kpi-avg">3 370 kg</p></div>
+        </article>
+      </section>
+
+      <!-- Aktivität -->
+      <section role="tabpanel" id="panel-aktivitaet" data-panel="aktivitaet" aria-labelledby="tab-aktivitaet">
+        <p class="eyebrow" data-depth="1">Letzte Einheiten</p>
+        <h1 class="title" data-depth="1">Aktivität</h1>
+        <ul class="list" data-depth="1.6">
+          <li class="lg-surface lg-card row"><div><p class="strong">Push Day</p><p class="muted">Heute, 18:05 · 54 min</p></div><p class="val">4 010 kg</p></li>
+          <li class="lg-surface lg-card row"><div><p class="strong">Beine</p><p class="muted">Montag, 17:40 · 61 min</p></div><p class="val">5 820 kg</p></li>
+          <li class="lg-surface lg-card row"><div><p class="strong">Pull Day</p><p class="muted">Samstag, 10:15 · 49 min</p></div><p class="val">3 120 kg</p></li>
+          <li class="lg-surface lg-card row"><div><p class="strong">Push Day</p><p class="muted">Donnerstag, 18:20 · 52 min</p></div><p class="val">3 490 kg</p></li>
+          <li class="lg-surface lg-card row"><div><p class="strong">Cardio</p><p class="muted">Dienstag, 07:30 · 35 min</p></div><p class="val">–</p></li>
+        </ul>
+      </section>
+
+      <!-- Einstellungen -->
+      <section role="tabpanel" id="panel-einstellungen" data-panel="einstellungen" aria-labelledby="tab-einstellungen">
+        <p class="eyebrow" data-depth="1">Ausprobieren</p>
+        <h1 class="title" data-depth="1">Einstellungen</h1>
+
+        <article class="lg-surface lg-card card" data-depth="1.6">
+          <h2 class="h2">Darstellung</h2>
+          <glass-tabs id="theme-seg" variant="segmented" label="Darstellung" value="system">
+            <button type="button" role="tab" data-value="light"><span class="lg-label">Hell</span></button>
+            <button type="button" role="tab" data-value="dark"><span class="lg-label">Dunkel</span></button>
+            <button type="button" role="tab" data-value="system"><span class="lg-label">System</span></button>
+          </glass-tabs>
+        </article>
+
+        <article class="lg-surface lg-card card switches" data-depth="2">
+          <h2 class="h2">Bewegung und Glas prüfen</h2>
+          <div class="sw-row"><div><p class="strong" id="l-slow">Zeitlupe</p><p class="muted">Alles 4× langsamer, um Dehnung und Federn zu sehen</p></div>
+            <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="l-slow" data-toggle="slow"><i></i></button></div>
+          <div class="sw-row"><div><p class="strong" id="l-reduce">Bewegung reduzieren</p><p class="muted">Wie die Systemeinstellung: nur Überblenden</p></div>
+            <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="l-reduce" data-toggle="reduce"><i></i></button></div>
+          <div class="sw-row"><div><p class="strong" id="l-solid">Feste Fläche statt Glas</p><p class="muted">So sieht es ohne Backdrop-Filter aus (Fallback)</p></div>
+            <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="l-solid" data-toggle="solid"><i></i></button></div>
+        </article>
+
+        <article class="lg-surface lg-card card" data-depth="2.4">
+          <h2 class="h2">Kontrast (WCAG 2.2 AA)</h2>
+          <p class="muted">Berechnet aus den aktuellen Farben, ungünstigster Hintergrund zwischen Schwarz und Weiß.</p>
+          <table class="contrast">
+            <thead><tr><th scope="col">Element</th><th scope="col" class="r">Verhältnis</th><th scope="col" class="r">Ziel</th><th scope="col"><span class="sr-only">Ergebnis</span></th></tr></thead>
+            <tbody id="contrast-body"></tbody>
+          </table>
+        </article>
+      </section>
+
+    </glass-panels>
+  </main>
+
+  <!-- Schwebende Tab-Leiste -->
+  <div class="dock">
+    <glass-tabs id="nav" label="Hauptnavigation" value="uebersicht">
+      <button type="button" role="tab" id="tab-uebersicht" data-value="uebersicht" aria-controls="panel-uebersicht">
+        <svg class="lg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>
+        <span class="lg-label">Übersicht</span>
+      </button>
+      <button type="button" role="tab" id="tab-analytics" data-value="analytics" aria-controls="panel-analytics">
+        <svg class="lg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-9M12 20V5M19 20v-6"/></svg>
+        <span class="lg-label">Analytics</span>
+      </button>
+      <button type="button" role="tab" id="tab-aktivitaet" data-value="aktivitaet" aria-controls="panel-aktivitaet">
+        <svg class="lg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
+        <span class="lg-label">Aktivität</span>
+      </button>
+      <button type="button" role="tab" id="tab-einstellungen" data-value="einstellungen" aria-controls="panel-einstellungen">
+        <svg class="lg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+        <span class="lg-label">Einstellungen</span>
+      </button>
+    </glass-tabs>
+  </div>
+<script>
+(() => {
+  // liquid-glass/src/spring.js
+  var SUBSTEP = 1 / 240;
+  var MAX_FRAME = 1 / 20;
+  var Spring = class {
+    constructor(value = 0, { stiffness = 300, damping = 25, mass = 1 } = {}) {
+      this.value = value;
+      this.target = value;
+      this.velocity = 0;
+      this.stiffness = stiffness;
+      this.damping = damping;
+      this.mass = mass;
+      this.restDistance = 0.05;
+      this.restSpeed = 0.5;
+    }
+    /** Federparameter ändern, ohne Position oder Geschwindigkeit anzutasten (z. B. beim Richtungswechsel). */
+    configure({ stiffness = this.stiffness, damping = this.damping, mass = this.mass } = {}) {
+      Object.assign(this, { stiffness, damping, mass });
+      return this;
+    }
+    /** Sofort an den Wert springen (kein Übergang). */
+    snap(value = this.target) {
+      this.value = this.target = value;
+      this.velocity = 0;
+      return this;
+    }
+    get settled() {
+      return Math.abs(this.target - this.value) < this.restDistance && Math.abs(this.velocity) < this.restSpeed;
+    }
+    /** Um dt Sekunden weiterrechnen, liefert den neuen Wert. */
+    step(dt) {
+      let left = Math.min(Math.max(dt, 0), MAX_FRAME);
+      while (left > 1e-9) {
+        const h = Math.min(SUBSTEP, left);
+        const accel = (-this.stiffness * (this.value - this.target) - this.damping * this.velocity) / this.mass;
+        this.velocity += accel * h;
+        this.value += this.velocity * h;
+        left -= h;
+      }
+      if (this.settled) this.snap();
+      return this.value;
+    }
+  };
+
+  // liquid-glass/src/glass-tabs.js
+  var REDUCED = "(prefers-reduced-motion: reduce)";
+  var LEAD = { stiffness: 560, damping: 33 };
+  var TRAIL = { stiffness: 360, damping: 29 };
+  var SQUASH = 0.07;
+  var clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  var GlassTabs = class extends HTMLElement {
+    static observedAttributes = ["value", "solid"];
+    #ready = false;
+    #tabs = [];
+    #clones = [];
+    #labels = null;
+    #copy = null;
+    #pill = null;
+    #rects = [];
+    #index = -1;
+    #left = new Spring(0, TRAIL);
+    #right = new Spring(0, LEAD);
+    #raf = 0;
+    #last = 0;
+    #ro = null;
+    #mo = null;
+    #radius = 0;
+    #width = 0;
+    connectedCallback() {
+      if (this.#ready) return;
+      this.#ready = true;
+      this.classList.add("lg-surface", "lg-tabs");
+      this.toggleAttribute("data-solid", this.hasAttribute("solid"));
+      const tabs = [...this.querySelectorAll(':scope > [role="tab"]')];
+      this.#labels = document.createElement("div");
+      this.#labels.className = "lg-labels";
+      this.#labels.setAttribute("role", "tablist");
+      if (this.getAttribute("label")) this.#labels.setAttribute("aria-label", this.getAttribute("label"));
+      this.#pill = Object.assign(document.createElement("span"), { className: "lg-pill" });
+      this.#pill.setAttribute("aria-hidden", "true");
+      this.#copy = Object.assign(document.createElement("div"), { className: "lg-copy" });
+      this.#copy.setAttribute("aria-hidden", "true");
+      this.#copy.inert = true;
+      tabs.forEach((t) => {
+        t.classList.add("lg-tab");
+        this.#labels.append(t);
+      });
+      this.append(this.#pill, this.#labels, this.#copy);
+      this.#labels.addEventListener("click", (e) => this.#onClick(e));
+      this.#labels.addEventListener("keydown", (e) => this.#onKey(e));
+      this.#labels.addEventListener("pointerdown", (e) => this.#onPress(e));
+      this.#labels.addEventListener("pointermove", (e) => this.#onHover(e), { passive: true });
+      this.#labels.addEventListener("pointerleave", () => this.#clearHover());
+      this.#sync();
+      const initial = this.getAttribute("value") || this.#tabs[0]?.dataset.value;
+      this.#apply(this.#tabs.findIndex((t) => t.dataset.value === initial), { animate: false, silent: true });
+      this.#ro = new ResizeObserver(() => this.#remeasure());
+      this.#ro.observe(this);
+      this.#mo = new MutationObserver(() => this.refresh());
+      this.#mo.observe(this.#labels, { childList: true, subtree: true, characterData: true });
+      document.fonts?.ready.then(() => this.#remeasure());
+    }
+    disconnectedCallback() {
+      cancelAnimationFrame(this.#raf);
+      this.#ro?.disconnect();
+      this.#mo?.disconnect();
+      this.#ready = false;
+    }
+    attributeChangedCallback(name, _old, value) {
+      if (!this.#ready) return;
+      if (name === "value" && value !== this.value) this.select(value);
+      if (name === "solid") this.toggleAttribute("data-solid", value !== null);
+    }
+    get value() {
+      return this.#tabs[this.#index]?.dataset.value ?? null;
+    }
+    set value(v) {
+      this.select(v);
+    }
+    /** Reiter wechseln. Rückgabe: true, wenn sich etwas geändert hat. */
+    select(value) {
+      const i = this.#tabs.findIndex((t) => t.dataset.value === value);
+      return i >= 0 && i !== this.#index ? (this.#apply(i, { animate: true }), true) : false;
+    }
+    /** Nach dynamischen Änderungen an den Reitern neu aufbauen. */
+    refresh() {
+      this.#sync();
+      this.#remeasure();
+    }
+    /* ---------- Aufbau ---------- */
+    #sync() {
+      this.#tabs = [...this.#labels.querySelectorAll('[role="tab"]')];
+      this.#tabs.forEach((t, i) => {
+        t.type = "button";
+        if (!t.dataset.value) t.dataset.value = String(i);
+      });
+      this.#copy.replaceChildren(...this.#tabs.map((t) => {
+        const c = t.cloneNode(true);
+        for (const a of ["id", "aria-controls", "aria-selected", "role", "data-value"]) c.removeAttribute(a);
+        c.tabIndex = -1;
+        c.classList.remove("is-pressed");
+        return c;
+      }));
+      this.#clones = [...this.#copy.children];
+    }
+    #measure() {
+      this.#rects = this.#tabs.map((t) => ({ left: t.offsetLeft, width: t.offsetWidth }));
+      this.#width = this.#labels.offsetWidth;
+      this.#radius = this.#pill.offsetHeight / 2;
+    }
+    #remeasure() {
+      if (!this.#tabs.length) return;
+      this.#measure();
+      if (this.#index < 0) return;
+      const r = this.#rects[this.#index];
+      this.#left.target = r.left;
+      this.#right.target = r.left + r.width;
+      if (!this.#raf) {
+        this.#left.snap();
+        this.#right.snap();
+        this.#paint();
+      }
+    }
+    /* ---------- Auswahl ---------- */
+    #apply(i, { animate, silent = false }) {
+      if (i < 0) i = 0;
+      const prev = this.#index;
+      this.#index = i;
+      this.#tabs.forEach((t, k) => {
+        const on = k === i;
+        t.setAttribute("aria-selected", String(on));
+        t.tabIndex = on ? 0 : -1;
+        t.classList.toggle("is-active", on);
+      });
+      if (this.getAttribute("value") !== this.value) this.setAttribute("value", this.value);
+      this.#measure();
+      const to = this.#rects[i];
+      const from = prev >= 0 ? this.#rects[prev] : null;
+      const dir = from ? Math.sign(to.left + to.width / 2 - (from.left + from.width / 2)) : 0;
+      if (animate && from && !this.#reduced() && this.isConnected && this.getClientRects().length) {
+        const lead = dir >= 0 ? this.#right : this.#left;
+        const trail = dir >= 0 ? this.#left : this.#right;
+        lead.configure(LEAD);
+        trail.configure(TRAIL);
+        this.#left.target = to.left;
+        this.#right.target = to.left + to.width;
+        this.#run();
+      } else {
+        this.#left.snap(to.left);
+        this.#right.snap(to.left + to.width);
+        this.#paint();
+      }
+      if (!silent) {
+        this.dispatchEvent(new CustomEvent("change", { bubbles: true, detail: { value: this.value, index: i, previous: prev, direction: dir } }));
+      }
+    }
+    /* ---------- Animation ---------- */
+    #reduced() {
+      return this.hasAttribute("reduced-motion") || matchMedia(REDUCED).matches;
+    }
+    #timeScale() {
+      const s = parseFloat(this.getAttribute("time-scale"));
+      return s > 0 ? s : 1;
+    }
+    #run() {
+      if (this.#raf) return;
+      this.#pill.style.willChange = "transform, width";
+      this.#last = performance.now();
+      this.#raf = requestAnimationFrame((t) => this.#tick(t));
+    }
+    #tick(now) {
+      const dt = (now - this.#last) / 1e3 * this.#timeScale();
+      this.#last = now;
+      this.#left.step(dt);
+      this.#right.step(dt);
+      this.#paint();
+      if (this.#left.settled && this.#right.settled) {
+        this.#raf = 0;
+        this.#pill.style.willChange = "";
+        return;
+      }
+      this.#raf = requestAnimationFrame((t) => this.#tick(t));
+    }
+    #paint() {
+      const l = this.#left.value;
+      const r = this.#right.value;
+      const w = Math.max(r - l, 0);
+      const base = this.#rects[this.#index]?.width || w || 1;
+      const stretch = clamp(w / base - 1, 0, 1);
+      this.#pill.style.width = w + "px";
+      this.#pill.style.transform = `translate3d(${l}px,0,0) scaleY(${(1 - SQUASH * stretch).toFixed(4)})`;
+      this.#copy.style.clipPath = `inset(0 ${Math.max(this.#width - r, 0)}px 0 ${l}px round ${this.#radius}px)`;
+    }
+    /* ---------- Eingaben ---------- */
+    #tabOf(e) {
+      return e.target.closest?.('[role="tab"]');
+    }
+    #onClick(e) {
+      const t = this.#tabOf(e);
+      if (t) this.select(t.dataset.value);
+    }
+    #onKey(e) {
+      const t = this.#tabOf(e);
+      if (!t) return;
+      const rtl = getComputedStyle(this).direction === "rtl";
+      const last = this.#tabs.length - 1;
+      const i = this.#tabs.indexOf(t);
+      const next = { ArrowRight: rtl ? i - 1 : i + 1, ArrowLeft: rtl ? i + 1 : i - 1, Home: 0, End: last }[e.key];
+      if (next === void 0) return;
+      e.preventDefault();
+      const to = this.#tabs[clamp(next, 0, last)];
+      to.focus();
+      this.select(to.dataset.value);
+    }
+    /** Einsinken sofort beim Drücken – nicht erst beim Loslassen. Der Klon im aktiven Layer sinkt synchron mit. */
+    #onPress(e) {
+      const t = this.#tabOf(e);
+      if (!t || e.button > 0) return;
+      const i = this.#tabs.indexOf(t);
+      const clone = this.#clones[i];
+      t.classList.add("is-pressed");
+      clone?.classList.add("is-pressed");
+      if (i === this.#index) this.setAttribute("data-press", "");
+      const release = () => {
+        t.classList.remove("is-pressed");
+        clone?.classList.remove("is-pressed");
+        this.removeAttribute("data-press");
+        removeEventListener("pointerup", release);
+        removeEventListener("pointercancel", release);
+      };
+      addEventListener("pointerup", release);
+      addEventListener("pointercancel", release);
+    }
+    #hoverRaf = 0;
+    #hoverTab = null;
+    #hoverX = 0;
+    #hoverY = 0;
+    /** Lichtschein folgt dem Zeiger (nur Maus/Stift; ob er zu sehen ist, steuert das CSS) */
+    #onHover(e) {
+      if (e.pointerType !== "mouse" && e.pointerType !== "pen") return;
+      this.#hoverTab = this.#tabOf(e) || null;
+      this.#hoverX = e.clientX;
+      this.#hoverY = e.clientY;
+      if (!this.#hoverTab || this.#hoverRaf) return;
+      this.#hoverRaf = requestAnimationFrame(() => {
+        this.#hoverRaf = 0;
+        const tab = this.#hoverTab;
+        if (!tab) return;
+        const r = tab.getBoundingClientRect();
+        tab.style.setProperty("--mx", this.#hoverX - r.left + "px");
+        tab.style.setProperty("--my", this.#hoverY - r.top + "px");
+      });
+    }
+    #clearHover() {
+      this.#hoverTab = null;
+    }
+  };
+  if (!customElements.get("glass-tabs")) customElements.define("glass-tabs", GlassTabs);
+
+  // liquid-glass/src/glass-panels.js
+  var REDUCED2 = "(prefers-reduced-motion: reduce)";
+  var EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
+  var EASE_IN = "cubic-bezier(0.16, 1, 0.3, 1)";
+  var OUT_MS = 150;
+  var IN_MS = 380;
+  var GlassPanels = class extends HTMLElement {
+    #tabs = null;
+    #panels = [];
+    #current = null;
+    #visible = /* @__PURE__ */ new Set();
+    #onChange = (e) => this.#go(e.detail.value, e.detail.direction);
+    async connectedCallback() {
+      this.classList.add("lg-panels");
+      this.#panels = [...this.querySelectorAll(':scope > [role="tabpanel"]')];
+      const id = this.getAttribute("for");
+      this.#tabs = id && document.getElementById(id) || this.previousElementSibling;
+      if (!this.#tabs) return;
+      await customElements.whenDefined("glass-tabs");
+      this.#tabs.addEventListener("change", this.#onChange);
+      const first = this.#tabs.value ?? this.#panels[0]?.dataset.panel;
+      this.#panels.forEach((p) => this.#hide(p));
+      const start = this.#panel(first);
+      if (start) {
+        this.#show(start);
+        this.#current = start;
+        this.#visible.add(start);
+      }
+    }
+    disconnectedCallback() {
+      this.#tabs?.removeEventListener("change", this.#onChange);
+    }
+    #panel(value) {
+      return this.#panels.find((p) => p.dataset.panel === value) || null;
+    }
+    #hide(p) {
+      p.hidden = true;
+      p.inert = true;
+      delete p.dataset.state;
+    }
+    #show(p) {
+      p.hidden = false;
+      p.inert = false;
+    }
+    #reduced() {
+      return this.hasAttribute("reduced-motion") || matchMedia(REDUCED2).matches;
+    }
+    #scale() {
+      const s = parseFloat(this.getAttribute("time-scale"));
+      return s > 0 ? 1 / s : 1;
+    }
+    // 0.25 → 4× länger
+    #offset() {
+      const o = parseFloat(this.getAttribute("offset"));
+      return Number.isFinite(o) ? o : 16;
+    }
+    /** Zustand, in dem das Element gerade auf dem Bildschirm steht (auch mitten in einer Animation) */
+    #live(el) {
+      const cs = getComputedStyle(el);
+      return { opacity: cs.opacity, transform: cs.transform === "none" ? "translate3d(0,0,0)" : cs.transform };
+    }
+    #go(value, dir) {
+      const next = this.#panel(value);
+      if (!next || next === this.#current) return;
+      this.#current = next;
+      const reduced = this.#reduced();
+      const offset = reduced ? 0 : this.#offset();
+      for (const p of [...this.#visible]) if (p !== next) this.#out(p, dir, offset);
+      this.#in(next, dir, offset);
+      this.#visible.add(next);
+    }
+    #out(p, dir, offset) {
+      const from = this.#live(p);
+      const kids = this.#depthKids(p).map((k) => [k, this.#live(k)]);
+      p.getAnimations({ subtree: true }).forEach((a) => a.cancel());
+      p.dataset.state = "out";
+      const t = OUT_MS * this.#scale();
+      const anim = p.animate([from, { opacity: 0, transform: `translate3d(${-dir * offset}px,0,0)` }], { duration: t, easing: EASE_OUT, fill: "forwards" });
+      for (const [k, f] of kids) {
+        const d = Number(k.dataset.depth) || 1;
+        k.animate([f, { transform: `translate3d(${-dir * offset * (d - 1) * 0.6}px,0,0)` }], { duration: t, easing: EASE_OUT, fill: "forwards" });
+      }
+      anim.finished.then(() => {
+        if (p.dataset.state !== "out") return;
+        p.getAnimations({ subtree: true }).forEach((a) => a.cancel());
+        this.#hide(p);
+        this.#visible.delete(p);
+      }).catch(() => {
+      });
+    }
+    #in(p, dir, offset) {
+      const wasVisible = this.#visible.has(p) && !p.hidden;
+      const from = wasVisible ? this.#live(p) : { opacity: 0, transform: `translate3d(${dir * offset}px,0,0)` };
+      const kids = this.#depthKids(p).map((k) => [k, wasVisible ? this.#live(k) : null]);
+      p.getAnimations({ subtree: true }).forEach((a) => a.cancel());
+      this.#show(p);
+      p.dataset.state = "in";
+      const t = IN_MS * this.#scale();
+      const anim = p.animate([from, { opacity: 1, transform: "translate3d(0,0,0)" }], { duration: t, easing: EASE_IN });
+      kids.forEach(([k, f], i) => {
+        const d = Number(k.dataset.depth) || 1;
+        const start = f ?? { transform: `translate3d(${dir * offset * (d - 1)}px,0,0)` };
+        k.animate([start, { transform: "translate3d(0,0,0)" }], { duration: t * (1 + (d - 1) * 0.25), delay: Math.min(i, 6) * 18 * this.#scale(), easing: EASE_IN, fill: "backwards" });
+      });
+      anim.finished.then(() => {
+        if (p.dataset.state === "in") delete p.dataset.state;
+      }).catch(() => {
+      });
+    }
+    #depthKids(p) {
+      return [...p.querySelectorAll("[data-depth]")].filter((k) => Number(k.dataset.depth) > 1);
+    }
+  };
+  if (!customElements.get("glass-panels")) customElements.define("glass-panels", GlassPanels);
+
+  // liquid-glass/src/contrast.js
+  function parseColor(input) {
+    const s = String(input).trim().toLowerCase();
+    let m = /^#([0-9a-f]{3})$/.exec(s);
+    if (m) return [...m[1]].map((c) => parseInt(c + c, 16)).concat(1);
+    m = /^#([0-9a-f]{6})$/.exec(s);
+    if (m) return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)).concat(1);
+    m = /^rgba?\(([^)]+)\)$/.exec(s);
+    if (m) {
+      const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+      return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1];
+    }
+    throw new Error("Farbe nicht lesbar: " + input);
+  }
+  var lin = (v) => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  var luminance = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  function contrast(a, b) {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+  var over = ([r, g, b, a], bg) => [r * a + bg[0] * (1 - a), g * a + bg[1] * (1 - a), b * a + bg[2] * (1 - a)];
+  var stack = (layers, backdrop) => layers.reduce((under, layer) => over(layer, under), backdrop);
+  var BLACK = [0, 0, 0];
+  var WHITE = [255, 255, 255];
+  function checkContrast(surfaces, rules) {
+    return rules.map((rule) => {
+      const fg = parseColor(rule.color);
+      const layers = surfaces[rule.surface].map(parseColor);
+      let worst = Infinity;
+      let worstBackdrop = "";
+      for (const [label, backdrop] of [["Schwarz", BLACK], ["Wei\xDF", WHITE]]) {
+        const bg = stack(layers, backdrop);
+        const ratio = contrast(fg[3] < 1 ? over(fg, bg) : fg, bg);
+        if (ratio < worst) {
+          worst = ratio;
+          worstBackdrop = label;
+        }
+      }
+      return { name: rule.name, surface: rule.surface, ratio: worst, min: rule.min, ok: worst >= rule.min, worstBackdrop };
+    });
+  }
+  var RULES = [
+    { name: "Tab-Beschriftung und Symbol", color: "--lg-text", surface: "bar", min: 4.5 },
+    { name: "Tab beim \xDCberfahren (Lichtschein)", color: "--lg-text", surface: "bar-hover", min: 4.5 },
+    { name: "Aktiver Tab auf der Pille", color: "--lg-text-active", surface: "pill", min: 4.5 },
+    { name: "Text auf Karte", color: "--lg-text", surface: "card", min: 4.5 },
+    { name: "Sekund\xE4rtext auf Karte", color: "--lg-text-2", surface: "card", min: 4.5 },
+    { name: "Fokusring auf Leiste", color: "--lg-focus", surface: "bar", min: 3 },
+    { name: "Ohne Glas: Tab-Beschriftung", color: "--lg-text", surface: "bar-solid", min: 4.5 },
+    { name: "Ohne Glas: Sekund\xE4rtext", color: "--lg-text-2", surface: "card-solid", min: 4.5 }
+  ];
+  function tokenSurfaces(get) {
+    const spec = `rgba(255,255,255,${get("--lg-spec-label")})`;
+    const bar = [get("--lg-fill"), spec];
+    return {
+      bar,
+      "bar-hover": [...bar, get("--lg-hover-a")],
+      pill: [...bar, get("--lg-pill-fill"), get("--lg-pill-spec")],
+      card: [get("--lg-card-fill"), spec],
+      "bar-solid": [get("--lg-fill-solid")],
+      "card-solid": [get("--lg-card-fill-solid")]
+    };
+  }
+  function checkTokens(get) {
+    return checkContrast(tokenSurfaces(get), RULES.map((r) => ({ ...r, color: get(r.color) })));
+  }
+
+  // liquid-glass/demo/demo.js
+  var root = document.documentElement;
+  var $ = (s, el = document) => el.querySelector(s);
+  var $$ = (s, el = document) => [...el.querySelectorAll(s)];
+  var store = {
+    get(k) {
+      try {
+        return localStorage.getItem(k);
+      } catch (e) {
+        return null;
+      }
+    },
+    set(k, v) {
+      try {
+        localStorage.setItem(k, v);
+      } catch (e) {
+      }
+    }
+  };
+  var themeSeg = $("#theme-seg");
+  var isDark = () => root.dataset.theme === "dark" || !root.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches;
+  function setTheme(mode) {
+    if (mode === "system") root.removeAttribute("data-theme");
+    else root.dataset.theme = mode;
+    store.set("lg-theme", mode);
+    if (themeSeg.value !== mode) themeSeg.select(mode);
+    requestAnimationFrame(renderContrast);
+  }
+  themeSeg.addEventListener("change", (e) => setTheme(e.detail.value));
+  $("#theme").addEventListener("click", () => setTheme(isDark() ? "light" : "dark"));
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => requestAnimationFrame(renderContrast));
+  {
+    const saved = store.get("lg-theme");
+    if (saved === "light" || saved === "dark") {
+      root.dataset.theme = saved;
+      themeSeg.setAttribute("value", saved);
+    }
+  }
+  var motionEls = () => $$("glass-tabs, glass-panels");
+  var apply = {
+    slow: (on) => motionEls().forEach((el) => on ? el.setAttribute("time-scale", "0.25") : el.removeAttribute("time-scale")),
+    reduce: (on) => {
+      motionEls().forEach((el) => el.toggleAttribute("reduced-motion", on));
+      document.body.classList.toggle("demo-reduced", on);
+    },
+    solid: (on) => {
+      $$(".lg-surface").forEach((el) => el.toggleAttribute("data-solid", on));
+      requestAnimationFrame(renderContrast);
+    }
+  };
+  $$("[data-toggle]").forEach((sw) => sw.addEventListener("click", () => {
+    const on = sw.getAttribute("aria-checked") !== "true";
+    sw.setAttribute("aria-checked", String(on));
+    apply[sw.dataset.toggle](on);
+  }));
+  var RANGES = {
+    week: { unit: "kg", labels: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"], data: [3120, 0, 5820, 3490, 0, 3120, 4010], gap: 8, text: "Gesamtvolumen der letzten 7 Tage" },
+    month: { unit: "kg", labels: ["KW 38", "KW 39", "KW 40", "KW 41"], data: [9800, 12480, 11250, 13020], gap: 14, text: "Gesamtvolumen der letzten 30 Tage" },
+    year: { unit: "kg", labels: ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"], data: [38200, 41100, 43900, 40200, 45300, 47100, 42800, 44600, 48200, 33100, 0, 0], gap: 6, text: "Gesamtvolumen in diesem Jahr" }
+  };
+  var nf = new Intl.NumberFormat("de-AT");
+  var niceMax = (v) => {
+    const p = 10 ** Math.floor(Math.log10(v));
+    return [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map((m) => m * p).find((x) => x >= v);
+  };
+  function renderChart(key) {
+    const r = RANGES[key];
+    const max = niceMax(Math.max(...r.data));
+    const total = r.data.reduce((a, b) => a + b, 0);
+    const active = r.data.filter((v) => v > 0);
+    const fmt = (v) => v >= 1e3 ? nf.format(v / 1e3) + " k" : String(v);
+    const chart = $("#chart");
+    chart.style.setProperty("--gap", r.gap + "px");
+    chart.setAttribute("aria-label", `Balkendiagramm: ${r.text}. ` + r.data.map((v, i) => `${r.labels[i]} ${nf.format(v)} kg`).join(", "));
+    chart.innerHTML = `<div class="y" aria-hidden="true"><span style="top:0">${fmt(max)}</span><span style="top:50%">${fmt(max / 2)}</span><span style="top:100%">0</span></div><div class="plot" aria-hidden="true">${r.data.map((v) => `<div class="bar${v ? "" : " zero"}"><i data-h="${v / max}"></i></div>`).join("")}</div><div class="x" aria-hidden="true">${r.labels.map((l) => `<span>${l}</span>`).join("")}</div>`;
+    const bars = $$(".bar i", chart);
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches || document.body.classList.contains("demo-reduced");
+    bars.forEach((b, i) => {
+      const h = Number(b.dataset.h);
+      b.style.transition = "none";
+      b.style.transform = reduced ? `scaleY(${h})` : "scaleY(0)";
+      b.style.height = "100%";
+      b.getBoundingClientRect();
+      b.style.transition = "";
+      b.style.transitionDelay = reduced ? "0ms" : i * 28 + "ms";
+      b.style.transform = `scaleY(${h})`;
+    });
+    $("#chart-total").textContent = nf.format(total);
+    $("#chart-sub").textContent = r.text;
+    $("#kpi-best").textContent = nf.format(Math.max(...r.data)) + " kg";
+    $("#kpi-avg").textContent = nf.format(Math.round(total / active.length)) + " kg";
+  }
+  $("#range").addEventListener("change", (e) => renderChart(e.detail.value));
+  var ring = $("#ring");
+  var CIRC = 2 * Math.PI * 50;
+  $("#nav").addEventListener("change", (e) => {
+    if (e.detail.value !== "uebersicht" || matchMedia("(prefers-reduced-motion: reduce)").matches || document.body.classList.contains("demo-reduced")) return;
+    ring.style.transition = "none";
+    ring.style.strokeDashoffset = CIRC;
+    ring.getBoundingClientRect();
+    ring.style.transition = "";
+    ring.style.strokeDashoffset = CIRC * 0.25;
+  });
+  var CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4 4 9-9"/></svg>';
+  var CROSS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+  function renderContrast() {
+    const cs = getComputedStyle(root);
+    const results = checkTokens((name) => cs.getPropertyValue(name).trim());
+    $("#contrast-body").innerHTML = results.map((r) => `
+    <tr><td>${r.name}</td><td class="r">${r.ratio.toFixed(2)} : 1</td><td class="r">${r.min} : 1</td>
+    <td class="r"><span class="badge${r.ok ? "" : " bad"}">${r.ok ? CHECK + "AA" : CROSS + "zu niedrig"}</span></td></tr>`).join("");
+  }
+  renderChart("week");
+  renderContrast();
+  document.fonts?.ready.then(renderContrast);
+})();
+
+</script>
+</body>
+</html>

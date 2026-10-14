@@ -677,7 +677,7 @@ test('Chat: Nachrichten in Echtzeit, Gym-Karte, mitkommen, Wiener Zeit, Fehler m
     const lum = (c) => { const [r, g, b] = c.match(/\d+(\.\d+)?/g).slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
     const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
     const pair = (sel) => { const el = document.querySelector(sel); const cs = getComputedStyle(el); return ratio(cs.color, cs.backgroundColor); };
-    return { mine: pair('.msg.mine .bubble'), theirs: pair('.msg.theirs .bubble'), meta: ratio(getComputedStyle(document.querySelector('.msg-meta')).color, getComputedStyle(document.body).backgroundColor) };
+    return { mine: pair('.msg.mine .bubble'), theirs: pair('.msg.theirs .bubble'), meta: ratio(getComputedStyle(document.querySelector('.msg-meta')).color, getComputedStyle(document.documentElement).backgroundColor) };
   });
   assert.ok(colors.mine >= 4.5 && colors.theirs >= 4.5 && colors.meta >= 4.5, 'Kontrast (WCAG AA): ' + JSON.stringify(colors));
   await A.page.setViewportSize({ width: 320, height: 640 });

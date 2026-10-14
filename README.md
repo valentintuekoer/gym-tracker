@@ -165,6 +165,22 @@ Ohne Internet zeigt die App die zuletzt geladenen Freundesdaten mit „zuletzt a
 
 Speicherorte: `usernames/{name}`, `publicProfiles/{uid}`, `users/{uid}/friends/{fid}`, `requests/{von}_{an}`, Storage `avatars/{uid}.jpg`.
 
+## Musik läuft weiter
+
+Die App pausiert deine Musik (Spotify, Apple Musik, Podcasts …) nicht: Der Signalton am Ende der Pause wird als
+„Mischton“ abgespielt (iOS 16.4 oder neuer) und der Audiokanal erst geöffnet, wenn tatsächlich eine Pause läuft.
+Der Ton folgt dabei dem Lautlos-Schalter. Nur die Option *Ton trotz Lautlos-Schalter* (Einstellungen) kann Musik
+kurz unterbrechen – sie ist standardmäßig aus.
+
+## Aufwärmsätze
+
+Im Training unter jeder Übung: *Aufwärmen* → Arbeitsgewicht eingeben (ist meist schon vorausgefüllt) → die App
+schlägt steigende Sätze vor: leere Stange × 10 (bei Langhantel-Übungen, abschaltbar), dann ca. 40 % × 5,
+60 % × 3 und 80 % × 2 – gerundet auf deinen Gewichtsschritt. *Einfügen* setzt sie als **A1, A2 …** vor die
+Arbeitssätze; *Leeren Aufwärmsatz hinzufügen* geht auch. Aufwärmsätze zählen nicht zu Sätzen, Volumen, Rekorden,
+dem Steigerungsvorschlag oder der Freunde-Statistik und haben nur 1 min Pause. Gespeichert werden nur abgehakte;
+beim nächsten Training stehen sie mit den Werten vom letzten Mal wieder da.
+
 ## Mein Gym & Route
 
 *Training*-Reiter → *Mein Gym festlegen* (auch unter *Einstellungen → Training*): Name, Adresse und/oder

@@ -329,6 +329,7 @@
       done: !!(st && st.done),
     };
     if (out.reps !== null) out.reps = Math.round(out.reps);
+    if (st && st.warmup) out.warmup = true; // Aufwärmsatz: zählt nicht für Volumen, Rekorde und Steigerung
     for (const k of ['rir', 'rpe']) {
       const v = clampEffort(st && st[k]);
       if (v !== null) out[k] = v;
@@ -598,14 +599,20 @@
 
   /* ---------- Verlauf lesen ---------- */
 
-  /** Letzte abgeschlossene Ausführung einer Übung (nach Name): { date, sets } oder null. */
+  const isWork = (st) => !st.warmup;
+  const isWarmup = (st) => !!st.warmup;
+
+  /**
+   * Letzte abgeschlossene Ausführung einer Übung (nach Name) oder null:
+   * { date, sets (nur Arbeitssätze), warmups (Aufwärmsätze) }.
+   */
   Core.lastPerformance = function (db, name) {
     const key = normName(name);
     let best = null;
     for (const s of db.sessions) {
       if (best && s.finishedAt <= best.date) continue;
-      const e = s.exercises.find((x) => normName(x.name) === key && x.sets.length);
-      if (e) best = { date: s.finishedAt, sets: e.sets };
+      const e = s.exercises.find((x) => normName(x.name) === key && x.sets.some(isWork));
+      if (e) best = { date: s.finishedAt, sets: e.sets.filter(isWork), warmups: e.sets.filter(isWarmup) };
     }
     return best;
   };
@@ -641,6 +648,22 @@
    */
   Core.placeholderFor = function (prev, sessionEx, index, ctx) {
     const pick = (st, withNote) => ({ weight: st.weight, reps: st.reps, note: withNote ? st.note || '' : '' });
+    const cur = sessionEx.sets[index];
+    // Aufwärmsätze: derselbe Aufwärmsatz vom letzten Mal, sonst der vorige von heute
+    if (cur && cur.warmup) {
+      const wi = sessionEx.sets.slice(0, index).filter(isWarmup).length;
+      const pw = prev && prev.warmups ? prev.warmups[wi] : null;
+      if (pw) return pick(pw, true);
+      for (let i = index - 1; i >= 0; i--) {
+        const st = sessionEx.sets[i];
+        if (st.warmup && (st.weight !== null || st.reps !== null)) return pick(st, false);
+      }
+      return { weight: null, reps: null, note: '' };
+    }
+    // Arbeitssätze werden ohne die Aufwärmsätze gezählt
+    const work = sessionEx.sets.filter(isWork);
+    index = cur ? work.indexOf(cur) : work.length;
+    sessionEx = { sets: work };
     const target = ctx && ctx.target;
     const prog = ctx && ctx.prog;
     if (prev && index < prev.sets.length) {
@@ -669,20 +692,25 @@
     const prev = Core.lastPerformance(db, se.name);
     const target = plan && plan.repMin ? { min: plan.repMin, max: plan.repMax } : null;
     const inc = db.settings.increment || DEFAULT_SETTINGS.increment;
-    const prog = Core.progression(prev, target, inc, plan ? plan.sets : se.sets.length);
+    const prog = Core.progression(prev, target, inc, plan ? plan.sets : se.sets.filter(isWork).length);
     return { plan, prev, target, prog, inc };
   };
 
   /* ---------- Laufende Einheit ---------- */
 
-  function newSet() {
-    return { id: uid(), weight: null, reps: null, note: '', done: false };
+  function newSet(warmup) {
+    const st = { id: uid(), weight: null, reps: null, note: '', done: false };
+    if (warmup === true) st.warmup = true;
+    return st;
   }
 
+  /** Neue Übung im Training. Hast du dich letztes Mal aufgewärmt, stehen die Aufwärmsätze wieder davor. */
   function newSessionExercise(db, ex) {
+    const prev = Core.lastPerformance(db, ex.name);
+    const warm = prev ? Math.min(prev.warmups.length, 6) : 0;
     return {
       id: uid(), exId: ex.id, name: ex.name, rest: ex.rest, skipped: false,
-      sets: Array.from({ length: clampSets(ex.sets) }, newSet),
+      sets: Array.from({ length: warm }, () => newSet(true)).concat(Array.from({ length: clampSets(ex.sets) }, () => newSet())),
     };
   }
 
@@ -744,26 +772,79 @@
 
   /** Bringt eine Übung der laufenden Einheit auf n Sätze (entfernt nur leere Sätze am Ende). */
   Core.resizeSets = function (se, n) {
-    while (se.sets.length < n) se.sets.push(newSet());
-    while (se.sets.length > n) {
+    const work = () => se.sets.filter(isWork).length;
+    while (work() < n) se.sets.push(newSet());
+    while (work() > n) {
       const last = se.sets[se.sets.length - 1];
-      if (last.done || setHasValues(last)) break;
+      if (last.warmup || last.done || setHasValues(last)) break;
       se.sets.pop();
     }
-    return se.sets.length;
+    return work();
   };
+
+  /** Anzahl Arbeitssätze (ohne Aufwärmsätze). */
+  Core.workSetCount = (sets) => sets.filter(isWork).length;
+
+  /** Übung erledigt = alle Arbeitssätze abgehakt (nicht gemachte Aufwärmsätze halten nicht auf). */
+  Core.workDone = (e) => { const w = e.sets.filter(isWork); return w.length > 0 && w.every((st) => st.done); };
+
+  /** Aufwärmsatz, der übersprungen wurde: offen, aber ein Arbeitssatz ist schon abgehakt. */
+  Core.warmupPassed = (e, st) => !!st.warmup && !st.done && e.sets.some((x) => !x.warmup && x.done);
 
   Core.findSessionExercise = function (db, seId) {
     const s = db.activeSession;
     return s ? s.exercises.find((e) => e.id === seId) || null : null;
   };
 
-  Core.addSet = function (db, seId) {
+  /** Satz hinzufügen – Aufwärmsätze kommen hinter die letzten Aufwärmsätze, vor die Arbeitssätze. */
+  Core.addSet = function (db, seId, warmup) {
     const se = Core.findSessionExercise(db, seId);
     if (!se) return null;
-    const st = newSet();
-    se.sets.push(st);
+    const st = newSet(warmup === true);
+    if (st.warmup) se.sets.splice(se.sets.filter(isWarmup).length, 0, st);
+    else se.sets.push(st);
     return st;
+  };
+
+  /**
+   * Vorschlag für Aufwärmsätze zum Arbeitsgewicht `work` (kg):
+   * leere Stange × 10 (nur Langhantel), dann ca. 40 % × 5, 60 % × 3, 80 % × 2 –
+   * gerundet auf den Gewichtsschritt, ohne doppelte oder zu schwere Sätze.
+   * opts: { inc (Schritt, Standard 2,5), bar (Stangengewicht oder null) }. Rückgabe: [{ weight, reps }]
+   */
+  Core.warmupPlan = function (work, opts) {
+    const w = parseNum(work);
+    if (w === null || w <= 0) return [];
+    const inc = (opts && opts.inc) || 2.5;
+    const bar = opts && opts.bar ? opts.bar : null;
+    const round = (x) => Math.round(Math.round(x / inc) * inc * 100) / 100;
+    const out = [];
+    let last = 0;
+    const add = (weight, reps) => {
+      if (weight <= last || weight > w - inc / 2 || weight <= 0) return;
+      out.push({ weight, reps });
+      last = weight;
+    };
+    if (bar && w >= bar * 1.5) add(bar, 10);
+    for (const [pct, reps] of [[0.4, 5], [0.6, 3], [0.8, 2]]) {
+      const x = round(w * pct);
+      if (bar && x < bar) continue;
+      add(x, reps);
+    }
+    return out;
+  };
+
+  /**
+   * Ersetzt die noch offenen Aufwärmsätze einer Übung durch `list` ([{ weight, reps }]).
+   * Abgehakte Aufwärmsätze bleiben stehen. Rückgabe: Anzahl neuer Sätze oder null.
+   */
+  Core.setWarmups = function (db, seId, list) {
+    const se = Core.findSessionExercise(db, seId);
+    if (!se) return null;
+    const kept = se.sets.filter((st) => st.warmup && st.done);
+    const fresh = (list || []).map((x) => Object.assign(newSet(true), { weight: parseNum(x.weight), reps: x.reps === null || x.reps === undefined ? null : Math.round(x.reps) }));
+    se.sets = kept.concat(fresh, se.sets.filter(isWork));
+    return fresh.length;
   };
 
   Core.removeSet = function (db, seId, setId) {
@@ -809,7 +890,8 @@
     } else {
       delete st.doneAt;
     }
-    return { done: st.done, rest: se.rest, name: se.name };
+    // Nach Aufwärmsätzen reicht eine kurze Pause
+    return { done: st.done, rest: st.warmup ? Math.min(se.rest, 60) : se.rest, name: se.name };
   };
 
   /**
@@ -829,15 +911,18 @@
     return v;
   };
 
+  /** Wird beim Beenden gespeichert? Arbeitssätze mit Einträgen; Aufwärmsätze nur, wenn abgehakt. */
+  const keepSet = (st) => (st.warmup ? st.done : setHasValues(st));
+
   /** Anzahl Sätze, die beim Beenden gespeichert würden. */
   Core.countLoggedSets = function (session) {
     if (!session) return 0;
-    return session.exercises.reduce((n, e) => n + e.sets.filter(setHasValues).length, 0);
+    return session.exercises.reduce((n, e) => n + e.sets.filter(keepSet).length, 0);
   };
 
   /**
    * Beendet die laufende Einheit und speichert sie im Verlauf.
-   * Gespeichert werden alle Sätze mit Gewicht, Wdh. oder Notiz. Rückgabe: Einheit oder null (nichts eingetragen).
+   * Gespeichert werden alle Sätze mit Gewicht, Wdh. oder Notiz (Aufwärmsätze nur abgehakt). Rückgabe: Einheit oder null (nichts eingetragen).
    */
   Core.finishSession = function (db, now) {
     const s = db.activeSession;
@@ -846,8 +931,9 @@
     const exercises = s.exercises
       .map((e) => ({
         exId: e.exId, name: e.name,
-        sets: e.sets.filter(setHasValues).map((st) => {
+        sets: e.sets.filter(keepSet).map((st) => {
           const out = { weight: st.weight, reps: st.reps, note: (st.note || '').trim(), done: !!st.done };
+          if (st.warmup) out.warmup = true;
           if (st.rir !== undefined) out.rir = st.rir;
           if (st.rpe !== undefined) out.rpe = st.rpe;
           return out;
@@ -927,7 +1013,7 @@
         const ex = day && day.exercises.find((x) => x.id === e.exId || normName(x.name) === normName(e.name));
         return ex
           ? { n: e.name, s: ex.sets, r: ex.rest, a: ex.repMin, b: ex.repMax }
-          : { n: e.name, s: clampSets(e.sets.length), r: db.settings.defaultRest, a: null, b: null };
+          : { n: e.name, s: clampSets(Core.workSetCount(e.sets)), r: db.settings.defaultRest, a: null, b: null };
       }),
     };
   };
@@ -1248,6 +1334,7 @@
   function bestOf(sets) {
     let weight = null, e1 = null, reps = null;
     for (const st of sets) {
+      if (st.warmup) continue; // Aufwärmsätze sind nie Rekorde
       if (st.weight !== null && (weight === null || st.weight > weight)) weight = st.weight;
       if (st.reps !== null && (reps === null || st.reps > reps)) reps = st.reps;
       const v = e1rm(st.weight, st.reps);
@@ -1259,6 +1346,7 @@
   Core.sessionStats = function (s) {
     let sets = 0, volume = 0;
     for (const e of s.exercises) for (const st of e.sets) {
+      if (st.warmup) continue; // zählen weder als Satz noch zum Volumen
       sets++;
       if (st.weight && st.reps) volume += st.weight * st.reps;
     }
@@ -2081,10 +2169,23 @@
   const Sound = {
     ctx: null,
 
+    /**
+     * Ton mischt sich mit laufender Musik (Spotify, Apple Musik, Podcasts …), statt sie anzuhalten.
+     * iOS 16.4+ (Audio Session API): „ambient“ – wie ein Spiel-Soundeffekt; folgt dem Lautlos-Schalter.
+     * Muss gesetzt sein, bevor die App zum ersten Mal Ton ausgibt.
+     */
+    mix() {
+      try {
+        const as = navigator.audioSession;
+        if (as && as.type !== 'ambient') as.type = 'ambient';
+      } catch (e) { /* ignorieren */ }
+    },
+
     /** Muss aus einer Nutzerinteraktion heraus aufgerufen werden (iOS-Vorgabe). */
     unlock() {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
+      this.mix();
       try {
         if (!this.ctx) this.ctx = new AC();
         if (this.ctx.state !== 'running') this.ctx.resume();
@@ -2125,7 +2226,7 @@
             this.tone(t0 + g * 0.85 + i * 0.16, 0.11, i === 2 ? 1318 : 1046, 0.35);
           }
         }
-        if (loud) setTimeout(() => { try { navigator.audioSession.type = 'auto'; } catch (_) { /* */ } }, 3000);
+        if (loud) setTimeout(() => Sound.mix(), 3000); // danach wieder mit der Musik mischen
       } catch (e) { /* ignorieren */ }
     },
   };
@@ -2218,6 +2319,7 @@
       this.state = TimerCore.create(sec, Date.now(), label);
       this.persist();
       this.swScheduled = Notify.schedule(this.state.endAt, label ? 'Nächster Satz: ' + label : '');
+      if (db.settings.sound) Sound.unlock(); // aus dem Tipp auf „Satz erledigt“ heraus: jetzt wird der Signalton gebraucht
       this.run();
     },
 
@@ -3416,7 +3518,7 @@
   /** Geplante Satzanzahl einer Übung der laufenden Einheit (aus dem Plan). */
   function planSets(se) {
     const ex = db.activeSession && Core.findExercise(db, db.activeSession.dayId, se.exId);
-    return ex ? ex.sets : se.sets.length;
+    return ex ? ex.sets : Core.workSetCount(se.sets);
   }
 
   function promptSets(title, current) {
@@ -3494,12 +3596,14 @@
       const ctx = Core.exerciseContext(db, se);
       const prev = ctx.prev;
       const plan = ctx.plan;
-      const doneCount = se.sets.filter((st) => st.done).length;
-      const activeIdx = se.sets.findIndex((st) => !st.done); // hier arbeitest du gerade → +/−-Buttons
+      const workSets = se.sets.filter((st) => !st.warmup);
+      const doneCount = workSets.filter((st) => st.done).length;
+      const hasWarm = workSets.length < se.sets.length;
+      const activeIdx = se.sets.findIndex((st) => !st.done && !Core.warmupPassed(se, st)); // hier arbeitest du gerade → +/−-Buttons
       const hint = progressionHint(ctx);
-      const allDone = se.sets.length > 0 && activeIdx < 0;
+      const allDone = Core.workDone(se);
       const nextEx = s.exercises[idx + 1];
-      const everyDone = s.exercises.every((e) => e.skipped || (e.sets.length && e.sets.every((st) => st.done)));
+      const everyDone = s.exercises.every((e) => e.skipped || Core.workDone(e));
       if (se.skipped) {
         return `
           <section class="card ex-card skipped" data-se="${esc(se.id)}" data-flip="se-${esc(se.id)}">
@@ -3515,8 +3619,13 @@
         ? `<div class="prev"><span>Letztes Mal · ${fmtShortDate(prev.date)}</span> ${prev.sets.map((st) => '<b>' + esc(fmtSet(st)) + '</b>').join('<i>·</i>')}</div>`
         : '<div class="prev muted">Noch kein Verlauf – leg los!</div>';
 
+      let wNo = 0, sNo = 0;
       const sets = se.sets.map((st, i) => {
         const ph = Core.placeholderFor(prev, se, i, ctx);
+        // Aufwärmsätze heißen A1, A2 …; Arbeitssätze werden ab 1 gezählt
+        const no = st.warmup ? ++wNo : ++sNo;
+        const what = st.warmup ? 'Aufwärmsatz ' + no : 'Satz ' + no;
+        const prevEff = st.warmup ? null : prev && prev.sets[no - 1];
         const steps = i === activeIdx ? `
             <div class="set-steps">
               <span></span>
@@ -3531,28 +3640,28 @@
               <span></span>
             </div>` : '';
         return `
-          <div class="set ${st.done ? 'done' : ''}${ui.popSet && ui.popSet.id === st.id ? (st.done ? ' pop' : ' unpop') : ''}" data-se="${esc(se.id)}" data-set="${esc(st.id)}" data-flip="set-${esc(st.id)}">
+          <div class="set ${st.done ? 'done' : ''}${st.warmup ? ' warm' : ''}${Core.warmupPassed(se, st) ? ' passed' : ''}${ui.popSet && ui.popSet.id === st.id ? (st.done ? ' pop' : ' unpop') : ''}" data-se="${esc(se.id)}" data-set="${esc(st.id)}" data-flip="set-${esc(st.id)}">
             <div class="set-main">
-              <span class="set-no">${i + 1}</span>
+              <span class="set-no"${st.warmup ? ' title="Aufwärmsatz"' : ''}>${st.warmup ? 'A' + (se.sets.length - workSets.length > 1 ? no : '') : no}</span>
               <label class="field">
                 <input class="in num" data-field="weight" type="text" inputmode="decimal" autocomplete="off"
-                  placeholder="${esc(fmtNum(ph.weight))}" value="${esc(fmtNum(st.weight))}" aria-label="Gewicht Satz ${i + 1}">
+                  placeholder="${esc(fmtNum(ph.weight))}" value="${esc(fmtNum(st.weight))}" aria-label="Gewicht ${what}">
                 <span class="unit">kg</span>
               </label>
               <label class="field">
                 <input class="in num" data-field="reps" type="text" inputmode="numeric" autocomplete="off"
-                  placeholder="${ph.reps === null ? '' : esc(ph.reps)}" value="${st.reps === null ? '' : esc(st.reps)}" aria-label="Wiederholungen Satz ${i + 1}">
+                  placeholder="${ph.reps === null ? '' : esc(ph.reps)}" value="${st.reps === null ? '' : esc(st.reps)}" aria-label="Wiederholungen ${what}">
                 <span class="unit">Wdh.</span>
               </label>
-              <button class="check" data-action="set-toggle" aria-pressed="${st.done}" aria-label="Satz ${i + 1} ${st.done ? 'nicht mehr erledigt' : 'erledigt'}"><span class="check-c">${ICON.check}</span></button>
+              <button class="check" data-action="set-toggle" aria-pressed="${st.done}" aria-label="${what} ${st.done ? 'nicht mehr erledigt' : 'erledigt'}"><span class="check-c">${ICON.check}</span></button>
             </div>${steps}
             <div class="set-sub">
               <input class="in note" data-field="note" type="text" autocomplete="off" autocapitalize="sentences" enterkeyhint="done"
-                placeholder="${esc(ph.note ? 'Letztes Mal: ' + ph.note : 'Notiz / Wie war der Satz?')}" value="${esc(st.note)}" aria-label="Notiz Satz ${i + 1}">
+                placeholder="${esc(ph.note ? 'Letztes Mal: ' + ph.note : 'Notiz / Wie war der Satz?')}" value="${esc(st.note)}" aria-label="Notiz ${what}">
               ${eff !== 'off' ? `<input class="in effort" data-field="${eff}" type="text" inputmode="decimal" autocomplete="off"
-                placeholder="${eff.toUpperCase()}${prev && prev.sets[i] && prev.sets[i][eff] !== undefined ? ' ' + fmtNum(prev.sets[i][eff]) : ''}"
-                value="${st[eff] !== undefined ? fmtNum(st[eff]) : ''}" aria-label="${eff.toUpperCase()} Satz ${i + 1}">` : ''}
-              <button class="icon-btn sm ghost" data-action="set-del" aria-label="Satz ${i + 1} löschen">${ICON.trash}</button>
+                placeholder="${eff.toUpperCase()}${prevEff && prevEff[eff] !== undefined ? ' ' + fmtNum(prevEff[eff]) : ''}"
+                value="${st[eff] !== undefined ? fmtNum(st[eff]) : ''}" aria-label="${eff.toUpperCase()} ${what}">` : ''}
+              <button class="icon-btn sm ghost" data-action="set-del" aria-label="${what} löschen">${ICON.trash}</button>
             </div>
           </div>`;
       }).join('');
@@ -3561,7 +3670,7 @@
         <section class="card ex-card" data-se="${esc(se.id)}" data-flip="se-${esc(se.id)}">
           <div class="ex-head">
             <h2>${esc(se.name)}</h2>
-            <span class="count ${doneCount && doneCount === se.sets.length ? 'accent' : ''}">${doneCount}/${se.sets.length}</span>
+            <span class="count ${doneCount && doneCount === workSets.length ? 'accent' : ''}">${doneCount}/${workSets.length}</span>
             <button class="icon-btn sm" data-action="w-ex-menu" data-se="${esc(se.id)}" aria-label="Optionen für ${esc(se.name)}">${ICON.more}</button>
           </div>
           ${plan && plan.note ? `<button class="ex-note" data-action="w-note" data-se="${esc(se.id)}">${ICON.pin}<span>${esc(plan.note)}</span></button>` : ''}
@@ -3574,12 +3683,15 @@
           ${prevLine}
           ${hint ? `<div class="prog-hint ${ctx.prog.kind}">${hint}</div>` : ''}
           <div class="sets">${sets}</div>
-          <button class="btn soft block sm" data-flip="add-${esc(se.id)}" data-action="set-add" data-se="${esc(se.id)}">${ICON.plus} Satz</button>
+          <div class="set-adds" data-flip="add-${esc(se.id)}">
+            <button class="btn soft sm" data-action="set-add" data-se="${esc(se.id)}">${ICON.plus} Satz</button>
+            <button class="btn soft sm" data-action="w-warmup" data-se="${esc(se.id)}">${ICON.flame} ${hasWarm ? 'Aufwärmsätze' : 'Aufwärmen'}</button>
+          </div>
           ${allDone && nextEx ? `<button class="btn primary block wk-advance" data-flip="adv-${esc(se.id)}" data-action="wk-go" data-index="${idx + 1}">Weiter: ${esc(nextEx.name)} ${ICON.chevron}</button>` : ''}
           ${allDone && !nextEx && everyDone ? `<button class="btn primary block wk-advance" data-flip="adv-${esc(se.id)}" data-action="finish">Training beenden</button>` : ''}
         </section>`;
     });
-    const doneState = (se) => (se.skipped ? 'skipped' : se.sets.length && se.sets.every((st) => st.done) ? 'done' : '');
+    const doneState = (se) => (se.skipped ? 'skipped' : Core.workDone(se) ? 'done' : '');
     const cards = cardList.length ? `
       <div class="wk-pager" id="wk-pager">
         <div class="wk-pills">${s.exercises.map((se, i) => `<button class="wk-pill ${doneState(se)}" data-action="wk-go" data-index="${i}" aria-label="${i + 1}. ${esc(se.name)}"></button>`).join('')}</div>
@@ -3620,7 +3732,7 @@
       const nextBtn = $('#wk-next', view);
       const width = () => track.clientWidth || 1;
       let cur = slides.findIndex((sl) => sl.dataset.se === ui.wkSe);
-      if (cur < 0) cur = Math.max(0, s.exercises.findIndex((e) => !e.skipped && e.sets.some((st) => !st.done)));
+      if (cur < 0) cur = Math.max(0, s.exercises.findIndex((e) => !e.skipped && !Core.workDone(e)));
       const labels = (i) => {
         ui.wkSe = slides[i] ? slides[i].dataset.se : null;
         pills.forEach((p, k) => p.classList.toggle('on', k === i));
@@ -3670,7 +3782,7 @@
     reveal(slide, req) {
       const sets = [...slide.querySelectorAll('.set')];
       const target = req && req.what === 'last' ? sets[sets.length - 1]
-        : slide.querySelector('.set:not(.done)') || slide.querySelector('.wk-advance');
+        : slide.querySelector('.set:not(.done):not(.passed)') || slide.querySelector('.wk-advance');
       if (!target) return;
       const r = target.getBoundingClientRect(), sr = slide.getBoundingClientRect();
       const top = r.top - sr.top + slide.scrollTop, bottom = top + r.height;
@@ -3895,7 +4007,7 @@
       lines.push('🏆 ' + r.name + ': ' + (r.type === 'reps' ? r.value + ' Wdh.' : (r.type === 'e1rm' ? '≈ ' : '') + fmtNum(r.value) + ' kg') + ' (Rekord)');
     }
     lines.push('');
-    for (const e of sess.exercises) lines.push(e.name + ': ' + e.sets.map(fmtSetShort).join(', '));
+    for (const e of sess.exercises) lines.push(e.name + ': ' + e.sets.map((st) => (st.warmup ? 'Aufw. ' : '') + fmtSetShort(st)).join(', '));
     lines.push('', IMPORT_HOWTO, shareLink(Core.planFromSession(db, sess)));
     return lines.join('\n');
   }
@@ -4037,7 +4149,7 @@
 
   function setTable(sets) {
     return `<ol class="set-table">${sets.map((st) => `
-      <li><span class="st-val">${esc(fmtSet(st))}</span>${st.weight && st.reps ? `<span class="st-e1">≈ ${fmtNum(Math.round(e1rm(st.weight, st.reps) * 10) / 10)} kg 1RM</span>` : ''}
+      <li${st.warmup ? ' class="warm"' : ''}>${st.warmup ? '<span class="st-tag">Aufwärmen</span>' : ''}<span class="st-val">${esc(fmtSet(st))}</span>${st.weight && st.reps && !st.warmup ? `<span class="st-e1">≈ ${fmtNum(Math.round(e1rm(st.weight, st.reps) * 10) / 10)} kg 1RM</span>` : ''}
         ${st.rir !== undefined ? `<span class="st-e1">RIR ${fmtNum(st.rir)}</span>` : ''}${st.rpe !== undefined ? `<span class="st-e1">RPE ${fmtNum(st.rpe)}</span>` : ''}
         ${st.note ? `<span class="st-note">${esc(st.note)}</span>` : ''}</li>`).join('')}</ol>`;
   }
@@ -6284,7 +6396,7 @@
       const n = await promptSets(`Sätze: ${se.name}`, planSets(se));
       if (n === null) return;
       Core.setSetCount(db, db.activeSession.dayId, se.exId, n);
-      if (se.sets.length > n) toast('Sätze mit Einträgen wurden nicht entfernt.');
+      if (Core.workSetCount(se.sets) > n) toast('Sätze mit Einträgen wurden nicht entfernt.');
       save(); render();
     },
     'w-target': async (el) => {
@@ -6499,7 +6611,7 @@
         if (!ok) return;
         Core.discardSession(db);
       } else {
-        const open = s.exercises.reduce((c, e) => c + e.sets.filter((st) => !st.done && (st.weight !== null || st.reps !== null)).length, 0);
+        const open = s.exercises.reduce((c, e) => c + e.sets.filter((st) => !st.warmup && !st.done && (st.weight !== null || st.reps !== null)).length, 0);
         const ok = await confirmAction('Training beenden?',
           `${n} ${n === 1 ? 'Satz wird' : 'Sätze werden'} im Verlauf gespeichert.` +
           (open ? ` (${open} davon nicht abgehakt.)` : '') + ' Leere Sätze werden ignoriert.', 'Speichern', false);
@@ -6562,6 +6674,7 @@
       save(); render();
     },
     'test-sound': () => {
+      Sound.unlock();
       Sound.alarm();
       if (navigator.vibrate && db.settings.vibrate) navigator.vibrate([400, 150, 400]);
     },
@@ -6823,6 +6936,71 @@
       toast('Gym gespeichert');
     });
   }
+
+  /* ---------- Aufwärmsätze ---------- */
+
+  /** Langhantel-Übung? (aus der Bibliothek: Plan-Verknüpfung, sonst Name) */
+  function isBarbell(se) {
+    const plan = db.activeSession && se.exId ? Core.findExercise(db, db.activeSession.dayId, se.exId) : null;
+    const key = normName(se.name);
+    const lib = (plan && plan.libId && libById(plan.libId)) ||
+      LIB.find((x) => normName(x.name) === key || (x.aliases || []).some((a) => normName(a) === key));
+    return !!(lib && lib.equipment === 'Langhantel');
+  }
+
+  /** Sheet „Aufwärmen“: Arbeitsgewicht eingeben → Vorschlag ansehen → als Aufwärmsätze einfügen. */
+  function openWarmup(seId) {
+    const se = Core.findSessionExercise(db, seId);
+    if (!se) return;
+    const ctx = Core.exerciseContext(db, se);
+    const firstWork = se.sets.findIndex((st) => !st.warmup);
+    const ph = firstWork >= 0 ? Core.placeholderFor(ctx.prev, se, firstWork, ctx) : { weight: null };
+    const start = firstWork >= 0 && se.sets[firstWork].weight !== null ? se.sets[firstWork].weight : ph.weight;
+    const state = { bar: isBarbell(se) };
+    const openWarm = se.sets.filter((st) => st.warmup && !st.done).length;
+    const m = customModal(
+      '<h2 class="modal-title">Aufwärmen</h2>' +
+      '<p class="modal-msg">Ein paar leichte Sätze mit steigendem Gewicht vor dem ersten Arbeitssatz. Sie zählen nicht zu Volumen, Rekorden oder dem Steigerungsvorschlag.</p>' +
+      '<form id="warm-form" class="ff">' +
+        '<label class="lbl">Arbeitsgewicht<span class="field"><input class="in num" name="work" type="text" inputmode="decimal" autocomplete="off" placeholder="z. B. 80" value="' + esc(fmtNum(start)) + '"><span class="unit">kg</span></span></label>' +
+        '<button type="button" class="row switch-row" role="switch" aria-checked="' + state.bar + '" data-bar><span class="row-text"><span>Mit leerer Stange beginnen</span><small>20 kg × 10 – für Langhantel-Übungen</small></span><span class="switch" aria-hidden="true"></span></button>' +
+        '<div class="warm-preview" id="warm-preview" aria-live="polite"></div>' +
+        '<div class="modal-actions"><button type="button" class="btn ghost" data-close>Abbrechen</button><button type="submit" class="btn primary" id="warm-ok">Einfügen</button></div>' +
+        '<button type="button" class="btn ghost block sm" data-empty>' + ICON.plus + ' Leeren Aufwärmsatz hinzufügen</button>' +
+        (openWarm ? '<button type="button" class="btn ghost block sm danger-text" data-remove>Offene Aufwärmsätze entfernen</button>' : '') +
+      '</form>');
+    const form = m.card.querySelector('#warm-form');
+    const input = form.elements.work;
+    const preview = m.card.querySelector('#warm-preview');
+    const okBtn = m.card.querySelector('#warm-ok');
+    const plan = () => Core.warmupPlan(input.value, { inc: ctx.inc, bar: state.bar ? 20 : null });
+    const draw = () => {
+      const list = plan();
+      okBtn.disabled = !list.length;
+      preview.innerHTML = list.length
+        ? '<ol class="set-table">' + list.map((x) => '<li class="warm"><span class="st-val">' + esc(fmtSet(x)) + '</span><span class="st-e1">' + Math.round((x.weight / parseNum(input.value)) * 100) + ' %</span></li>').join('') + '</ol>'
+        : '<p class="muted">' + (parseNum(input.value) ? 'Bei so wenig Gewicht reicht ein lockerer Satz – nutze „Leeren Aufwärmsatz hinzufügen“.' : 'Gib dein Gewicht für den ersten Arbeitssatz ein.') + '</p>';
+    };
+    draw();
+    input.addEventListener('input', draw);
+    const barBtn = m.card.querySelector('[data-bar]');
+    barBtn.addEventListener('click', () => { state.bar = !state.bar; barBtn.setAttribute('aria-checked', state.bar); Haptics.tap(); draw(); });
+    const done = (msg) => { save(); m.close(); ui.wkReveal = { se: se.id, smooth: true }; render(); if (msg) toast(msg); };
+    m.card.querySelector('[data-empty]').addEventListener('click', () => { Core.addSet(db, se.id, true); done(); });
+    const rm = m.card.querySelector('[data-remove]');
+    if (rm) rm.addEventListener('click', () => { Core.setWarmups(db, se.id, []); done('Aufwärmsätze entfernt'); });
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const list = plan();
+      if (!list.length) return;
+      const n = Core.setWarmups(db, se.id, list);
+      done(n === 1 ? '1 Aufwärmsatz eingefügt' : n + ' Aufwärmsätze eingefügt');
+    });
+  }
+
+  Object.assign(actions, {
+    'w-warmup': (el) => openWarmup(el.dataset.se),
+  });
 
   Object.assign(actions, {
     'gym-edit': () => openGymForm(),
@@ -8180,8 +8358,12 @@
     applyTheme();
     darkQuery.addEventListener && darkQuery.addEventListener('change', applyTheme);
 
-    // Audio bei jeder Interaktion (falls nötig) freischalten – iOS erlaubt Ton nur nach einer Geste.
-    const unlock = () => { if (!Sound.ctx || Sound.ctx.state !== 'running') Sound.unlock(); };
+    // Ton mit laufender Musik mischen (iOS) – und den Audiokanal erst öffnen, wenn ein Pausentimer läuft:
+    // Schon das Öffnen würde Musik aus anderen Apps pausieren, auch ohne dass die App etwas abspielt.
+    Sound.mix();
+    // iOS erlaubt Ton nur nach einer Geste → beim ersten Tippen freischalten, solange eine Pause läuft
+    // (beim Start der Pause selbst: Timer.start).
+    const unlock = () => { if (Timer.state && db.settings.sound && (!Sound.ctx || Sound.ctx.state !== 'running')) Sound.unlock(); };
     ['touchend', 'pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, unlock, { passive: true }));
 
     document.addEventListener('click', onClick);

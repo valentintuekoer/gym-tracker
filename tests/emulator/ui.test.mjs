@@ -38,6 +38,17 @@ async function device(name, { cloud = true } = {}) {
     const file = path.join(SDK_DIR, path.basename(new URL(r.request().url()).pathname));
     return r.fulfill({ contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' }, body: fs.readFileSync(file) });
   });
+  // iOS-Audiosteuerung nachbilden (Chromium hat sie nicht) und mitzählen, wann ein Audiokanal geöffnet wird
+  await ctx.addInitScript(() => {
+    window.__audioTypes = [];
+    let type = 'auto';
+    if (!('audioSession' in navigator)) {
+      Object.defineProperty(navigator, 'audioSession', { configurable: true, value: { get type() { return type; }, set type(v) { type = v; window.__audioTypes.push(v); } } });
+    }
+    window.__acCount = 0;
+    const AC = window.AudioContext;
+    window.AudioContext = class extends AC { constructor(...a) { super(...a); window.__acCount++; window.__acType = navigator.audioSession.type; } };
+  });
   // Jeder Toast wird mitgeschrieben: Fehlermeldungen dürfen im normalen Ablauf nicht auftauchen
   await ctx.addInitScript(() => {
     document.addEventListener('DOMContentLoaded', () => {
@@ -152,15 +163,27 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Ernährung, Bibliothek, Ver
   await waitHash(page, /#\/setup/);
   for (let i = 0; i < 4; i++) await page.locator('[data-action="setup-next"]').click();
   await waitHash(page, /#\/$/);
+  // Musik aus anderen Apps darf nicht pausieren: Ton ist auf „mischen“ gestellt, und solange keine Pause läuft,
+  // wird gar kein Audiokanal geöffnet (schon das Öffnen würde unter iOS die Musik anhalten)
+  assert.deepEqual(await page.evaluate(() => ({ type: navigator.audioSession.type, ctx: window.__acCount })), { type: 'ambient', ctx: 0 });
   await page.locator('.day-card', { hasText: 'Push' }).click();
   await page.locator('[data-action="open-day"]').click();
   await waitHash(page, /#\/workout/);
+  // Aufwärmsätze aus dem Arbeitsgewicht berechnen lassen
+  await page.locator('.wk-slide').first().locator('[data-action="w-warmup"]').click();
+  await page.fill('#warm-form [name="work"]', '80');
+  await page.locator('#warm-preview li').nth(2).waitFor();
+  await dlgButton(page, 'Einfügen').click();
+  await page.locator('.wk-slide').first().locator('.set.warm').nth(2).waitFor();
+  assert.match(await page.locator('.wk-slide').first().locator('.ex-head .count').innerText(), /^0\/\d$/); // zählt nur Arbeitssätze
   // Satz eintragen und abhaken → Pausentimer läuft
-  const set = page.locator('.wk-slide').first().locator('.set').first();
+  const set = page.locator('.wk-slide').first().locator('.set:not(.warm)').first();
   await set.locator('input[data-field="weight"]').fill('60');
   await set.locator('input[data-field="reps"]').fill('10');
   await set.locator('[data-action="set-toggle"]').click();
   await page.locator('#timer-bar.show').waitFor();
+  // Mit der ersten Pause öffnet sich der Audiokanal – bereits im „mischen“-Modus
+  assert.deepEqual(await page.evaluate(() => ({ type: navigator.audioSession.type, ctx: window.__acCount, atOpen: window.__acType })), { type: 'ambient', ctx: 1, atOpen: 'ambient' });
   // Im Training steht die Seite fest: kein Scrollen nach unten, nur seitlich wischen
   const lock = await page.evaluate(async () => {
     window.scrollTo(0, 400);

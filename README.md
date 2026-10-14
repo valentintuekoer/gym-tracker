@@ -7,7 +7,7 @@ Reines HTML/CSS/JavaScript, kein Build-Schritt.
 | Datei | Inhalt |
 |---|---|
 | `index.html`, `style.css`, `app.js` | die App |
-| `DESIGN.md` | Designsystem (Farben, Typografie, Abstände, Glas, Bewegung, Regeln) – Vorlage für neue Bildschirme |
+| `DESIGN.md` | Designsystem „Ember Glass“ (Farben, Typografie, Abstände, Glas, Bewegung, Regeln) – Vorlage für neue Bildschirme |
 | `cloud.js` | Anbindung an Firebase (Konto, „Mit Apple anmelden“, Cloud-Speicher) |
 | `social.js` | Freunde: Benutzername, Profilfoto, Anfragen, geteilte Kennzahlen |
 | `firebase-config.js` | **hier trägst du dein Firebase-Projekt ein** |
@@ -165,6 +165,14 @@ Benutzername und Foto sind zusätzlich für angemeldete Nutzer in der Suche sich
 Ohne Internet zeigt die App die zuletzt geladenen Freundesdaten mit „zuletzt aktualisiert am …“.
 
 Speicherorte: `usernames/{name}`, `publicProfiles/{uid}`, `users/{uid}/friends/{fid}`, `requests/{von}_{an}`, Storage `avatars/{uid}.jpg`.
+
+## Erscheinungsbild „Ember Glass“
+
+Dunkle (bzw. helle) Glaskarten mit Verlaufs-Kante, zwei weiche Leuchtflecken im Hintergrund, große Ziffern und
+Versalien-Überschriften, eine warme Akzentfarbe (Glut-Orange) nur für „aktiv / Hauptaktion“, farbige Icon-Kacheln in den
+Einstellungen und eine schwebende Tab-Leiste, die beim Herunterscrollen auf reine Icons schrumpft. Farben, Radien und
+Regeln stehen in [`DESIGN.md`](DESIGN.md); alle Werte sind Tokens am Anfang von `style.css` (Dunkel und Hell getrennt,
+Kontraste ≥ 4,5:1 geprüft). Neue Bildschirme prüfst du mit `node scripts/screenshots.mjs` (hell + dunkel).
 
 ## Liquid-Glass-Demo
 

@@ -27,8 +27,8 @@ async function resetEmulators() {
 }
 
 /** Neues „Gerät“: eigener Browser-Kontext. cloud=false → Firebase nicht erreichbar (nur offline/ohne Konto). */
-async function device(name, { cloud = true } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', locale: 'de-DE', reducedMotion: 'reduce',
+async function device(name, { cloud = true, tz } = {}) {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', locale: 'de-DE', reducedMotion: 'reduce', ...(tz ? { timezoneId: tz } : {}),
     geolocation: { latitude: 52.5200081, longitude: 13.4049541, accuracy: 12 }, permissions: ['geolocation'] });
   await ctx.route('https://maps.apple.com/**', (r) => r.fulfill({ contentType: 'text/html', body: 'Apple Karten' }));
   await ctx.route('https://www.google.com/maps/**', (r) => r.fulfill({ contentType: 'text/html', body: 'Google Maps' }));
@@ -208,6 +208,12 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Ernährung, Bibliothek, Ver
   await dlgButton(page, 'Speichern').click();
   await waitHash(page, /#\/summary\//);
   await page.locator('[data-action="summary-done"]').first().click();
+  // Chat: Reiter ist da, ohne Konto kommt der Hinweis zum Anmelden
+  await page.locator('.tab[data-tab="chat"]').click();
+  await waitHash(page, /#\/chat/);
+  await page.locator('.social-cta h2', { hasText: 'Gym-Chat' }).waitFor();
+  await page.locator('.tab[data-tab="home"]').click();
+  await waitHash(page, /#\/$/);
   // Mein Gym: festlegen (Adresse + GPS-Standort) → Route öffnet die Karten-App
   await page.locator('[data-action="gym-edit"]').click();
   await page.fill('#gym-form input[name="name"]', 'FitX Mitte');
@@ -453,3 +459,249 @@ test('Freunde: Registrierung, Profil mit Foto, Anfrage, Vergleich, Rangliste, of
   assert.ok(toastLog.some((t) => /befreundet/.test(t)), 'Toasts werden mitgeschrieben');
   assert.deepEqual(toastLog.filter((t) => /Fehler|fehlgeschlagen|nicht geklappt|Berechtigung/.test(t)), []);
 });
+
+test('Chat: Nachrichten in Echtzeit, Gym-Karte, mitkommen, Wiener Zeit, Fehler mit Retry, melden/blockieren, Nachladen', async () => {
+  const shots = process.env.CHAT_SHOTS;
+  const shot = async (page, name) => { if (shots) { fs.mkdirSync(shots, { recursive: true }); await page.screenshot({ path: path.join(shots, name + '.png') }); } };
+  await resetEmulators();
+  const A = await device('chat-anna');
+  const B = await device('chat-ben', { tz: 'Pacific/Auckland' }); // Gerät in Neuseeland: der Chat zeigt trotzdem Wiener Zeit
+  await register(A.page, 'chatanna@test.de');
+  await createProfile(A.page, 'chatanna', false);
+  await register(B.page, 'chatben@test.de');
+  await createProfile(B.page, 'chatben', false);
+  const list = (p) => p.locator('#chat-list');
+  const openChat = async (p) => { await p.locator('.tab[data-tab="chat"]').click(); await waitHash(p, /#\/chat/); await p.locator('#chat-input').waitFor(); };
+
+  // --- A: leerer Chat, erste Nachricht (Enter sendet) ---
+  await openChat(A.page);
+  await A.page.locator('.chat-empty').waitFor();
+  await A.page.locator('.today-empty').waitFor();
+  await shot(A.page, '1-leer');
+  await A.page.fill('#chat-input', 'Wer ist heute dabei?');
+  await A.page.press('#chat-input', 'Enter');
+  const mine = list(A.page).locator('.msg.mine .bubble', { hasText: 'Wer ist heute dabei?' });
+  await mine.waitFor();
+  await shot(A.page, '1b-nachricht');
+  assert.equal(await A.page.inputValue('#chat-input'), ''); // Feld ist wieder leer
+  // Eigene Nachricht rechts: Mitte der Blase rechts von der Bildschirmmitte
+  // Position messen, sobald die Liste fertig gezeichnet ist (sie wird bei jedem Stand neu aufgebaut)
+  const bubbleX = (page, sel, text) => page.waitForFunction(([s, t]) => {
+    const el = [...document.querySelectorAll(s)].find((e) => e.textContent.includes(t));
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 ? r.x + r.width / 2 : false;
+  }, [sel, text]).then((h) => h.jsonValue());
+  assert.ok(await bubbleX(A.page, '#chat-list .msg.mine .bubble', 'Wer ist heute dabei?') > 195, 'eigene Nachricht rechts');
+  // Zu schnell hintereinander: Hinweis, Text bleibt im Feld
+  await A.page.fill('#chat-input', 'zweite sofort');
+  await A.page.press('#chat-input', 'Enter');
+  await toastText(A.page).filter({ hasText: 'kurz warten' }).waitFor();
+  assert.equal(await A.page.inputValue('#chat-input'), 'zweite sofort');
+  await A.page.fill('#chat-input', '');
+
+  // --- B (auf dem Profil-Reiter): Punkt am Chat-Reiter, dann Nachricht links mit Name ---
+  await B.page.locator('#tab-dot-chat:not([hidden])').waitFor().catch(async (e) => {
+    throw new Error(e.message + ' | Chat-Zustand: ' + JSON.stringify(await B.page.evaluate(() => { const c = window.GymApp.Chat; return { uid: c.uid, verbunden: !!c.unsub, bereit: c.ready, fehler: c.error && (c.error.code || String(c.error)), aktiv: c.enabled(), gesehen: c.seen, anzahl: c.store.size, route: location.hash, cloud: !!(window.GymCloud && window.GymCloud.chat) }; })));
+  });
+  await openChat(B.page);
+  assert.equal(await B.page.locator('#tab-dot-chat').isHidden(), true);
+  const theirs = list(B.page).locator('.msg.theirs .bubble', { hasText: 'Wer ist heute dabei?' });
+  await theirs.waitFor();
+  assert.ok(await bubbleX(B.page, '#chat-list .msg.theirs .bubble', 'Wer ist heute dabei?') < 195, 'fremde Nachricht links');
+  await list(B.page).locator('.msg-name', { hasText: '@chatanna' }).waitFor();
+  assert.match(await list(B.page).locator('.msg.theirs .msg-meta').first().innerText(), /^\d\d:\d\d/); // 24-h-Zeit
+
+  // --- A: „Ich gehe ins Gym“ → Karte (heute 23:55, Push) ---
+  await sleepMs(2300);
+  await A.page.locator('[data-action="chat-plan"]').click();
+  const form = A.page.locator('#plan-form');
+  await form.waitFor();
+  await form.locator('select[name="hour"]').selectOption('23');
+  await form.locator('select[name="minute"]').selectOption('55');
+  await form.locator('[data-workout="push"]').click();
+  await form.locator('[data-workout="push"][aria-pressed="true"]').waitFor();
+  await form.locator('[data-workout="cardio"]').click();
+  await form.locator('[data-workout="cardio"]').click(); // erneut tippen = abwählen
+  await form.locator('[data-workout="push"]').click();
+  await form.locator('input[name="note"]').fill('Brust & Schulter <b>fett</b>');
+  assert.match(await A.page.locator('#plan-preview').innerText(), /Heute, 23:55 Uhr · Push/);
+  await shot(A.page, '2-formular');
+  // Vergangenes Datum: Fehler im Formular
+  await form.locator('input[name="date"]').fill('2020-01-01');
+  await dlgButtonSubmit(A.page).click();
+  await A.page.locator('#plan-error', { hasText: /Vergangenheit|Datum/ }).waitFor();
+  await form.locator('input[name="date"]').fill(await A.page.evaluate(() => window.GymApp.Core.viennaDayKey(Date.now())));
+  await dlgButtonSubmit(A.page).click();
+  const plan = list(A.page).locator('.plan', { hasText: 'Heute, 23:55 Uhr' });
+  await plan.waitFor();
+  assert.match(await plan.innerText(), /Push/);
+  assert.match(await plan.innerText(), /<b>fett<\/b>/); // als Text, nicht als HTML
+  assert.equal(await plan.locator('b').count(), 0);
+  assert.equal(await plan.locator('[data-action="chat-join"]').count(), 0); // eigene Karte: kein „Mitkommen“
+  await A.page.locator('.today-item', { hasText: '23:55' }).waitFor();
+
+  // --- B: sieht Karte (auch in Neuseeland um 23:55 Wiener Zeit), kommt mit ---
+  const planB = list(B.page).locator('.plan', { hasText: 'Heute, 23:55 Uhr' });
+  await planB.waitFor();
+  await B.page.locator('.today-item', { hasText: '23:55' }).waitFor();
+  await planB.locator('.plan-people.muted').waitFor();
+  await planB.locator('[data-action="chat-join"]', { hasText: 'Ich komme mit' }).click();
+  await planB.locator('[data-action="chat-join"]', { hasText: 'doch nicht' }).waitFor();
+  await planB.locator('.plan-people', { hasText: '@chatben kommt mit' }).waitFor();
+  await shot(B.page, '3-mitgekommen');
+  // A sieht die Teilnehmerliste live
+  await list(A.page).locator('.plan .plan-people', { hasText: '@chatben kommt mit' }).waitFor();
+  await A.page.locator('.today-item', { hasText: '+1' }).waitFor();
+  await shot(A.page, '4-teilnehmer');
+  // B tritt wieder aus
+  await planB.locator('[data-action="chat-join"]').click();
+  await planB.locator('.plan-people.muted').waitFor();
+  await list(A.page).locator('.plan .plan-people.muted').waitFor();
+  await planB.locator('[data-action="chat-join"]', { hasText: 'Ich komme mit' }).click();
+  await planB.locator('.plan-people', { hasText: '@chatben kommt mit' }).waitFor();
+
+  // --- B: Offline → „Nicht gesendet“ mit Retry; wieder online → erneut senden klappt ---
+  await sleepMs(1500);
+  await B.ctx.setOffline(true);
+  await B.page.locator('.chat-note', { hasText: 'Offline' }).waitFor();
+  await B.page.fill('#chat-input', 'Ich bin um 18 Uhr da');
+  await B.page.press('#chat-input', 'Enter');
+  const failed = list(B.page).locator('.msg.failed');
+  await failed.locator('.msg-state', { hasText: 'Keine Verbindung' }).waitFor();
+  await shot(B.page, '5-offline');
+  await B.ctx.setOffline(false);
+  await B.page.locator('.chat-note').waitFor({ state: 'detached' }).catch(() => {});
+  await B.page.waitForFunction(() => !document.querySelector('.chat-note'), null, { timeout: 30000 });
+  await failed.locator('[data-action="chat-retry"]').click();
+  await list(B.page).locator('.msg.mine:not(.failed):not(.pending) .bubble', { hasText: 'Ich bin um 18 Uhr da' }).waitFor({ timeout: 30000 });
+  assert.equal(await list(B.page).locator('.msg.failed').count(), 0);
+  await list(A.page).locator('.msg.theirs .bubble', { hasText: 'Ich bin um 18 Uhr da' }).waitFor();
+  // „Verwerfen“
+  await B.ctx.setOffline(true);
+  await sleepMs(2300);
+  await B.page.fill('#chat-input', 'wird verworfen');
+  await B.page.press('#chat-input', 'Enter');
+  await list(B.page).locator('.msg.failed [data-action="chat-discard"]').click();
+  assert.equal(await list(B.page).locator('.msg', { hasText: 'wird verworfen' }).count(), 0);
+  await B.ctx.setOffline(false);
+  await B.page.waitForFunction(() => !document.querySelector('.chat-note'), null, { timeout: 30000 });
+
+  // --- A: melden, blockieren, entsperren ---
+  await list(A.page).locator('.msg.theirs .bubble', { hasText: 'Ich bin um 18 Uhr da' }).click();
+  await dlgButton(A.page, 'Melden').click();
+  await dlgButton(A.page, 'Spam oder Werbung').click();
+  await toastText(A.page).filter({ hasText: 'Meldung ist angekommen' }).waitFor();
+  const reports = await (await fetch(`http://127.0.0.1:8080/v1/projects/${PROJECT}/databases/(default)/documents/reports`, { headers: { Authorization: 'Bearer owner' } })).json();
+  assert.equal(reports.documents.length, 1);
+  assert.equal(reports.documents[0].fields.targetName.stringValue, 'chatben');
+  assert.equal(reports.documents[0].fields.reason.stringValue, 'spam');
+  await list(A.page).locator('.msg.theirs .bubble', { hasText: 'Ich bin um 18 Uhr da' }).click();
+  await dlgButton(A.page, '@chatben blockieren').click();
+  await dlgButton(A.page, 'Blockieren').click();
+  await list(A.page).locator('.msg.theirs').first().waitFor({ state: 'detached' });
+  assert.equal(await list(A.page).locator('.plan .plan-people', { hasText: 'chatben' }).count(), 1); // Teilnahme steht weiter auf der eigenen Karte
+  await A.page.goto(base + '/#/settings/chat');
+  await A.page.locator('.row', { hasText: '@chatben' }).locator('[data-action="chat-unblock"]').click();
+  await A.page.locator('.empty', { hasText: 'niemanden blockiert' }).waitFor();
+  await A.page.locator('.tab[data-tab="chat"]').click();
+  await list(A.page).locator('.msg.theirs .bubble', { hasText: 'Ich bin um 18 Uhr da' }).waitFor();
+
+  // --- Eigene Nachricht bearbeiten und löschen (A) ---
+  await sleepMs(2300);
+  await A.page.fill('#chat-input', 'Tippfehler');
+  await A.page.press('#chat-input', 'Enter');
+  await list(A.page).locator('.msg.mine .bubble', { hasText: 'Tippfehler' }).click();
+  await dlgButton(A.page, 'Bearbeiten').click();
+  await A.page.fill('.modal:not(.closing) #dlg-input', 'Korrigiert');
+  await dlgButton(A.page, 'Speichern').click();
+  await list(A.page).locator('.msg.mine .bubble', { hasText: 'Korrigiert' }).waitFor();
+  await list(B.page).locator('.msg.theirs .bubble', { hasText: 'Korrigiert' }).waitFor();
+  await list(B.page).locator('.msg.theirs .msg-meta', { hasText: 'bearbeitet' }).waitFor();
+  await list(A.page).locator('.msg.mine .bubble', { hasText: 'Korrigiert' }).click();
+  await dlgButton(A.page, 'Löschen').click();
+  await dlgButton(A.page, 'Löschen').click();
+  await list(B.page).locator('.msg .bubble', { hasText: 'Korrigiert' }).waitFor({ state: 'detached' });
+  // Fremde Nachrichten bieten kein Bearbeiten/Löschen
+  await list(B.page).locator('.msg.theirs .bubble', { hasText: 'Wer ist heute dabei?' }).click();
+  assert.equal(await dlgButton(B.page, 'Löschen').count(), 0);
+  await dlgButton(B.page, 'Abbrechen').click();
+
+  // --- Verlauf: viele ältere Nachrichten werden beim Hochscrollen nachgeladen ---
+  const docs = `http://127.0.0.1:8080/v1/projects/${PROJECT}/databases/(default)/documents/rooms/gym/messages`;
+  const base0 = Date.now() - 3 * 86400000;
+  await Promise.all(Array.from({ length: 70 }, (_, i) => fetch(docs, {
+    method: 'POST', headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { uid: { stringValue: 'seed' }, name: { stringValue: 'verlauf' }, kind: { stringValue: 'text' }, text: { stringValue: 'alt ' + (i + 1) },
+      createdAt: { timestampValue: new Date(base0 + i * 60000).toISOString() } } }),
+  })));
+  await A.page.reload();
+  await list(A.page).locator('.msg').first().waitFor();
+  await A.page.locator('#chat-list .bubble', { hasText: 'alt 70' }).waitFor();
+  const first = await list(A.page).locator('.msg').count();
+  assert.ok(first <= 40, 'zuerst nur die neuesten: ' + first);
+  assert.equal(await list(A.page).locator('.bubble', { hasText: /^alt 1$/ }).count(), 0);
+  await shot(A.page, '6-verlauf');
+  // bis ganz nach oben scrollen → alles wird in Seiten nachgeladen, Position bleibt erhalten
+  for (let i = 0; i < 6 && await list(A.page).locator('.chat-start').count() === 0; i++) {
+    await A.page.evaluate(() => { document.getElementById('chat-list').scrollTop = 0; });
+    await A.page.waitForFunction((n) => document.querySelectorAll('#chat-list .msg').length > n || document.querySelector('.chat-start'), await list(A.page).locator('.msg').count());
+    await sleepMs(250);
+  }
+  await list(A.page).locator('.chat-start').waitFor();
+  await list(A.page).locator('.bubble', { hasText: /^alt 1$/ }).waitFor();
+  assert.ok(await A.page.evaluate(() => document.getElementById('chat-list').scrollTop) > 0, 'Position nach dem Nachladen erhalten');
+  await list(A.page).locator('.chat-day span', { hasText: /^[A-Z][a-z]\., \d\d\.\d\d\.$/ }).first().waitFor(); // Tagestrenner „Mo., 12.10.“
+
+  // --- Neue Nachricht, während A weit oben liest: kein Springen, dafür „Neue Nachrichten“ ---
+  await sleepMs(2300);
+  const readingAt = await A.page.evaluate(() => document.getElementById('chat-list').scrollTop);
+  assert.ok(await A.page.evaluate(() => { const l = document.getElementById('chat-list'); return l.scrollHeight - l.scrollTop - l.clientHeight > 300; }), 'A liest weiter oben');
+  await B.page.fill('#chat-input', 'Neu für A');
+  await B.page.press('#chat-input', 'Enter');
+  await A.page.locator('#chat-jump:not([hidden])').waitFor();
+  assert.ok(Math.abs(await A.page.evaluate(() => document.getElementById('chat-list').scrollTop) - readingAt) < 5, 'Liste springt nicht');
+  await A.page.locator('#chat-jump').click();
+  await list(A.page).locator('.bubble', { hasText: 'Neu für A' }).waitFor();
+  assert.equal(await A.page.evaluate(() => { const l = document.getElementById('chat-list'); return l.scrollHeight - l.scrollTop - l.clientHeight < 5; }), true);
+
+  // --- Heller Modus und schmaler Bildschirm (320 px): nichts läuft über, Kontraste stimmen ---
+  await A.page.goto(base + '/#/settings/appearance');
+  await A.page.locator('[data-action="theme"][data-value="light"]').click();
+  await A.page.locator('.tab[data-tab="chat"]').click();
+  await list(A.page).locator('.plan').waitFor();
+  await waitHash(A.page, /#\/chat/);
+  await sleepMs(600); // Seitenübergang abwarten
+  await shot(A.page, '7-hell');
+  const colors = await A.page.evaluate(() => {
+    const lum = (c) => { const [r, g, b] = c.match(/\d+(\.\d+)?/g).slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+    const pair = (sel) => { const el = document.querySelector(sel); const cs = getComputedStyle(el); return ratio(cs.color, cs.backgroundColor); };
+    return { mine: pair('.msg.mine .bubble'), theirs: pair('.msg.theirs .bubble'), meta: ratio(getComputedStyle(document.querySelector('.msg-meta')).color, getComputedStyle(document.body).backgroundColor) };
+  });
+  assert.ok(colors.mine >= 4.5 && colors.theirs >= 4.5 && colors.meta >= 4.5, 'Kontrast (WCAG AA): ' + JSON.stringify(colors));
+  await A.page.setViewportSize({ width: 320, height: 640 });
+  await sleepMs(300);
+  await shot(A.page, '8-schmal');
+  assert.equal(await A.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && document.querySelector('.chat').scrollWidth <= document.querySelector('.chat').clientWidth + 1), true, 'kein seitliches Scrollen bei 320 px');
+  assert.ok(await A.page.locator('.chat-composer').isVisible());
+  await A.page.setViewportSize({ width: 390, height: 844 });
+
+  // --- Konto löschen räumt auch den Chat auf ---
+  await B.page.goto(base + '/#/settings/account');
+  await B.page.locator('[data-action="delete-account"]').click();
+  await dlgButton(B.page, 'Weiter').click();
+  await B.page.fill('.modal:not(.closing) #dlg-input', 'geheim123');
+  await dlgButton(B.page, 'Konto endgültig löschen').click();
+  await toastText(B.page).filter({ hasText: 'Konto gelöscht' }).waitFor();
+  await list(A.page).locator('.bubble', { hasText: 'Neu für A' }).waitFor({ state: 'detached' });
+  await A.page.locator('.plan .plan-people.muted').waitFor(); // Teilnahme von ben ist weg
+
+  for (const p of pages) toastLog.push(...await p.page.evaluate(() => window.__toasts || []).catch(() => []));
+  await Promise.all([A.ctx.close(), B.ctx.close()]);
+  assert.deepEqual(errors.filter((e) => /chat-/.test(e)), [], JSON.stringify(errors));
+  assert.deepEqual(toastLog.filter((t) => /Fehler|fehlgeschlagen|nicht geklappt|Berechtigung/.test(t)), []);
+});
+
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+const dlgButtonSubmit = (page) => page.locator('.modal:not(.closing) form button[type="submit"]');

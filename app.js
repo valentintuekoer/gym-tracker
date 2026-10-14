@@ -43,6 +43,8 @@
     carbGoal: 220,
     fatGoal: 70,
     effort: 'off',     // Anstrengung pro Satz erfassen: 'off' | 'rir' | 'rpe'
+    chatNotify: true,  // Hinweis bei neuen Gym-Karten im Chat
+    chatBlocked: [],   // im Chat blockierte Nutzer: [{ uid, name }] (nur für dich, synchron mit dem Konto)
     shareRecords: true, // Freunde: Rekorde je Übung teilen (Kennzahlen wie Einheiten/Serie immer)
     gym: null,          // Mein Gym: { name, address, lat, lng, maps: 'apple'|'google' } – nur privat, nie für Freunde
   };
@@ -371,6 +373,8 @@
     if (!['off', 'rir', 'rpe'].includes(db.settings.effort)) db.settings.effort = 'off';
     db.settings.shareRecords = db.settings.shareRecords !== false;
     db.settings.gym = normGym(db.settings.gym);
+    db.settings.chatNotify = db.settings.chatNotify !== false;
+    db.settings.chatBlocked = Core.normChatBlocked(db.settings.chatBlocked);
     db.settings.calorieGoal = parseGoal(db.settings.calorieGoal);
     db.settings.proteinGoal = parseGoal(db.settings.proteinGoal);
     db.settings.carbGoal = parseGoal(db.settings.carbGoal);
@@ -1601,6 +1605,142 @@
     return r === fmtDate(last) ? 'zuletzt am ' + r : r + ' trainiert';
   };
 
+  /* ---------- Chat: Zeit (Europe/Vienna, 24 h), Prüfungen, Zusammenführen ---------- */
+
+  const CHAT_TZ = 'Europe/Vienna';
+  const CHAT_MAX_TEXT = 500;   // Zeichen pro Nachricht (gleiche Grenze wie in firestore.rules)
+  const CHAT_MAX_NOTE = 120;   // Zeichen der Notiz einer Gym-Karte
+  const CHAT_MAX_AHEAD = 60 * DAY_MS;
+  const CHAT_PAST_OK = 60 * 60000; // eine Karte darf höchstens 1 h in der Vergangenheit starten
+  const CHAT_DONE_AFTER = 90 * 60000; // 90 Minuten nach dem Start gilt ein Besuch als vorbei
+
+  Core.CHAT_WORKOUTS = [
+    ['push', 'Push'], ['pull', 'Pull'], ['legs', 'Legs'], ['upper', 'Oberkörper'],
+    ['lower', 'Unterkörper'], ['fullbody', 'Ganzkörper'], ['cardio', 'Cardio'], ['other', 'Sonstiges'],
+  ];
+  Core.chatWorkoutLabel = (k) => { const w = Core.CHAT_WORKOUTS.find((x) => x[0] === k); return w ? w[1] : ''; };
+
+  const viennaFmt = typeof Intl !== 'undefined'
+    ? new Intl.DateTimeFormat('en-GB', { timeZone: CHAT_TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    : null;
+  const pad2 = (n) => String(n).padStart(2, '0');
+
+  /** Wiener Ortszeit zu einem Zeitstempel: { y, m, d, h, mi } */
+  Core.viennaParts = function (ts) {
+    const p = {};
+    for (const x of viennaFmt.formatToParts(new Date(ts))) p[x.type] = x.value;
+    return { y: +p.year, m: +p.month, d: +p.day, h: +p.hour % 24, mi: +p.minute };
+  };
+
+  /** 'JJJJ-MM-TT' des Wiener Kalendertags */
+  Core.viennaDayKey = function (ts) {
+    const p = Core.viennaParts(ts);
+    return p.y + '-' + pad2(p.m) + '-' + pad2(p.d);
+  };
+
+  /** 'HH:MM' (24 h) in Wiener Zeit */
+  Core.fmtViennaTime = function (ts) {
+    const p = Core.viennaParts(ts);
+    return pad2(p.h) + ':' + pad2(p.mi);
+  };
+
+  /** Wiener Datum + Uhrzeit ('JJJJ-MM-TT', 'HH:MM') → Zeitstempel (ms) oder null; berücksichtigt Sommer-/Winterzeit */
+  Core.viennaTs = function (dateStr, timeStr) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
+    const t = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(timeStr || ''));
+    if (!m || !t) return null;
+    const y = +m[1], mo = +m[2], d = +m[3];
+    const probe = new Date(Date.UTC(y, mo - 1, d));
+    if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== mo - 1 || probe.getUTCDate() !== d) return null; // z. B. 31.02.
+    const guess = Date.UTC(y, mo - 1, d, +t[1], +t[2]);
+    // Abstand „Wiener Uhrzeit als UTC“ minus echtes UTC; zweimal rechnen, weil er sich an der Zeitumstellung ändert
+    const off = (ts) => { const p = Core.viennaParts(ts); return Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi) - Math.floor(ts / 60000) * 60000; };
+    return guess - off(guess - off(guess));
+  };
+
+  /** Beginn und Ende (exklusiv) des Wiener Kalendertags, in dem `ts` liegt */
+  Core.viennaDayRange = function (ts) {
+    const p = Core.viennaParts(ts);
+    const next = new Date(Date.UTC(p.y, p.m - 1, p.d + 1));
+    const key = (y, m, d) => y + '-' + pad2(m) + '-' + pad2(d);
+    return [
+      Core.viennaTs(key(p.y, p.m, p.d), '00:00'),
+      Core.viennaTs(key(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate()), '00:00'),
+    ];
+  };
+
+  const WD_SHORT = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
+
+  /** „Heute“, „Gestern“, „Morgen“ oder „Mo., 12.10.“ (mit Jahr, wenn nicht das aktuelle) */
+  Core.chatDayLabel = function (ts, now) {
+    const k = Core.viennaDayKey(ts);
+    const day = (n) => Core.viennaDayKey(now + n * DAY_MS);
+    if (k === day(0)) return 'Heute';
+    if (k === day(-1)) return 'Gestern';
+    if (k === day(1)) return 'Morgen';
+    const [y, m, d] = k.split('-').map(Number);
+    const wd = WD_SHORT[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+    return wd + ', ' + pad2(d) + '.' + pad2(m) + '.' + (y === Core.viennaParts(now).y ? '' : y);
+  };
+
+  /** „Heute, 18:00 Uhr“ */
+  Core.chatWhenLabel = (ts, now) => Core.chatDayLabel(ts, now) + ', ' + Core.fmtViennaTime(ts) + ' Uhr';
+
+  /** Ist der geplante Besuch schon vorbei? */
+  Core.chatCardPast = (card, now) => !!card.when && card.when + CHAT_DONE_AFTER < now;
+
+  /** Nachrichtentext bereinigen: Text oder null (leer / zu lang) */
+  Core.chatCheckText = function (s) {
+    const t = String(s === undefined || s === null ? '' : s).replace(/\r\n?/g, '\n').trim();
+    return t && t.length <= CHAT_MAX_TEXT ? t : null;
+  };
+
+  /**
+   * Formular „Ich gehe ins Gym“ prüfen: { date: 'JJJJ-MM-TT', time: 'HH:MM', workout, note } (Wiener Zeit)
+   * → { when, workout, note } oder { error }.
+   */
+  Core.chatCheckCard = function (f, now) {
+    const when = Core.viennaTs(f && f.date, f && f.time);
+    if (when === null) return { error: 'Bitte Datum und Uhrzeit angeben.' };
+    if (when < now - CHAT_PAST_OK) return { error: 'Die Zeit liegt in der Vergangenheit.' };
+    if (when > now + CHAT_MAX_AHEAD - DAY_MS) return { error: 'Höchstens 60 Tage im Voraus.' };
+    const workout = f.workout && Core.CHAT_WORKOUTS.some((w) => w[0] === f.workout) ? f.workout : '';
+    const note = String(f.note || '').replace(/\s+/g, ' ').trim();
+    if (note.length > CHAT_MAX_NOTE) return { error: 'Die Notiz darf höchstens ' + CHAT_MAX_NOTE + ' Zeichen haben.' };
+    return { when, workout, note };
+  };
+
+  /** Nachrichten-Listen zusammenführen (spätere gewinnen bei gleicher ID), älteste zuerst */
+  Core.chatMerge = function (...lists) {
+    const map = new Map();
+    for (const l of lists) for (const m of l || []) map.set(m.id, m);
+    return [...map.values()].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1));
+  };
+
+  /** Geplante Besuche des heutigen (Wiener) Tags, nach Uhrzeit */
+  Core.chatPlansToday = function (cards, now) {
+    const [from, to] = Core.viennaDayRange(now);
+    return (cards || []).filter((c) => c.kind === 'gym' && c.when >= from && c.when < to).sort((a, b) => a.when - b.when);
+  };
+
+  /** Wer kommt mit: [{ uid, name }] nach Name */
+  Core.chatJoined = (card) => Object.entries((card && card.joined) || {})
+    .map(([uid, name]) => ({ uid, name: String(name || '') })).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+
+  /** Blockierliste bereinigen: [{ uid, name }], ohne Doppelte, höchstens 200 */
+  Core.normChatBlocked = function (list) {
+    const seen = new Set();
+    const out = [];
+    for (const b of Array.isArray(list) ? list : []) {
+      const uid = b && typeof b.uid === 'string' ? b.uid.slice(0, 128) : '';
+      if (!uid || seen.has(uid)) continue;
+      seen.add(uid);
+      out.push({ uid, name: String(b.name || '').slice(0, 30) });
+      if (out.length >= 200) break;
+    }
+    return out;
+  };
+
   /* =========================================================
    * 3. TimerCore – Pausentimer auf Basis eines End-Zeitstempels
    *    Die Restzeit wird immer aus (endAt − jetzt) berechnet. Dadurch stimmt sie
@@ -2810,6 +2950,7 @@
       case 'leaderboard': return { name: 'leaderboard', tab: 'profile' };
       case 'invite': return { name: 'invite', id: parts[1] || '', tab: 'profile' };
       case 'food': return { name: 'food', tab: 'food' };
+      case 'chat': return { name: 'chat', tab: 'chat' };
       case 'library':
         if (parts[1] === 'ex') return { name: 'libex', id: parts[2] || '', tab: 'library' };
         return { name: 'library', tab: 'library' };
@@ -3098,6 +3239,7 @@
       case 'food': renderFood(view); break;
       case 'library': renderLibrary(view); break;
       case 'libex': renderLibEx(view, route.id); break;
+      case 'chat': renderChat(view); break;
       case 'login': renderLogin(view); break;
       case 'intro': renderIntro(view); break;
       case 'setup': renderSetup(view); break;
@@ -3114,6 +3256,7 @@
     TabLens.update();
     $('#tab-dot').hidden = !db.activeSession;
     Social.badge();
+    Chat.badge();
     ui.lastRoute = key;
     ui.lastTab = route.tab;
     const dir = ui.navDir;
@@ -3216,9 +3359,12 @@
     const rn = parseRoute().name;
     // Im Training steht die Seite fest: nur seitlich wischen, lange Karten scrollen in sich
     document.body.classList.toggle('wk-lock', rn === 'workout' && !!$('#wk-track', view));
+    // Im Chat steht die Seite ebenfalls fest: nur die Nachrichtenliste scrollt, das Eingabefeld bleibt unten
+    document.body.classList.toggle('chat-lock', rn === 'chat' && !!$('#chat', view));
     if (rn === 'food') FoodFx.play(view, sameRoute);
     if (!sameRoute && (rn === 'friend' || rn === 'leaderboard')) SocialFx.bars(view);
     if (rn === 'workout') WorkoutPager.init(view); else WorkoutPager.stop();
+    if (rn === 'chat') ChatView.mount(view, sameRoute); else { ChatView.unmount(); Chat.sync(); } // verbindet sich, sobald das Profil da ist
   }
 
   /** Segment-Steuerungen: weiß gefüllter „Daumen“ gleitet zur Auswahl. */
@@ -4907,6 +5053,7 @@
     training: 'Training & Timer',
     nutrition: 'Ernährung',
     notifications: 'Benachrichtigungen & Ton',
+    chat: 'Chat',
     appearance: 'Darstellung',
     backup: 'Datensicherung',
     data: 'Daten',
@@ -4947,6 +5094,7 @@
           ${menuRow('#/settings/training', ICON.dumbbell, 'Training & Timer', fmtRest(st.defaultRest), 'Pause, Gewichtsschritt, Wochenziel')}
           ${menuRow('#/settings/nutrition', ICON.target, 'Ernährung', st.calorieGoal ? fmtInt(st.calorieGoal) + ' kcal' : '–', 'Kalorien- und Makroziele')}
           ${menuRow('#/settings/notifications', ICON.clock, 'Benachrichtigungen & Ton', permShort, 'Signalton, Haptik, Pausen-Hinweis')}
+          ${isUser() ? menuRow('#/settings/chat', ICON.chat, 'Chat', (st.chatBlocked || []).length ? (st.chatBlocked.length + ' blockiert') : '', 'Hinweise zu Gym-Karten, blockierte Nutzer') : ''}
           ${menuRow('#/settings/appearance', svgI('<circle cx="12" cy="12" r="8"/><path class="fill" d="M12 4a8 8 0 0 1 0 16z"/>'), 'Darstellung', themeLabel)}
         </section>
         <section class="card flush">
@@ -5038,6 +5186,20 @@
             ${perm === 'denied' ? '<p>Du hast Benachrichtigungen blockiert. Aktivieren: iPhone-Einstellungen → Mitteilungen → Gym.</p>' : ''}
           </div>
         </section>`;
+    } else if (sub === 'chat') {
+      const blocked = st.chatBlocked || [];
+      html = `
+        <p class="section-label">Hinweise</p>
+        <section class="card flush">
+          ${switchRow('chatNotify', 'Neue Gym-Karten', 'Hinweis, wenn jemand im Chat einen Besuch plant')}
+        </section>
+        <p class="hint">Der Hinweis erscheint, solange die App geöffnet oder im Hintergrund aktiv ist${perm === 'granted' ? '' : ' (im Hintergrund nur mit erlaubten Benachrichtigungen)'}. Auf einem iPhone pausiert iOS Web-Apps im Hintergrund – Mitteilungen bei komplett geschlossener App gibt es erst mit einem Server-Dienst (Firebase Cloud Messaging).</p>
+        <p class="section-label">Blockierte Nutzer</p>
+        ${blocked.length ? `<section class="card flush">${blocked.map((b) => `
+          <div class="row">
+            <span class="row-text"><span class="break">@${esc(b.name || 'Nutzer')}</span><small>Du siehst keine Nachrichten von dieser Person.</small></span>
+            <button class="btn soft sm" data-action="chat-unblock" data-uid="${esc(b.uid)}">Entsperren</button>
+          </div>`).join('')}</section>` : '<div class="empty"><p class="muted">Du hast niemanden blockiert. Im Chat: Nachricht antippen → Blockieren.</p></div>'}`;
     } else if (sub === 'appearance') {
       html = `
         <p class="section-label">Design</p>
@@ -6266,6 +6428,7 @@
         const root = document.documentElement.style;
         root.setProperty('--kb', (kb > 60 ? kb : 0) + 'px');
         root.setProperty('--vvh', Math.round(vv.height) + 'px');
+        if (ChatView.el) ChatView.keep(); // Chat: mit der Tastatur am Ende der Liste bleiben
         const a = document.activeElement;
         if (kb > 60 && a && a.closest && a.closest('.modal-card, .wk-slide')) {
           setTimeout(() => { try { a.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }); } catch (e) { /* */ } }, 320);
@@ -6651,6 +6814,7 @@
       const k = el.dataset.key;
       db.settings[k] = !db.settings[k];
       save();
+      if (k === 'chatNotify') Chat.sync(); // Hinweise an: im Hintergrund zuhören; aus: nur solange der Chat offen ist
       // Nur den Schalter umlegen (animiert), statt die Seite neu zu zeichnen
       el.setAttribute('aria-checked', String(!!db.settings[k]));
       Haptics.tap();
@@ -7152,6 +7316,7 @@
       clearTimeout(this.pubTimer);
       clearTimeout(this.retryTimer);
       Object.assign(this, { uid: null, profile: undefined, friends: null, people: {}, incoming: null, outgoing: null, fetchedAt: null, error: null, peopleAt: 0, forceAgain: false });
+      Chat.detach();
       this.badge();
     },
 
@@ -7228,6 +7393,7 @@
     /** Neue Daten → Reiter-Punkt aktualisieren und die offene Freunde-Ansicht neu zeichnen. */
     changed() {
       this.badge();
+      Chat.sync(); // Profil da → Chat verbinden
       if (!SOCIAL_ROUTES.has(parseRoute().name)) return;
       const a = document.activeElement;
       if (a && a.matches && a.matches('input')) { renderPending = true; return; }
@@ -7457,11 +7623,11 @@
   }
 
   /** Karte für alle, die (noch) kein Konto haben. */
-  function socialGuestHTML(text) {
+  function socialGuestHTML(text, title) {
     return `
       <section class="card social-cta">
         <span class="social-cta-ic" aria-hidden="true">${ICON.users}</span>
-        <h2>Mit Freunden vergleichen</h2>
+        <h2>${esc(title || 'Mit Freunden vergleichen')}</h2>
         <p>${esc(text || 'Mit einem Konto kannst du Freunde über ihren Benutzernamen hinzufügen und Trainings, Serien und Rekorde vergleichen.')}</p>
         <p class="muted">Training, Timer, Ernährung, Bibliothek und Verlauf funktionieren weiterhin komplett ohne Konto und offline.</p>
         ${cloudConfigured
@@ -8287,6 +8453,744 @@
     if (e.key === 'Enter' && e.target.matches('.set input')) e.target.blur();
   }
 
+  /* =========================================================
+   *  Mitglieder-Chat (Raum „Gym“): Nachrichten, Gym-Karten, „Ich komme mit“
+   *  Daten und Zugriffsregeln: chat.js, firestore.rules. Nur mit Konto und Profil.
+   *  Zeiten immer Europe/Vienna, 24-Stunden-Format.
+   * ========================================================= */
+
+  Object.assign(ICON, {
+    chat: svgI('<path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H11l-4.5 3.5V16.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"/>'),
+    send: svgI('<path d="M12 19V5M6 11l6-6 6 6"/>'),
+    flag: svgI('<path d="M6 21V4M6 5h11l-2 4 2 4H6"/>'),
+    block: svgI('<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>'),
+    dumbbell: svgI('<path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>'),
+  });
+  AVATAR_PX.sm = 32;
+  AVATAR_PX.xs = 24;
+
+  const CHAT_ROOM = 'gym';
+  const CHAT_PAGE = 30;
+  const CHAT_SEEN = 'gymtracker.chatseen.v1.';  // + uid → Zeitstempel der zuletzt gesehenen Nachricht
+  const CHAT_GROUP_MS = 5 * 60000;              // Nachrichten derselben Person innerhalb 5 min werden gruppiert
+  const CHAT_SEND_GAP = 2200;                   // Abstand zwischen Nachrichten (die Regeln erlauben 2 s)
+  const CHAT_CARD_GAP = 61000;                  // und zwischen Gym-Karten (Regeln: 60 s)
+  const CHAT_SEND_TIMEOUT = 20000;
+
+  function chatErrorText(e, kind) {
+    const code = (e && e.code) || '';
+    if (!navigator.onLine || code === 'unavailable') return 'Keine Verbindung – nicht gesendet';
+    if (code === 'permission-denied') {
+      return kind === 'gym' ? 'Nicht erlaubt – nur eine Gym-Karte pro Minute' : 'Nicht gesendet – bitte kurz warten und erneut senden';
+    }
+    if (code === 'timeout') return 'Keine Verbindung – Senden dauert zu lange';
+    return 'Senden fehlgeschlagen';
+  }
+
+  const Chat = {
+    uid: null,
+    store: new Map(),     // id → Nachricht (Live-Fenster + nachgeladene ältere Seiten)
+    plans: [],            // Gym-Karten von heute (Live)
+    outbox: new Map(),    // id → noch nicht bestätigte bzw. fehlgeschlagene eigene Nachricht
+    ready: false,         // erster Server-Stand ist da
+    fromCache: false,     // Verbindung gestört: gezeigt wird der Zwischenspeicher
+    done: false,          // keine älteren Nachrichten mehr
+    loadingOlder: false,
+    error: null,
+    unsub: null,
+    unsubPlans: null,
+    planDay: '',
+    known: null,          // IDs, die schon da waren (für Hinweise auf neue Gym-Karten)
+    seen: 0,
+    sentAt: 0,
+    cardAt: 0,
+    draft: '',
+    photos: {},           // Benutzername → Foto | null
+    photoWait: new Set(),
+    timers: {},
+
+    api() { return window.GymCloud && window.GymCloud.chat; },
+    enabled() { return isUser() && Social.ready(); },
+    onRoute() { return parseRoute().name === 'chat'; },
+    myName() { return Social.profile ? Social.profile.username : ''; },
+    blockedSet() { return new Set((db.settings.chatBlocked || []).map((b) => b.uid)); },
+
+    /** Warum gerade keine Live-Daten? (wie Social.reason) */
+    reason() {
+      if (!navigator.onLine) return 'offline';
+      if (window.GymCloud && !window.GymCloud.chat) return 'update';
+      if (!window.GymCloud) return 'loading';
+      if (this.error) return 'error';
+      if (this.fromCache && this.ready) return 'unstable';
+      return null;
+    },
+
+    /** Verbindung herstellen bzw. beenden, je nachdem ob der Chat gebraucht wird (offen oder Hinweise an). */
+    sync() {
+      if (!this.enabled()) { if (this.uid && !isUser()) this.detach(); else this.stop(); return; }
+      if (!this.api() || !(this.onRoute() || db.settings.chatNotify)) { this.stop(); return; }
+      this.connect();
+    },
+
+    reset(uid) {
+      this.stop();
+      Object.assign(this, { uid, store: new Map(), plans: [], outbox: new Map(), ready: false, fromCache: false, done: false, loadingOlder: false, error: null, known: null, photos: {} });
+      const raw = Number(lsGet(CHAT_SEEN + uid));
+      this.seen = raw > 0 ? raw : Date.now(); // zum ersten Mal: nur Neues zählt als ungelesen
+      if (!(raw > 0)) lsSet(CHAT_SEEN + uid, String(this.seen));
+    },
+
+    connect() {
+      if (this.unsub || !this.api() || !account) return;
+      // Beim App-Start ist die gespeicherte Anmeldung oft noch nicht wiederhergestellt → später erneut (Social.changed)
+      const cur = window.GymCloud.currentUser && window.GymCloud.currentUser();
+      if (!cur || cur.uid !== account.uid) return;
+      if (this.uid !== cur.uid) this.reset(cur.uid);
+      const uid = this.uid;
+      try {
+        this.unsub = this.api().watch(CHAT_ROOM, CHAT_PAGE, (list, meta) => { if (uid === this.uid) this.onLive(list, meta); }, (err) => {
+          if (uid !== this.uid) return;
+          this.error = err;
+          this.stop();
+          clearTimeout(this.timers.retry);
+          this.timers.retry = setTimeout(() => this.sync(), 15000);
+          this.changed();
+        });
+        this.watchToday();
+      } catch (e) {
+        this.error = e;
+        this.unsub = null;
+      }
+    },
+
+    /** Listener beenden, Nachrichten im Speicher behalten. */
+    stop() {
+      if (this.unsub) { this.unsub(); this.unsub = null; }
+      if (this.unsubPlans) { this.unsubPlans(); this.unsubPlans = null; }
+      clearTimeout(this.timers.day);
+      this.known = null; // nach einem Neuaufbau nicht alles als „neu“ melden
+    },
+
+    /** Abmelden / Kontowechsel */
+    detach() {
+      this.stop();
+      clearTimeout(this.timers.retry);
+      Object.assign(this, { uid: null, store: new Map(), plans: [], outbox: new Map(), ready: false, fromCache: false, done: false, error: null, draft: '' });
+      this.badge();
+    },
+
+    /** Gym-Karten von heute (Wiener Tag) beobachten – unabhängig vom Nachladen älterer Nachrichten. */
+    watchToday() {
+      if (!this.api()) return;
+      if (this.unsubPlans) { this.unsubPlans(); this.unsubPlans = null; }
+      const now = Date.now();
+      const [from, to] = Core.viennaDayRange(now);
+      this.planDay = Core.viennaDayKey(now);
+      const uid = this.uid;
+      this.unsubPlans = this.api().watchPlans(CHAT_ROOM, from, to, (list) => { if (uid === this.uid) { this.plans = list; this.changed(); } }, () => {});
+      clearTimeout(this.timers.day);
+      this.timers.day = setTimeout(() => this.checkDay(), Math.min(to - now + 1000, 2147483000));
+    },
+
+    /** Neuer Tag (z. B. App lag über Nacht im Hintergrund)? → „Heute im Gym“ neu aufbauen. */
+    checkDay() {
+      if (this.unsub && Core.viennaDayKey(Date.now()) !== this.planDay) { this.watchToday(); this.changed(); }
+    },
+
+    onLive(list, meta) {
+      this.absorb(list);
+      this.fromCache = meta.fromCache;
+      if (!meta.fromCache) { this.ready = true; this.error = null; }
+      // Hinweise auf neue Gym-Karten anderer – nicht auf den ersten Stand und nicht auf Zwischenspeicher
+      if (this.known === null) {
+        if (!meta.fromCache) this.known = new Set(list.map((m) => m.id));
+      } else {
+        const blocked = this.blockedSet();
+        for (const m of list) {
+          if (this.known.has(m.id)) continue;
+          this.known.add(m.id);
+          if (m.pending || m.uid === this.uid || blocked.has(m.uid)) continue;
+          this.announce(m);
+          // Screenreader: neue Nachricht vorlesen (die Liste selbst wird bei jedem Stand neu aufgebaut)
+          if (this.onRoute() && ChatView.el) ChatView.say('@' + m.name + ': ' + (m.kind === 'gym' ? 'Gym-Besuch ' + Core.chatWhenLabel(m.when, Date.now()) : m.text));
+        }
+      }
+      this.changed();
+    },
+
+    /** Live-Fenster übernehmen: neue/geänderte Nachrichten setzen, im Fenster gelöschte entfernen. */
+    absorb(list) {
+      const ids = new Set(list.map((m) => m.id));
+      const floor = list.length >= CHAT_PAGE ? list[list.length - 1].createdAt : -Infinity; // Liste: neueste zuerst
+      for (const [id, m] of this.store) if (m.createdAt >= floor && !ids.has(id)) this.store.delete(id);
+      for (const m of list) this.store.set(m.id, m);
+    },
+
+    messages() { return Core.chatMerge([...this.store.values()]); },
+
+    /** Neue Gym-Karte von jemand anderem: Hinweis (Toast, wenn die App offen ist – sonst Benachrichtigung). */
+    announce(m) {
+      if (m.kind !== 'gym' || !db.settings.chatNotify || Core.chatCardPast(m, Date.now())) return;
+      const text = '@' + m.name + ': ' + Core.chatWhenLabel(m.when, Date.now()) + (m.workout ? ' · ' + Core.chatWorkoutLabel(m.workout) : '');
+      if (document.visibilityState === 'visible') {
+        if (this.onRoute()) return; // steht schon vor den Augen
+        toast(text, { action: 'Ansehen', onAction: () => go('#/chat') });
+      } else {
+        Notify.show('Neuer Gym-Besuch', text);
+      }
+    },
+
+    unread() {
+      const blocked = this.blockedSet();
+      for (const m of this.store.values()) if (m.uid !== this.uid && !m.pending && !blocked.has(m.uid) && m.createdAt > this.seen) return true;
+      return false;
+    },
+
+    markSeen() {
+      let t = this.seen;
+      for (const m of this.store.values()) if (!m.pending && m.createdAt > t) t = m.createdAt;
+      if (t !== this.seen) { this.seen = t; if (this.uid) lsSet(CHAT_SEEN + this.uid, String(t)); }
+      this.badge();
+    },
+
+    badge() {
+      const d = $('#tab-dot-chat');
+      if (d) d.hidden = !(this.uid && this.enabled() && !this.onRoute() && this.unread());
+    },
+
+    /** Neue Daten → Punkt am Reiter und (falls offen) die Ansicht aktualisieren. */
+    changed(opts) {
+      this.badge();
+      if (ChatView.el) ChatView.update(opts);
+    },
+
+    onOnline() { this.error = null; this.sync(); this.changed(); },
+    onOffline() { this.changed(); },
+
+    /* ----- Senden ----- */
+
+    tooFast(last, gap, text) {
+      if (Date.now() - last >= gap) return false;
+      toast(text);
+      return true;
+    },
+
+    send(raw) {
+      const text = Core.chatCheckText(raw);
+      if (!text) { if (String(raw || '').trim()) toast('Die Nachricht ist zu lang (höchstens 500 Zeichen).'); return false; }
+      if (this.tooFast(this.sentAt, CHAT_SEND_GAP, 'Bitte kurz warten, bevor du die nächste Nachricht sendest.')) return false;
+      this.sentAt = Date.now();
+      this.dispatch({ id: this.api().newId(CHAT_ROOM), kind: 'text', text, createdAt: Date.now() });
+      return true;
+    },
+
+    sendCard(c) {
+      if (this.tooFast(this.cardAt, CHAT_CARD_GAP, 'Du hast gerade erst einen Besuch gepostet – bitte kurz warten.')) return false;
+      this.cardAt = this.sentAt = Date.now();
+      this.dispatch({ id: this.api().newId(CHAT_ROOM), kind: 'gym', when: c.when, workout: c.workout, note: c.note, createdAt: Date.now() });
+      return true;
+    },
+
+    /** Senden (oder erneut senden). Offline: gar nicht erst versuchen – sofort „Nicht gesendet“ mit Retry. */
+    async dispatch(entry) {
+      const api = this.api();
+      if (!api) return;
+      this.outbox.set(entry.id, entry);
+      entry.error = '';
+      if (!navigator.onLine) { entry.status = 'failed'; entry.error = chatErrorText(null, entry.kind); this.changed({ toBottom: true }); return; }
+      entry.status = 'sending';
+      this.changed({ toBottom: true });
+      const args = entry.kind === 'gym'
+        ? { id: entry.id, name: this.myName(), when: entry.when, workout: entry.workout, note: entry.note }
+        : { id: entry.id, name: this.myName(), text: entry.text };
+      const timeout = new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), CHAT_SEND_TIMEOUT));
+      try {
+        // Beim erneuten Senden zuerst prüfen, ob die Nachricht doch schon angekommen ist (verlorene Bestätigung)
+        if (entry.retried && await api.exists(CHAT_ROOM, entry.id)) { this.outbox.delete(entry.id); this.changed(); return; }
+        await Promise.race([entry.kind === 'gym' ? api.sendCard(CHAT_ROOM, args) : api.send(CHAT_ROOM, args), timeout]);
+        this.outbox.delete(entry.id);
+      } catch (e) {
+        if (await api.exists(CHAT_ROOM, entry.id)) { this.outbox.delete(entry.id); this.changed(); return; }
+        entry.status = 'failed';
+        entry.error = chatErrorText(e, entry.kind);
+      }
+      this.changed();
+    },
+
+    retry(id) {
+      const e = this.outbox.get(id);
+      if (!e || e.status === 'sending') return;
+      e.retried = true;
+      this.dispatch(e);
+    },
+
+    discard(id) { this.outbox.delete(id); this.changed(); },
+
+    /* ----- Ändern ----- */
+
+    async join(id) {
+      const m = this.store.get(id);
+      if (!m || !this.api()) return;
+      const me = Object.prototype.hasOwnProperty.call(m.joined || {}, this.uid);
+      try {
+        if (me) await this.api().leave(CHAT_ROOM, id); else await this.api().join(CHAT_ROOM, id, this.myName());
+        Haptics.tap();
+      } catch (e) { toast(socialErrorText(e)); }
+    },
+
+    async remove(id) {
+      try { await this.api().remove(CHAT_ROOM, id); this.store.delete(id); this.changed(); }
+      catch (e) { toast(socialErrorText(e)); }
+    },
+
+    async editText(id, text) {
+      try { await this.api().editText(CHAT_ROOM, id, text); } catch (e) { toast(socialErrorText(e)); }
+    },
+
+    async editCard(id, c) {
+      try { await this.api().editCard(CHAT_ROOM, id, c); } catch (e) { toast(socialErrorText(e)); }
+    },
+
+    block(uid, name) {
+      if (!uid || uid === this.uid) return;
+      db.settings.chatBlocked = Core.normChatBlocked((db.settings.chatBlocked || []).concat([{ uid, name }]));
+      save();
+      this.changed();
+    },
+
+    unblock(uid) {
+      db.settings.chatBlocked = (db.settings.chatBlocked || []).filter((b) => b.uid !== uid);
+      save();
+      this.changed();
+    },
+
+    async report(m, reason) {
+      try { await this.api().report(CHAT_ROOM, m, reason); toast('Danke – die Meldung ist angekommen.'); }
+      catch (e) { toast(e && e.code === 'permission-denied' ? 'Du hast diese Nachricht schon gemeldet.' : socialErrorText(e)); }
+    },
+
+    /** Ältere Nachrichten nachladen (beim Hochscrollen). */
+    async loadOlder() {
+      if (this.loadingOlder || this.done || !this.ready || !this.api() || !navigator.onLine) return;
+      const oldest = this.messages()[0];
+      if (!oldest) return;
+      const uid = this.uid;
+      this.loadingOlder = true;
+      this.changed();
+      try {
+        const r = await this.api().older(CHAT_ROOM, oldest, CHAT_PAGE);
+        if (uid !== this.uid) return;
+        for (const m of r.messages) if (!this.store.has(m.id)) this.store.set(m.id, m);
+        this.done = r.done;
+      } catch (e) {
+        toast('Ältere Nachrichten konnten nicht geladen werden.');
+      }
+      this.loadingOlder = false;
+      this.changed({ anchorOlder: true });
+    },
+
+    /** Profilfoto zu einem Benutzernamen (aus dem Cache; fehlt es, wird es im Hintergrund geholt). */
+    photoFor(name, uid) {
+      if (uid === this.uid) return Social.profile ? Social.profile.photo : null;
+      if (name in this.photos) return this.photos[name];
+      const friend = Object.values(Social.people || {}).find((p) => p && p.username === name);
+      if (friend) return (this.photos[name] = friend.photo || null);
+      if (!this.photoWait.has(name) && Social.api() && navigator.onLine) {
+        this.photoWait.add(name);
+        const me = this.uid;
+        Social.api().lookup(name).then((p) => { if (me === this.uid) this.photos[name] = p ? p.photo || null : null; })
+          .catch(() => {})
+          .finally(() => { this.photoWait.delete(name); clearTimeout(this.timers.photo); this.timers.photo = setTimeout(() => this.changed(), 150); });
+      }
+      return null;
+    },
+  };
+
+  /* ---------- Ansicht ---------- */
+
+  const WORKOUT_CHIPS = Core.CHAT_WORKOUTS;
+
+  function chatNamesText(joined) {
+    const n = joined.map((j) => '@' + j.name);
+    if (n.length <= 3) return n.length > 1 ? n.slice(0, -1).join(', ') + ' und ' + n[n.length - 1] : n[0];
+    return n.slice(0, 2).join(', ') + ' und ' + (n.length - 2) + ' weitere';
+  }
+
+  function chatBubbleHTML(m, mine, first, last) {
+    const meta = [Core.fmtViennaTime(m.createdAt)];
+    if (m.editedAt) meta.push('bearbeitet');
+    const state = m.failed ? `<span class="msg-state bad" role="alert">${ICON.warn}<span>${esc(m.error || 'Nicht gesendet')}</span></span>`
+      : m.pending ? '<span class="msg-state">Wird gesendet …</span>' : '';
+    return `
+      <div class="msg ${mine ? 'mine' : 'theirs'}${first ? ' first' : ''}${last ? ' last' : ''}${m.failed ? ' failed' : ''}${m.pending ? ' pending' : ''}" data-id="${esc(m.id)}">
+        ${mine ? '' : first ? avatarHTML(Chat.photoFor(m.name, m.uid), 'sm') : '<span class="avatar-gap" aria-hidden="true"></span>'}
+        <div class="msg-col">
+          ${!mine && first ? `<span class="msg-name">@${esc(m.name)}</span>` : ''}
+          ${m.failed ? `<span class="bubble">${esc(m.text)}</span>`
+            : `<button type="button" class="bubble" data-action="chat-menu" data-id="${esc(m.id)}">${esc(m.text)}</button>`}
+          <span class="msg-meta">${esc(meta.join(' · '))}${state ? ' ' : ''}${state}</span>
+          ${m.failed ? `<span class="msg-retry"><button type="button" class="btn soft sm" data-action="chat-retry" data-id="${esc(m.id)}">${ICON.reload} Erneut senden</button><button type="button" class="btn ghost sm" data-action="chat-discard" data-id="${esc(m.id)}">Verwerfen</button></span>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function chatPlanHTML(m, mine, now) {
+    const past = Core.chatCardPast(m, now);
+    const joined = Core.chatJoined(m);
+    const me = joined.some((j) => j.uid === Chat.uid);
+    const wk = Core.chatWorkoutLabel(m.workout);
+    const when = Core.chatWhenLabel(m.when, now);
+    const people = joined.length
+      ? `<div class="plan-people"><span class="plan-faces">${joined.slice(0, 4).map((j) => avatarHTML(Chat.photoFor(j.name, j.uid), 'xs')).join('')}</span><span>${esc(chatNamesText(joined))} ${joined.length === 1 ? 'kommt' : 'kommen'} mit</span></div>`
+      : `<div class="plan-people muted"><span>${past ? 'Niemand dabei' : 'Noch niemand dabei'}</span></div>`;
+    const action = mine || past || m.pending || m.failed ? '' : me
+      ? `<button type="button" class="btn soft sm block" data-action="chat-join" data-id="${esc(m.id)}">Ich komme doch nicht mit</button>`
+      : `<button type="button" class="btn primary sm block" data-action="chat-join" data-id="${esc(m.id)}">Ich komme mit</button>`;
+    const state = m.failed ? `<span class="msg-state bad" role="alert">${ICON.warn}<span>${esc(m.error || 'Nicht gesendet')}</span></span>` : m.pending ? '<span class="msg-state">Wird gesendet …</span>' : '';
+    return `
+      <div class="msg plan-row ${mine ? 'mine' : 'theirs'}" data-id="${esc(m.id)}">
+        <article class="plan${past ? ' past' : ''}${m.pending ? ' pending' : ''}" aria-label="Gym-Besuch: ${esc(when)}">
+          <header class="plan-head">
+            <span class="plan-ic" aria-hidden="true">${ICON.dumbbell}</span>
+            <div class="plan-title"><strong>${esc(when)}</strong><small>${mine ? 'Du' : '@' + esc(m.name)}${wk ? ' · ' + esc(wk) : ''}${past ? ' · vorbei' : ''}</small></div>
+            ${m.failed ? '' : `<button type="button" class="icon-btn sm" data-action="chat-menu" data-id="${esc(m.id)}" aria-label="Optionen für den Gym-Besuch">${ICON.more}</button>`}
+          </header>
+          ${m.note ? `<p class="plan-note">${esc(m.note)}</p>` : ''}
+          ${people}
+          ${action}
+          ${state ? `<div class="plan-state">${state}</div>` : ''}
+          ${m.failed ? `<span class="msg-retry"><button type="button" class="btn soft sm" data-action="chat-retry" data-id="${esc(m.id)}">${ICON.reload} Erneut senden</button><button type="button" class="btn ghost sm" data-action="chat-discard" data-id="${esc(m.id)}">Verwerfen</button></span>` : ''}
+        </article>
+        <span class="msg-meta">${Core.fmtViennaTime(m.createdAt)}${m.editedAt ? ' · bearbeitet' : ''}</span>
+      </div>`;
+  }
+
+  function chatListHTML() {
+    const now = Date.now();
+    const blocked = Chat.blockedSet();
+    const msgs = Chat.messages().filter((m) => !blocked.has(m.uid));
+    const have = new Set(msgs.map((m) => m.id));
+    for (const o of Chat.outbox.values()) {
+      if (!have.has(o.id) || o.status === 'failed') {
+        if (have.has(o.id)) msgs.splice(msgs.findIndex((x) => x.id === o.id), 1);
+        msgs.push({ ...o, uid: Chat.uid, name: Chat.myName(), joined: {}, pending: o.status === 'sending', failed: o.status === 'failed' });
+      }
+    }
+    msgs.sort((a, b) => a.createdAt - b.createdAt);
+    if (!msgs.length) {
+      if (!Chat.ready) return '<div class="chat-skel" aria-hidden="true">' + [60, 40, 70, 50].map((w, i) => `<div class="sk sk-bubble ${i % 2 ? 'r' : ''}" style="width:${w}%"></div>`).join('') + '</div>';
+      return `<div class="empty chat-empty"><p><strong>Noch keine Nachrichten</strong></p><p class="muted">Schreib, wann du ins Gym gehst – dann können sich andere anschließen.</p></div>`;
+    }
+    let html = Chat.loadingOlder ? '<div class="chat-older" role="status">Ältere Nachrichten werden geladen …</div>'
+      : Chat.done ? '<p class="chat-start">Anfang des Chats</p>' : '';
+    let day = '';
+    msgs.forEach((m, i) => {
+      const k = Core.viennaDayKey(m.createdAt);
+      if (k !== day) { day = k; html += `<div class="chat-day"><span>${esc(Core.chatDayLabel(m.createdAt, now))}</span></div>`; }
+      const prev = msgs[i - 1], next = msgs[i + 1];
+      const sameDay = (x) => x && Core.viennaDayKey(x.createdAt) === k;
+      const group = (a, b) => a && b && sameDay(a) && sameDay(b) && a.uid === b.uid && a.kind === 'text' && b.kind === 'text' && Math.abs(b.createdAt - a.createdAt) <= CHAT_GROUP_MS;
+      const mine = m.uid === Chat.uid;
+      html += m.kind === 'gym' ? chatPlanHTML(m, mine, now) : chatBubbleHTML(m, mine, !group(prev, m), !group(m, next));
+    });
+    return html;
+  }
+
+  function chatTodayHTML() {
+    const now = Date.now();
+    const blocked = Chat.blockedSet();
+    const plans = Core.chatPlansToday(Chat.plans.filter((p) => !blocked.has(p.uid)), now);
+    const items = plans.map((p) => {
+      const n = Object.keys(p.joined || {}).length;
+      const wk = Core.chatWorkoutLabel(p.workout);
+      return `<button type="button" class="today-item${Core.chatCardPast(p, now) ? ' past' : ''}" data-action="chat-today-open" data-id="${esc(p.id)}">
+        <strong>${Core.fmtViennaTime(p.when)}</strong>
+        <span>${p.uid === Chat.uid ? 'Du' : '@' + esc(p.name)}${wk ? ' · ' + esc(wk) : ''}${n ? ' · +' + n : ''}</span></button>`;
+    }).join('');
+    return `
+      <div class="today-head">
+        <h2 class="today-title">Heute im Gym${plans.length ? ' <span class="today-count">' + plans.length + '</span>' : ''}</h2>
+        <button type="button" class="btn primary sm" data-action="chat-plan">${ICON.plus} Ich gehe ins Gym</button>
+      </div>
+      ${plans.length ? `<div class="today-list">${items}</div>` : '<p class="today-empty">Heute ist noch niemand eingetragen.</p>'}`;
+  }
+
+  function chatNoteHTML() {
+    const why = Chat.reason();
+    if (!why) return '';
+    const text = {
+      offline: 'Offline – Senden geht erst wieder mit Verbindung.',
+      update: 'Die App wurde aktualisiert – bitte einmal neu laden.',
+      loading: 'Verbindung zur Cloud wird aufgebaut …',
+      error: 'Keine Verbindung zum Chat' + (Chat.error && Chat.error.code ? ' (' + Chat.error.code + ')' : ''),
+      unstable: 'Verbindung gestört – neue Nachrichten kommen, sobald sie wieder steht.',
+    }[why];
+    const retry = why === 'update' || why === 'error'
+      ? `<button type="button" class="btn soft sm" data-action="chat-retry-connect">${ICON.reload} ${why === 'update' ? 'Neu laden' : 'Erneut versuchen'}</button>` : '';
+    return `<div class="chat-note" role="status">${ICON.cloudOff}<span>${esc(text)}</span>${retry}</div>`;
+  }
+
+  function renderChat(view) {
+    setHeader({ title: 'Gym-Chat', actions: `<a class="hdr-btn" href="#/settings/chat" aria-label="Chat-Einstellungen">${ICON.gear}</a>` });
+    if (!isUser()) { view.innerHTML = socialGuestHTML('Mit einem Konto schreibst du mit anderen Mitgliedern, wann du ins Gym gehst – und siehst, wer sich anschließt.', 'Gym-Chat'); return; }
+    if (Social.profile === undefined) {
+      view.innerHTML = navigator.onLine ? skeletonRows(3) : '<div class="empty"><p class="muted">Offline – dein Profil wird geladen, sobald du wieder online bist.</p></div>';
+      return;
+    }
+    if (!Social.ready()) { view.innerHTML = setupPromptHTML('Für den Chat brauchst du einen Benutzernamen – so sehen die anderen, wer schreibt.'); return; }
+    view.innerHTML = `
+      <div class="chat" id="chat">
+        <div id="chat-note">${chatNoteHTML()}</div>
+        <section class="chat-today" id="chat-today" aria-label="Heute im Gym">${chatTodayHTML()}</section>
+        <div class="chat-list" id="chat-list" role="region" aria-label="Nachrichten"></div>
+        <div class="sr-only" id="chat-live" role="status" aria-live="polite"></div>
+        <button type="button" class="chat-jump" id="chat-jump" data-action="chat-jump" hidden>${ICON.down} Neue Nachrichten</button>
+        <form class="chat-composer" id="chat-composer" autocomplete="off">
+          <textarea class="in" id="chat-input" rows="1" maxlength="500" placeholder="Nachricht schreiben …" enterkeyhint="send" aria-label="Nachricht">${esc(Chat.draft)}</textarea>
+          <button type="submit" class="icon-btn send-btn" id="chat-send" aria-label="Senden">${ICON.send}</button>
+        </form>
+      </div>`;
+  }
+
+  const ChatView = {
+    el: null, list: null, input: null,
+    stick: true,  // Liste klebt am Ende (neue Nachrichten scrollen automatisch)
+    top: 0,
+    raf: 0,
+
+    mount(view, sameRoute) {
+      const root = $('#chat', view);
+      if (!root) { this.unmount(); return; }
+      this.el = root;
+      this.list = $('#chat-list', root);
+      this.input = $('#chat-input', root);
+      const form = $('#chat-composer', root);
+      const send = $('#chat-send', root);
+      if (!sameRoute) this.stick = true;
+      this.paint({ restore: sameRoute });
+      Chat.sync();
+      this.autosize();
+      this.list.addEventListener('scroll', () => this.onScroll(), { passive: true });
+      this.input.addEventListener('input', () => { Chat.draft = this.input.value; this.autosize(); });
+      this.input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
+      });
+      // Tippen auf „Senden“ soll die Tastatur nicht schließen
+      send.addEventListener('pointerdown', (e) => e.preventDefault());
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = this.input.value;
+        if (!text.trim()) return;
+        if (Chat.send(text)) {
+          this.input.value = '';
+          Chat.draft = '';
+          this.autosize();
+          this.stick = true;
+        }
+        this.input.focus();
+      });
+    },
+
+    unmount() { this.el = this.list = this.input = null; },
+
+    autosize() {
+      if (!this.input) return;
+      this.input.style.height = 'auto';
+      this.input.style.height = Math.min(this.input.scrollHeight, 120) + 'px';
+    },
+
+    nearBottom() { const l = this.list; return l.scrollHeight - l.scrollTop - l.clientHeight < 80; },
+
+    onScroll() {
+      const l = this.list;
+      this.stick = this.nearBottom();
+      this.top = l.scrollTop;
+      const jump = $('#chat-jump');
+      if (jump && this.stick) jump.hidden = true;
+      if (this.stick && document.visibilityState === 'visible') Chat.markSeen();
+      if (l.scrollTop < 120) Chat.loadOlder();
+    },
+
+    say(text) {
+      const live = $('#chat-live', this.el);
+      if (live) live.textContent = text;
+    },
+
+    /** Nach Tastatur/Größenänderung am Ende bleiben. */
+    keep() { if (this.list && this.stick) this.list.scrollTop = this.list.scrollHeight; },
+
+    update(opts) {
+      if (!this.el || !this.el.isConnected) { this.unmount(); return; }
+      const note = $('#chat-note', this.el);
+      if (note) note.innerHTML = chatNoteHTML();
+      const today = $('#chat-today', this.el);
+      if (today) today.innerHTML = chatTodayHTML();
+      this.paint(opts || {});
+    },
+
+    paint(opts) {
+      const l = this.list;
+      if (!l) return;
+      const o = opts || {};
+      const before = { top: l.scrollTop, h: l.scrollHeight, near: !o.restore && l.scrollHeight > 0 ? this.nearBottom() : this.stick };
+      const count = l.querySelectorAll('.msg').length;
+      l.innerHTML = chatListHTML();
+      const grew = l.querySelectorAll('.msg').length > count;
+      if (o.anchorOlder) l.scrollTop = before.top + (l.scrollHeight - before.h);
+      else if (o.toBottom || this.stick || before.near || !count) l.scrollTop = l.scrollHeight;
+      else if (o.restore) l.scrollTop = this.top;
+      else l.scrollTop = before.top;
+      this.stick = this.nearBottom() || o.toBottom === true;
+      const jump = $('#chat-jump');
+      if (jump) { if (this.stick) jump.hidden = true; else if (grew && count > 0) jump.hidden = false; }
+      if (this.stick && document.visibilityState === 'visible') Chat.markSeen();
+    },
+
+    /** Zu einer Nachricht springen und kurz hervorheben. */
+    reveal(id) {
+      const el = this.list && this.list.querySelector('[data-id="' + CSS.escape(id) + '"]');
+      if (!el) return false;
+      el.scrollIntoView({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' });
+      el.classList.add('flash');
+      setTimeout(() => el.classList.remove('flash'), 1400);
+      return true;
+    },
+  };
+
+  /* ---------- Formular „Ich gehe ins Gym“ ---------- */
+
+  function openPlanForm(edit) {
+    const now = Date.now();
+    const base = edit ? edit.when : now;
+    const p = Core.viennaParts(base);
+    const dayKey = (n) => Core.viennaDayKey(now + n * DAY_MS);
+    // Standard: nächste volle Stunde heute – sehr spät am Abend: morgen 18 Uhr
+    let date = Core.viennaDayKey(base);
+    let hour = p.h, minute = p.mi - (p.mi % 5);
+    if (!edit) {
+      const q = Core.viennaParts(now);
+      if (q.h >= 22) { date = dayKey(1); hour = 18; minute = 0; } else { hour = q.h + 1; minute = 0; }
+    }
+    const hours = Array.from({ length: 24 }, (_, h) => `<option value="${pad2(h)}"${h === hour ? ' selected' : ''}>${pad2(h)}</option>`).join('');
+    const mins = Array.from({ length: 12 }, (_, i) => i * 5);
+    if (!mins.includes(minute)) mins.push(minute);
+    mins.sort((a, b) => a - b);
+    const minutes = mins.map((mi) => `<option value="${pad2(mi)}"${mi === minute ? ' selected' : ''}>${pad2(mi)}</option>`).join('');
+    const state = { workout: edit ? edit.workout : '' };
+    const m = customModal(
+      `<h2 class="modal-title">${edit ? 'Gym-Besuch ändern' : 'Ich gehe ins Gym'}</h2>` +
+      '<p class="modal-msg">Alle Mitglieder sehen die Karte im Chat und können sich anschließen. Zeiten in Wiener Zeit.</p>' +
+      '<form id="plan-form" class="ff" novalidate>' +
+        '<label class="lbl">Datum<input class="in" type="date" name="date" required value="' + esc(date) + '" min="' + esc(dayKey(0)) + '" max="' + esc(dayKey(59)) + '"></label>' +
+        '<div class="lbl" role="group" aria-label="Uhrzeit">Uhrzeit<div class="time-row">' +
+          '<select class="in" name="hour" aria-label="Stunde">' + hours + '</select><span aria-hidden="true">:</span>' +
+          '<select class="in" name="minute" aria-label="Minute">' + minutes + '</select><span class="time-unit">Uhr</span></div></div>' +
+        '<div class="lbl" id="plan-workout-lbl">Training (optional)<div class="chips plan-chips" role="group" aria-labelledby="plan-workout-lbl">' +
+          WORKOUT_CHIPS.map(([k, l]) => `<button type="button" class="chip" data-workout="${k}" aria-pressed="${state.workout === k}">${esc(l)}</button>`).join('') +
+        '</div></div>' +
+        '<label class="lbl">Notiz (optional)<input class="in" name="note" maxlength="120" placeholder="z. B. Brust &amp; Schulter, ab 18:30 Aufwärmen" value="' + esc(edit ? edit.note : '') + '"></label>' +
+        '<p class="plan-preview" id="plan-preview" aria-live="polite"></p>' +
+        '<p class="form-error" id="plan-error" role="alert" hidden></p>' +
+        '<div class="modal-actions"><button type="button" class="btn ghost" data-close>Abbrechen</button><button type="submit" class="btn primary">' + (edit ? 'Speichern' : 'Posten') + '</button></div>' +
+      '</form>');
+    const form = m.card.querySelector('#plan-form');
+    const prev = m.card.querySelector('#plan-preview');
+    const err = m.card.querySelector('#plan-error');
+    const read = () => ({ date: form.elements.date.value, time: form.elements.hour.value + ':' + form.elements.minute.value, workout: state.workout, note: form.elements.note.value });
+    const refresh = () => {
+      const ts = Core.viennaTs(read().date, read().time);
+      prev.textContent = ts === null ? '' : 'Wird gepostet als: ' + Core.chatWhenLabel(ts, Date.now()) + (state.workout ? ' · ' + Core.chatWorkoutLabel(state.workout) : '');
+      err.hidden = true;
+    };
+    refresh();
+    form.addEventListener('input', refresh);
+    form.addEventListener('change', refresh);
+    m.card.querySelector('.plan-chips').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-workout]');
+      if (!b) return;
+      state.workout = state.workout === b.dataset.workout ? '' : b.dataset.workout; // erneut tippen = abwählen
+      m.card.querySelectorAll('[data-workout]').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.workout === state.workout)));
+      Haptics.tap();
+      refresh();
+    });
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const r = Core.chatCheckCard(read(), Date.now());
+      if (r.error) { err.textContent = r.error; err.hidden = false; return; }
+      if (edit) {
+        Chat.editCard(edit.id, r);
+        m.close();
+        return;
+      }
+      if (Chat.sendCard(r)) { m.close(); ChatView.stick = true; Haptics.tap(); }
+    });
+  }
+
+  /** Details zu einer heutigen Gym-Karte (aus „Heute im Gym“). */
+  async function openPlanInfo(id) {
+    const m = Chat.plans.find((x) => x.id === id) || Chat.store.get(id);
+    if (!m) return;
+    const now = Date.now();
+    const joined = Core.chatJoined(m);
+    const mine = m.uid === Chat.uid;
+    const me = joined.some((j) => j.uid === Chat.uid);
+    const past = Core.chatCardPast(m, now);
+    const wk = Core.chatWorkoutLabel(m.workout);
+    const lines = [(mine ? 'Du' : '@' + m.name) + (wk ? ' · ' + wk : '')];
+    if (m.note) lines.push(m.note);
+    lines.push(joined.length ? 'Dabei: ' + joined.map((j) => '@' + j.name).join(', ') : 'Noch niemand dabei');
+    const buttons = [{ label: 'Schließen', style: 'ghost' }];
+    if (!mine && !past) buttons.unshift({ label: me ? 'Ich komme doch nicht mit' : 'Ich komme mit', style: me ? 'soft' : 'primary', value: 'join' });
+    const v = await openDialog({ title: Core.chatWhenLabel(m.when, now), message: lines.join('\n'), buttons });
+    if (v === 'join') Chat.join(id);
+  }
+
+  Object.assign(actions, {
+    'chat-plan': () => openPlanForm(null),
+    'chat-join': (el) => Chat.join(el.dataset.id),
+    'chat-retry': (el) => Chat.retry(el.dataset.id),
+    'chat-discard': (el) => Chat.discard(el.dataset.id),
+    'chat-jump': () => { ChatView.stick = true; ChatView.paint({ toBottom: true }); },
+    'chat-today-open': (el) => openPlanInfo(el.dataset.id),
+    'chat-retry-connect': () => { if (window.GymCloud && !window.GymCloud.chat) { reloadForUpdate(); return; } Chat.error = null; Chat.stop(); Chat.sync(); Chat.changed(); },
+    'chat-menu': async (el) => {
+      const m = Chat.store.get(el.dataset.id);
+      if (!m) return;
+      const mine = m.uid === Chat.uid;
+      if (mine) {
+        const c = await actionSheet(m.kind === 'gym' ? 'Dein Gym-Besuch' : 'Deine Nachricht', [
+          { label: m.kind === 'gym' ? 'Zeit oder Notiz ändern' : 'Bearbeiten', value: 'edit', icon: ICON.edit },
+          { label: 'Löschen', value: 'delete', icon: ICON.trash, danger: true },
+        ]);
+        if (c === 'edit') {
+          if (m.kind === 'gym') { openPlanForm(m); return; }
+          const t = await promptText('Nachricht bearbeiten', { value: m.text, placeholder: 'Nachricht', okLabel: 'Speichern' });
+          const text = t === null ? null : Core.chatCheckText(t);
+          if (t !== null && text === null) toast('Die Nachricht ist zu lang (höchstens 500 Zeichen).');
+          else if (text !== null && text !== m.text) Chat.editText(m.id, text);
+        } else if (c === 'delete') {
+          const ok = await confirmAction(m.kind === 'gym' ? 'Gym-Besuch löschen?' : 'Nachricht löschen?', 'Sie verschwindet für alle im Chat.', 'Löschen', true);
+          if (ok) Chat.remove(m.id);
+        }
+        return;
+      }
+      const c = await actionSheet('@' + m.name, [
+        { label: 'Melden', value: 'report', icon: ICON.flag },
+        { label: '@' + m.name + ' blockieren', value: 'block', icon: ICON.block, danger: true },
+      ]);
+      if (c === 'report') {
+        const why = await actionSheet('Warum meldest du das?', [
+          { label: 'Spam oder Werbung', value: 'spam' }, { label: 'Beleidigend oder unangemessen', value: 'abuse' }, { label: 'Etwas anderes', value: 'other' },
+        ]);
+        if (why) Chat.report(m, why);
+      } else if (c === 'block') {
+        const ok = await confirmAction('@' + m.name + ' blockieren?', 'Du siehst keine Nachrichten und Gym-Karten mehr von dieser Person. Rückgängig unter Einstellungen → Chat.', 'Blockieren', true);
+        if (ok) { Chat.block(m.uid, m.name); toast('@' + m.name + ' blockiert'); }
+      }
+    },
+    'chat-unblock': (el) => { Chat.unblock(el.dataset.uid); render(); },
+  });
+
   function onVisibility() {
     if (document.visibilityState === 'visible') {
       if (Sound.ctx && Sound.ctx.state !== 'running') Sound.ctx.resume().catch(() => {});
@@ -8296,6 +9200,8 @@
       const rn = parseRoute().name;
       if (rn === 'home' || rn === 'settings' || rn === 'profile') render();
       if (SOCIAL_ROUTES.has(rn)) Social.refreshPeople();
+      Chat.checkDay();
+      if (rn === 'chat' && ChatView.el) { Chat.sync(); if (ChatView.stick) Chat.markSeen(); }
       // Home-Bildschirm-Apps werden oft nur "aufgeweckt" statt neu gestartet → dabei nach Updates schauen
       if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
     } else {
@@ -8398,8 +9304,8 @@
       if (e.target.id === 'body-form') { e.preventDefault(); onBodySubmit(e.target); }
       if (e.target.id === 'profile-form') { e.preventDefault(); onProfileSubmit(e.target); }
     });
-    window.addEventListener('online', () => { if (engine) engine.schedule(0); renderSyncStatus(); Social.onOnline(); });
-    window.addEventListener('offline', () => { renderSyncStatus(); Social.onOffline(); });
+    window.addEventListener('online', () => { if (engine) engine.schedule(0); renderSyncStatus(); Social.onOnline(); Chat.onOnline(); });
+    window.addEventListener('offline', () => { renderSyncStatus(); Social.onOffline(); Chat.onOffline(); });
     // Profilfoto nicht ladbar (offline, gelöscht) → grauer Platzhalter
     document.addEventListener('error', (e) => {
       const img = e.target;
@@ -8441,7 +9347,7 @@
 
     // Schnittstelle für cloud.js und für Tests in der Browser-Konsole
     window.GymApp = {
-      Core, TimerCore, Sync, Timer, Social, save, render, onCloudReady, onAuthState, onBlocked, setAdmin,
+      Core, TimerCore, Sync, Timer, Social, Chat, save, render, onCloudReady, onAuthState, onBlocked, setAdmin,
       /** Fehler bei „Mit Apple anmelden“ per Weiterleitung */
       onAuthError(e) { if (e && !/popup-closed|cancelled-popup|no-auth-event/.test(e.code || '')) toast(authErrorText(e)); },
       get db() { return db; },

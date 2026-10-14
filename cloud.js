@@ -8,8 +8,10 @@
  *   users/{uid}                  → { days, settings, activeSession }
  *   users/{uid}/sessions/{id}    → eine abgeschlossene Trainingseinheit
  * Freunde (Profil, Benutzername, Anfragen, geteilte Kennzahlen): siehe social.js
+ * Mitglieder-Chat (Nachrichten, Gym-Karten): siehe chat.js
  */
 import { createSocial } from './social.js';
+import { createChat } from './chat.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/12.3.0/';
 const REDIRECT_KEY = 'gymtracker.appleRedirect'; // „Mit Apple anmelden“ per Weiterleitung gestartet
@@ -100,6 +102,7 @@ async function init() {
     return { S, st };
   }).catch((e) => { storageP = null; throw e; }));
   const social = createSocial({ F, fs, auth, storage: cfg.storageBucket ? storage : null });
+  const chat = createChat({ F, fs, auth });
 
   const appleProvider = () => {
     const p = new A.OAuthProvider('apple.com');
@@ -115,6 +118,7 @@ async function init() {
     signOut: () => A.signOut(auth),
     currentUser: () => auth.currentUser,
     social,
+    chat,
 
     /**
      * „Mit Apple anmelden“. Zuerst als Pop-up (klappt in Safari und in der Home-Bildschirm-App);
@@ -146,7 +150,10 @@ async function init() {
       if (!user) throw Object.assign(new Error('not signed in'), { code: 'auth/requires-recent-login' });
       if (password) await A.reauthenticateWithCredential(user, A.EmailAuthProvider.credential(user.email, password));
       else await A.reauthenticateWithPopup(user, appleProvider());
+      // Chat zuerst (solange das Profil noch besteht), danach das Rate-Limit-Dokument (braucht gelöschtes Profil)
+      await chat.deleteMine(user.uid).catch(() => {});
       await social.deleteAll(user.uid);
+      await chat.deleteState(user.uid).catch(() => {});
       await deleteUserData(user.uid);
       await F.deleteDoc(profileDoc(user.uid)).catch(() => {});
       await A.deleteUser(user);
@@ -239,7 +246,9 @@ async function init() {
     /** Konto entfernen = sperren (zuerst, damit währenddessen nichts neu geschrieben wird) + alle Daten löschen */
     async remove(uid, email) {
       await window.GymCloud.admin.block(uid, email, 'Konto entfernt');
+      await chat.deleteMine(uid).catch(() => {});
       await social.deleteAll(uid).catch(() => {});
+      await chat.deleteState(uid).catch(() => {});
       await deleteUserData(uid);
       await F.deleteDoc(profileDoc(uid));
     },

@@ -4,7 +4,7 @@
   "description": "Integrationstests gegen den Firebase-Emulator (Auth, Firestore, Storage) – siehe README.md",
   "type": "module",
   "scripts": {
-    "test": "firebase emulators:exec --project demo-gym --config ../../firebase.json \"node --test social.emulator.test.mjs\"",
+    "test": "firebase emulators:exec --project demo-gym --config ../../firebase.json \"node --test --test-concurrency=1 social.emulator.test.mjs chat.emulator.test.mjs\"",
     "test:ui": "firebase emulators:exec --project demo-gym --config ../../firebase.json \"node --test ui.test.mjs\""
   },
   "devDependencies": {

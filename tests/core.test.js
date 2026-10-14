@@ -939,3 +939,105 @@ test('Aufwärmsätze überstehen Export/Import, alte Daten bleiben unverändert'
   const old = Core.normalize({ days: [], sessions: [{ id: 'a', finishedAt: T0, exercises: [{ name: 'X', sets: [{ weight: 50, reps: 5 }] }] }] });
   assert.equal('warmup' in old.sessions[0].exercises[0].sets[0], false);
 });
+
+/* ---------- Chat: Zeit in Wien, Prüfungen, Zusammenführen ---------- */
+
+test('Chat-Zeit: Europe/Vienna, 24 h, Sommer- und Winterzeit', () => {
+  // 18.10.2026 12:00 UTC = 14:00 in Wien (MESZ); 15.12.2026 12:00 UTC = 13:00 (MEZ)
+  assert.equal(Core.fmtViennaTime(Date.UTC(2026, 9, 18, 12, 0)), '14:00');
+  assert.equal(Core.fmtViennaTime(Date.UTC(2026, 11, 15, 12, 0)), '13:00');
+  assert.equal(Core.fmtViennaTime(Date.UTC(2026, 11, 15, 22, 59)), '23:59');
+  assert.equal(Core.fmtViennaTime(Date.UTC(2026, 11, 15, 23, 0)), '00:00'); // nie „24:00“
+  // Wiener Datum + Uhrzeit → Zeitstempel (Umkehrung)
+  assert.equal(Core.viennaTs('2026-10-18', '14:00'), Date.UTC(2026, 9, 18, 12, 0));
+  assert.equal(Core.viennaTs('2026-12-15', '13:00'), Date.UTC(2026, 11, 15, 12, 0));
+  assert.equal(Core.viennaTs('2026-07-01', '0:05'), Date.UTC(2026, 5, 30, 22, 5));
+  // Zeitumstellung: 25.10.2026 (03:00 → 02:00) und 29.03.2026 (02:00 → 03:00)
+  assert.equal(Core.viennaTs('2026-10-25', '12:00'), Date.UTC(2026, 9, 25, 11, 0));
+  assert.equal(Core.viennaTs('2026-10-24', '12:00'), Date.UTC(2026, 9, 24, 10, 0));
+  assert.equal(Core.viennaTs('2026-03-29', '12:00'), Date.UTC(2026, 2, 29, 10, 0));
+  for (const [d, t] of [['2026-03-28', '23:30'], ['2026-03-29', '03:30'], ['2026-10-25', '01:30'], ['2026-10-25', '04:00']]) {
+    const ts = Core.viennaTs(d, t);
+    assert.equal(Core.viennaDayKey(ts), d);
+    assert.equal(Core.fmtViennaTime(ts), t);
+  }
+  // Ungültiges
+  assert.equal(Core.viennaTs('2026-02-31', '10:00'), null);
+  assert.equal(Core.viennaTs('2026-10-18', '24:00'), null);
+  assert.equal(Core.viennaTs('', ''), null);
+  assert.equal(Core.viennaTs('18.10.2026', '10:00'), null);
+});
+
+test('Chat-Tage: Kalendertag in Wien, Tagesgrenzen und Beschriftungen', () => {
+  // 18.10.2026 23:30 UTC ist in Wien schon der 19.10. (01:30)
+  const late = Date.UTC(2026, 9, 18, 23, 30);
+  assert.equal(Core.viennaDayKey(late), '2026-10-19');
+  const [from, to] = Core.viennaDayRange(late);
+  assert.equal(from, Date.UTC(2026, 9, 18, 22, 0));
+  assert.equal(to, Date.UTC(2026, 9, 19, 22, 0));
+  // Tag der Umstellung ist 25 Stunden lang
+  const [f2, t2] = Core.viennaDayRange(Core.viennaTs('2026-10-25', '12:00'));
+  assert.equal((t2 - f2) / 3600000, 25);
+
+  const now = Core.viennaTs('2026-10-14', '18:30');
+  const at = (d, t) => Core.viennaTs(d, t);
+  assert.equal(Core.chatDayLabel(at('2026-10-14', '07:00'), now), 'Heute');
+  assert.equal(Core.chatDayLabel(at('2026-10-13', '23:59'), now), 'Gestern');
+  assert.equal(Core.chatDayLabel(at('2026-10-15', '00:01'), now), 'Morgen');
+  assert.equal(Core.chatDayLabel(at('2026-10-19', '12:00'), now), 'Mo., 19.10.');
+  assert.equal(Core.chatDayLabel(at('2027-01-04', '12:00'), now), 'Mo., 04.01.2027');
+  assert.equal(Core.chatWhenLabel(at('2026-10-14', '18:00'), now), 'Heute, 18:00 Uhr');
+  // Besuch gilt 90 Minuten nach dem Start als vorbei
+  assert.equal(Core.chatCardPast({ when: now - 80 * 60000 }, now), false);
+  assert.equal(Core.chatCardPast({ when: now - 100 * 60000 }, now), true);
+});
+
+test('Chat-Prüfungen: Text, Gym-Karte, Blockierliste', () => {
+  assert.equal(Core.chatCheckText('  Ich bin um 18 Uhr da  '), 'Ich bin um 18 Uhr da');
+  assert.equal(Core.chatCheckText('a\r\nb'), 'a\nb');
+  assert.equal(Core.chatCheckText('   \n '), null);
+  assert.equal(Core.chatCheckText(''), null);
+  assert.equal(Core.chatCheckText(null), null);
+  assert.equal(Core.chatCheckText('x'.repeat(500)).length, 500);
+  assert.equal(Core.chatCheckText('x'.repeat(501)), null);
+
+  const now = Core.viennaTs('2026-10-14', '12:00');
+  const ok = Core.chatCheckCard({ date: '2026-10-14', time: '18:00', workout: 'push', note: '  Brust   und Schulter ' }, now);
+  assert.deepEqual(ok, { when: Core.viennaTs('2026-10-14', '18:00'), workout: 'push', note: 'Brust und Schulter' });
+  assert.equal(Core.chatCheckCard({ date: '2026-10-14', time: '18:00', workout: 'yoga', note: '' }, now).workout, ''); // unbekannte Art → keine
+  assert.match(Core.chatCheckCard({ date: '', time: '18:00' }, now).error, /Datum/);
+  assert.match(Core.chatCheckCard({ date: '2026-10-14', time: '09:00' }, now).error, /Vergangenheit/);
+  assert.ok(Core.chatCheckCard({ date: '2026-10-14', time: '11:30' }, now).when); // 30 min zurück ist okay
+  assert.match(Core.chatCheckCard({ date: '2027-03-01', time: '09:00' }, now).error, /60 Tage/);
+  assert.ok(Core.chatCheckCard({ date: '2026-12-10', time: '09:00' }, now).when);
+  assert.match(Core.chatCheckCard({ date: '2026-10-15', time: '09:00', note: 'n'.repeat(121) }, now).error, /Notiz/);
+
+  assert.deepEqual(Core.normChatBlocked([{ uid: 'a', name: 'anna' }, { uid: 'a', name: 'doppelt' }, { uid: '' }, null, { uid: 'b', name: 'x'.repeat(50) }]),
+    [{ uid: 'a', name: 'anna' }, { uid: 'b', name: 'x'.repeat(30) }]);
+  assert.deepEqual(Core.normChatBlocked('kaputt'), []);
+  assert.deepEqual(Core.normalize({ days: [], settings: { chatBlocked: [{ uid: 'u1', name: 'bob' }], chatNotify: false } }).settings.chatBlocked, [{ uid: 'u1', name: 'bob' }]);
+  assert.equal(Core.normalize({ days: [], settings: { chatNotify: false } }).settings.chatNotify, false);
+  assert.equal(Core.normalize({ days: [] }).settings.chatNotify, true);
+  assert.deepEqual(Core.normalize({ days: [] }).settings.chatBlocked, []);
+});
+
+test('Chat-Listen: zusammenführen, „Heute im Gym“, Teilnehmer', () => {
+  const m = (id, createdAt, extra) => ({ id, createdAt, kind: 'text', text: id, ...extra });
+  const merged = Core.chatMerge([m('c', 30), m('b', 20, { text: 'neu' })], [m('b', 20, { text: 'alt' }), m('a', 10)]);
+  assert.deepEqual(merged.map((x) => x.id), ['a', 'b', 'c']);
+  assert.equal(merged[1].text, 'alt'); // spätere Liste gewinnt – die Reihenfolge der Argumente entscheidet
+  assert.deepEqual(Core.chatMerge([m('b', 5), m('a', 5)]).map((x) => x.id), ['a', 'b']); // gleiche Zeit → nach ID
+
+  const now = Core.viennaTs('2026-10-14', '12:00');
+  const card = (id, d, t) => ({ id, kind: 'gym', when: Core.viennaTs(d, t) });
+  const today = Core.chatPlansToday([
+    card('abend', '2026-10-14', '19:00'), card('früh', '2026-10-14', '06:30'),
+    card('gestern', '2026-10-13', '23:59'), card('morgen', '2026-10-15', '00:00'), { id: 't', kind: 'text', createdAt: 1 },
+  ], now);
+  assert.deepEqual(today.map((c) => c.id), ['früh', 'abend']);
+
+  assert.deepEqual(Core.chatJoined({ joined: { u2: 'ben', u1: 'anna' } }), [{ uid: 'u1', name: 'anna' }, { uid: 'u2', name: 'ben' }]);
+  assert.deepEqual(Core.chatJoined({}), []);
+  assert.equal(Core.chatWorkoutLabel('legs'), 'Legs');
+  assert.equal(Core.chatWorkoutLabel('x'), '');
+});

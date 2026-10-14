@@ -88,8 +88,9 @@ Ohne diese Einrichtung erscheint beim Tippen auf „Mit Apple anmelden“ ein Hi
 
 ### 1d. Sicherheitsregeln (wichtig nach diesem Update)
 
-Die [`firestore.rules`](firestore.rules) enthalten jetzt auch die Regeln für Freunde (Benutzernamen, Profile nur für
-bestätigte Freunde lesbar, Anfragen nur für Absender/Empfänger). **Einmal neu veröffentlichen:** Firestore → *Regeln* →
+Die [`firestore.rules`](firestore.rules) enthalten die Regeln für Freunde (Benutzernamen, Profile nur für
+bestätigte Freunde lesbar, Anfragen nur für Absender/Empfänger) und für den **Chat** (Nachrichten, Gym-Karten,
+Rate Limit, Meldungen). **Nach jedem Update mit neuen Regeln neu veröffentlichen:** Firestore → *Regeln* →
 alles ersetzen → Administrator-ID wieder eintragen (siehe unten) → *Veröffentlichen*.
 Alternativ mit der Firebase-CLI: `firebase deploy --only firestore:rules,storage`.
 
@@ -165,6 +166,41 @@ Ohne Internet zeigt die App die zuletzt geladenen Freundesdaten mit „zuletzt a
 
 Speicherorte: `usernames/{name}`, `publicProfiles/{uid}`, `users/{uid}/friends/{fid}`, `requests/{von}_{an}`, Storage `avatars/{uid}.jpg`.
 
+## Mitglieder-Chat
+
+Neuer Reiter **Chat** (nur mit Konto und Profil): ein gemeinsamer Raum für alle Mitglieder, um sich fürs Training zu verabreden.
+
+- **Nachrichten** in Echtzeit; eigene rechts, fremde links mit Name und Foto, Uhrzeit in **Wiener Zeit, 24 h**.
+- **„Ich gehe ins Gym“**: Datum, Uhrzeit, optional Push / Pull / Legs / Oberkörper / Unterkörper / Ganzkörper / Cardio / Sonstiges
+  und eine Notiz → hervorgehobene Karte. Andere tippen **„Ich komme mit“**; die Teilnehmer stehen auf der Karte.
+- Oben **„Heute im Gym“**: alle geplanten Besuche des Tages auf einen Blick (antippen = Details).
+- Eigene Nachrichten und Karten bearbeiten bzw. löschen (Nachricht antippen). Bei fremden: **Melden** oder **Blockieren**
+  (Liste unter *Einstellungen → Chat*, dort wieder entsperren).
+- Verlauf wird gespeichert und beim Hochscrollen seitenweise nachgeladen. Neue Nachrichten scrollen automatisch mit;
+  liest du weiter oben, erscheint „Neue Nachrichten“. Ungelesenes zeigt ein Punkt am Reiter.
+- Fehler sichtbar: offline oder fehlgeschlagen → „Nicht gesendet“ mit **Erneut senden** / **Verwerfen**.
+- Hinweis bei neuen Gym-Karten (*Einstellungen → Chat*, abschaltbar): als Meldung in der App bzw., wenn die App im Hintergrund
+  noch läuft und Benachrichtigungen erlaubt sind, als Mitteilung. **Echte Push-Nachrichten bei geschlossener App gibt es nicht** –
+  dafür braucht es einen Server-Dienst (Firebase Cloud Messaging mit Cloud Functions, kostenpflichtiger Blaze-Tarif).
+
+**Einrichtung:** nur die neuen [`firestore.rules`](firestore.rules) veröffentlichen (siehe 1d). Keine Umgebungsvariablen,
+keine Migration, keine zusätzlichen Indizes.
+
+**Schutz vor Missbrauch (erzwingen die Sicherheitsregeln, nicht nur die App):** nur Mitglieder mit Profil lesen und schreiben;
+der Absendername kommt aus dem Profil (keine Fremdnamen); Text höchstens 500 Zeichen, Notiz 120; eine Nachricht alle 2 s,
+eine Gym-Karte pro Minute; Start höchstens 1 h in der Vergangenheit und 60 Tage voraus; bearbeiten/löschen nur der Autor;
+Mitkommen trägt nur den eigenen Namen ein. Gesperrte Konten (Nutzerverwaltung) können nicht mehr lesen oder schreiben.
+
+**Moderation:** Meldungen landen in Firestore unter `reports` (nur Administratoren lesbar): Firebase-Konsole → Firestore → `reports`.
+Dort steht, wer was gemeldet hat; die Nachricht löschst du unter `rooms/gym/messages/<id>`, den Nutzer sperrst du in der Nutzerverwaltung.
+
+**Weitere Räume (z. B. pro Standort):** Der Raum `gym` gibt es immer. Für einen weiteren in der Firebase-Konsole unter `rooms`
+ein Dokument mit dem Raumnamen als ID anlegen (a–z, 0–9, Bindestrich, z. B. `wien-mitte`) – die Regeln und Datenstruktur
+(`rooms/{raum}/messages`) sind darauf vorbereitet. Die Oberfläche zeigt bisher nur den Raum `gym` (`CHAT_ROOM` in `app.js`).
+
+**Datenschutz:** Nachrichten und Karten sehen alle Mitglieder mit Profil (Benutzername und Foto, keine E-Mail, keine Trainingsdaten).
+Beim Löschen des Kontos werden eigene Nachrichten, Karten und Teilnahmen entfernt.
+
 ## Musik läuft weiter
 
 Die App pausiert deine Musik (Spotify, Apple Musik, Podcasts …) nicht: Der Signalton am Ende der Pause wird als
@@ -212,6 +248,8 @@ Daten gespeichert und nie mit Freunden geteilt.
 
 - Logik (ohne Browser, ohne Firebase): `node --test tests/*.test.js`
 - Mit dem Firebase-Emulator (Java nötig): `cd tests/emulator && npm install`, dann
-  `npm test` (Sicherheitsregeln + Freunde-Funktionen mit mehreren Nutzern) und
+  `npm test` (Sicherheitsregeln + Freunde- und Chat-Funktionen mit mehreren Nutzern) und
   `npm run test:ui` (die echte App in Chromium: ohne Konto, Registrierung, Profilfoto, Anfragen, Vergleich,
-  Rangliste, offline, Freund entfernen, Abmelden, Konto löschen). Einmalig vorher `npx playwright install chromium`.
+  Rangliste, offline, Freund entfernen, Abmelden, Konto löschen sowie der Chat mit zwei Geräten: Echtzeit,
+  Gym-Karte, mitkommen, Fehler mit Erneut-Senden, melden/blockieren, Nachladen, Wiener Zeit).
+  Screenshots des Chats: `CHAT_SHOTS=/pfad npm run test:ui`. Einmalig vorher `npx playwright install chromium`.

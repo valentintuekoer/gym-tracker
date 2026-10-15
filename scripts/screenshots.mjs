@@ -28,7 +28,7 @@ try {
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
 const SCREENS = [
-  ['home', '#/'], ['history', '#/history'], ['food', '#/food'], ['library', '#/library'],
+  ['home', '#/'], ['daily', '#/daily'], ['daily-plan', '#/daily/plan'], ['history', '#/history'], ['food', '#/food'], ['library', '#/library'],
   ['settings', '#/settings'], ['settings-training', '#/settings/training'],
 ];
 const DEVICES = [['phone', { width: 390, height: 844 }]].concat(WIDE ? [['tablet', { width: 820, height: 1180 }]] : []);

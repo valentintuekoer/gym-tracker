@@ -2,7 +2,7 @@
 // und rechnet die Textfarbe gegen jeden einzelnen Hintergrundpixel (Glas über Farbflecken ist so geprüft,
 // nicht nur gegen eine Annahme). Text unter der Tab-Leiste (samt Ausblendzone), dem Timer oder hinter einem Sheet zählt nicht.
 //
-//   node scripts/contrast-pixels.mjs [#/,#/history,…] [Breite]      (Standard: Startseite, Verlauf, Ernährung, … bei 390 px)
+//   node scripts/contrast-pixels.mjs [#/,#/history,…] [Breite]      (Standard: Startseite, Daily, Verlauf, … bei 390 px)
 //
 // Gibt „Unter Schwelle: 0“ aus, wenn alles ≥ 4,5:1 (große Schrift ≥ 3:1) ist.
 import http from 'node:http';
@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = 'http://127.0.0.1:' + server.address().port;
 const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { executablePath: '/opt/pw-browsers/chromium' });
-const ROUTES = (process.argv[2] || '#/,#/history,#/food,#/library,#/profile,#/settings,#/settings/training,#/workout').split(',');
+const ROUTES = (process.argv[2] || '#/,#/daily,#/daily/plan,#/history,#/food,#/library,#/profile,#/settings,#/settings/training,#/workout').split(',');
 const WIDTH = Number(process.argv[3] || 390);
 let worst = [];
 for (const scheme of ['dark', 'light']) {
@@ -41,6 +41,10 @@ for (const scheme of ['dark', 'light']) {
     s0.exercises.forEach((se) => se.sets.forEach((st) => { Core.updateSet(db, se.id, st.id, 'weight', 50); Core.updateSet(db, se.id, st.id, 'reps', 8); Core.toggleSet(db, se.id, st.id, Date.now()); }));
     Core.finishSession(db, Date.now() - 86400000 * 2 + 3600000);
     Core.startSession(db, db.days[1].id, Date.now() - 600000);
+    // Daily: Gewichte der letzten Tage und ein Mealplan (teils abgehakt)
+    [[6, 83.8], [3, 83.1], [1, 82.4]].forEach(([n, w]) => Core.setWeightOn(db, Core.dayKey(Date.now() - n * 86400000), w));
+    [['Frühstück', '08:00', 'Haferflocken, Skyr, Beeren', 520], ['Mittagessen', '12:30', 'Reis, Hähnchen, Brokkoli', 740], ['Snack', '16:00', 'Proteinshake', 180]].forEach(([name, time, note, kcal]) => Core.addMeal(db, { name, time, note, kcal }));
+    Core.toggleMeal(db, Core.dayKey(Date.now()), db.settings.mealPlan[0].id);
     window.GymApp.save();
   }, scheme);
   await page.reload();

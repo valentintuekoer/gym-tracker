@@ -47,6 +47,10 @@
     chatBlocked: [],   // im Chat blockierte Nutzer: [{ uid, name }] (nur für dich, synchron mit dem Konto)
     shareRecords: true, // Freunde: Rekorde je Übung teilen (Kennzahlen wie Einheiten/Serie immer)
     gym: null,          // Mein Gym: { name, address, lat, lng, maps: 'apple'|'google' } – nur privat, nie für Freunde
+    // Daily: Mealplan und Abhak-Verlauf. Liegen bei den Einstellungen, damit sie ohne neue Cloud-Felder
+    // mit dem Konto abgeglichen werden (gleicher Weg wie alle Einstellungen).
+    mealPlan: [],       // [{ id, name, time: 'HH:MM'|'', note, kcal|null }] – derselbe Plan für jeden Tag
+    mealLog: {},        // { 'YYYY-MM-DD': [Mahlzeit-IDs, die abgehakt sind] } (höchstens 400 Tage)
   };
 
   /** Körpermaße: Schlüssel, Bezeichnung, Einheit */
@@ -290,7 +294,7 @@
     return {
       version: DATA_VERSION, days: [], sessions: [], activeSession: null, body: [],
       nutrition: [], foods: [], customExercises: [], libMeta: {},
-      settings: { ...DEFAULT_SETTINGS },
+      settings: { ...DEFAULT_SETTINGS, mealPlan: [], mealLog: {}, chatBlocked: [] }, // Listen nie mit den Vorgaben teilen
     };
   };
 
@@ -379,6 +383,8 @@
     db.settings.proteinGoal = parseGoal(db.settings.proteinGoal);
     db.settings.carbGoal = parseGoal(db.settings.carbGoal);
     db.settings.fatGoal = parseGoal(db.settings.fatGoal);
+    db.settings.mealPlan = Core.normMealPlan(db.settings.mealPlan);
+    db.settings.mealLog = Core.normMealLog(db.settings.mealLog);
 
     db.foods = (Array.isArray(raw.foods) ? raw.foods : []).filter(Boolean).map(normFood);
     db.nutrition = (Array.isArray(raw.nutrition) ? raw.nutrition : []).filter(Boolean).map(normNutrition)
@@ -1141,6 +1147,168 @@
     return null;
   };
 
+  /* ---------- Daily: Mealplan abhaken & Gewicht ---------- */
+
+  const MAX_MEALS = 20;
+  const MAX_MEAL_DAYS = 400;
+  const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+  /** Uhrzeit „8:5“/„08:05“ → „08:05“, sonst ''. */
+  function normMealTime(v) {
+    const m = String(v || '').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+    return m ? m[1].padStart(2, '0') + ':' + m[2] : '';
+  }
+
+  function normMeal(m) {
+    const kcal = parseNum(m.kcal);
+    return {
+      id: String(m.id || uid()),
+      name: String(m.name || '').trim().slice(0, 60) || 'Mahlzeit',
+      time: normMealTime(m.time),
+      note: String(m.note || '').trim().slice(0, 200),
+      kcal: kcal !== null && kcal >= 0 && kcal <= 10000 ? Math.round(kcal) : null,
+    };
+  }
+
+  /** Mealplan bereinigen: gültige Einträge, eindeutige IDs, höchstens 20. */
+  Core.normMealPlan = function (list) {
+    const seen = new Set();
+    const out = [];
+    for (const m of Array.isArray(list) ? list : []) {
+      if (!m || typeof m !== 'object') continue;
+      const n = normMeal(m);
+      if (seen.has(n.id)) continue;
+      seen.add(n.id);
+      out.push(n);
+      if (out.length >= MAX_MEALS) break;
+    }
+    return out;
+  };
+
+  /** Abhak-Verlauf bereinigen: { 'YYYY-MM-DD': [IDs] } – leere Tage fallen weg, es bleiben die letzten 400 Tage. */
+  Core.normMealLog = function (raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    const keys = Object.keys(raw).filter((k) => DAY_KEY.test(k)).sort().slice(-MAX_MEAL_DAYS);
+    for (const k of keys) {
+      const ids = [...new Set((Array.isArray(raw[k]) ? raw[k] : []).map(String).filter(Boolean))];
+      if (ids.length) out[k] = ids;
+    }
+    return out;
+  };
+
+  /** Beispielplan zum Loslegen (der Nutzer passt ihn danach an). */
+  Core.sampleMeals = () => [
+    { name: 'Frühstück', time: '08:00', note: '', kcal: null },
+    { name: 'Mittagessen', time: '12:30', note: '', kcal: null },
+    { name: 'Snack', time: '16:00', note: '', kcal: null },
+    { name: 'Abendessen', time: '19:00', note: '', kcal: null },
+  ];
+
+  /** Mahlzeit anlegen → die Mahlzeit, oder null (kein Name / Plan voll). */
+  Core.addMeal = function (db, fields) {
+    const plan = db.settings.mealPlan;
+    if (!String((fields && fields.name) || '').trim() || plan.length >= MAX_MEALS) return null;
+    const m = normMeal({ ...fields, id: undefined });
+    plan.push(m);
+    return m;
+  };
+
+  Core.updateMeal = function (db, id, patch) {
+    const i = db.settings.mealPlan.findIndex((m) => m.id === id);
+    if (i < 0 || !String((patch && patch.name) || '').trim()) return null;
+    db.settings.mealPlan[i] = normMeal({ ...db.settings.mealPlan[i], ...patch, id });
+    return db.settings.mealPlan[i];
+  };
+
+  /** Mahlzeit löschen – auch aus dem Abhak-Verlauf. */
+  Core.deleteMeal = function (db, id) {
+    const before = db.settings.mealPlan.length;
+    db.settings.mealPlan = db.settings.mealPlan.filter((m) => m.id !== id);
+    db.settings.mealLog = Core.normMealLog(Object.fromEntries(Object.entries(db.settings.mealLog).map(([k, ids]) => [k, ids.filter((x) => x !== id)])));
+    return db.settings.mealPlan.length < before;
+  };
+
+  Core.moveMeal = function (db, from, to) {
+    const plan = db.settings.mealPlan;
+    if (from === to || from < 0 || to < 0 || from >= plan.length || to >= plan.length) return false;
+    plan.splice(to, 0, plan.splice(from, 1)[0]);
+    return true;
+  };
+
+  /** IDs der an diesem Tag abgehakten Mahlzeiten (nur solche, die noch im Plan stehen). */
+  Core.mealsDone = function (db, dayKey) {
+    const ids = new Set(db.settings.mealPlan.map((m) => m.id));
+    return (db.settings.mealLog[dayKey] || []).filter((id) => ids.has(id));
+  };
+
+  /** Abhaken bzw. wieder lösen → true, wenn die Mahlzeit danach abgehakt ist. */
+  Core.toggleMeal = function (db, dayKey, id) {
+    if (!DAY_KEY.test(dayKey) || !db.settings.mealPlan.some((m) => m.id === id)) return false;
+    const cur = db.settings.mealLog[dayKey] || [];
+    const done = !cur.includes(id);
+    const next = done ? cur.concat(id) : cur.filter((x) => x !== id);
+    const log = { ...db.settings.mealLog };
+    if (next.length) log[dayKey] = next; else delete log[dayKey];
+    db.settings.mealLog = Core.normMealLog(log);
+    return done;
+  };
+
+  /** Fortschritt eines Tages: abgehakt/gesamt und Kalorien (nur Mahlzeiten mit Kalorienangabe). */
+  Core.mealProgress = function (db, dayKey) {
+    const done = new Set(Core.mealsDone(db, dayKey));
+    const plan = db.settings.mealPlan;
+    let kcalDone = 0, kcalTotal = 0;
+    for (const m of plan) {
+      if (m.kcal === null) continue;
+      kcalTotal += m.kcal;
+      if (done.has(m.id)) kcalDone += m.kcal;
+    }
+    return { done: done.size, total: plan.length, kcalDone, kcalTotal };
+  };
+
+  /** Die letzten n Tage bis einschließlich endKey (älteste zuerst) mit Fortschritt – für den Wochenstreifen. */
+  Core.mealWeek = function (db, endKey, n) {
+    const end = new Date(endKey + 'T12:00');
+    const out = [];
+    for (let i = (n || 7) - 1; i >= 0; i--) {
+      const d = new Date(end);
+      d.setDate(d.getDate() - i);
+      const key = Core.dayKey(d.getTime());
+      out.push({ key, date: d.getTime(), ...Core.mealProgress(db, key) });
+    }
+    return out;
+  };
+
+  /** Gewichts-Messung dieses Tages (die neueste) oder null. */
+  Core.weightOn = function (db, dayKey) {
+    for (let i = db.body.length - 1; i >= 0; i--) {
+      const e = db.body[i];
+      if (e.weight !== null && Core.dayKey(e.date) === dayKey) return e;
+    }
+    return null;
+  };
+
+  /** Gewicht für einen Tag speichern (legt die Messung an bzw. ändert die dieses Tages) → Messung oder null (ungültig: 20–500 kg). */
+  Core.setWeightOn = function (db, dayKey, value) {
+    const kg = parseNum(value);
+    if (!DAY_KEY.test(dayKey) || kg === null || kg < 20 || kg > 500) return null;
+    const [y, m, d] = dayKey.split('-').map(Number);
+    const existing = Core.weightOn(db, dayKey);
+    return Core.saveBodyEntry(db, existing
+      ? { ...existing, weight: kg }
+      : { date: new Date(y, m - 1, d, 12).getTime(), weight: kg });
+  };
+
+  /** Letzte Gewichts-Messung vor einem Tag (für „± seit …“) oder null. */
+  Core.weightBefore = function (db, dayKey) {
+    for (let i = db.body.length - 1; i >= 0; i--) {
+      const e = db.body[i];
+      if (e.weight !== null && Core.dayKey(e.date) < dayKey) return e;
+    }
+    return null;
+  };
+
   /* ---------- Ernährung & Kalorien ---------- */
 
   Core.MEALS = MEALS;
@@ -1430,7 +1598,7 @@
   /* ---------- Freunde: Benutzername & geteilte Kennzahlen ----------
    * Geteilt werden nur Aggregate: Anzahl Einheiten und Volumen pro Kalendertag (letzte 53 Wochen),
    * Gesamtzahl, Wochenziel und – abschaltbar – Rekorde je Bibliotheks-Übung (feste ID).
-   * Einzelne Sätze, Notizen, Pläne, Körpermaße und Ernährung verlassen das Gerät dafür nie.
+   * Einzelne Sätze, Notizen, Pläne, Körpermaße, Ernährung und Mealplan verlassen das Gerät dafür nie.
    */
 
   const USERNAME_RE = /^[a-z0-9][a-z0-9._]{2,19}$/;
@@ -1909,7 +2077,7 @@
   /** Hat jemand ohne Konto schon etwas Eigenes angelegt (mehr als die Beispieldaten)? */
   Sync.hasUserContent = function (db) {
     if (db.sessions.length || db.activeSession || db.body.length
-      || db.nutrition.length || db.foods.length || db.customExercises.length) return true;
+      || db.nutrition.length || db.foods.length || db.customExercises.length || db.settings.mealPlan.length) return true;
     const sig = (days) => days.map((d) => normName(d.name) + ':' + d.exercises.map((e) => normName(e.name)).join('|')).join(';');
     return db.days.length > 0 && sig(db.days) !== sig(Core.sampleDays());
   };
@@ -1963,6 +2131,10 @@
     for (const n of g.nutrition) if (!target.nutrition.some((x) => x.id === n.id)) target.nutrition.push(n);
     for (const e of g.customExercises) if (!target.customExercises.some((x) => x.id === e.id)) target.customExercises.push(e);
     target.libMeta = { ...g.libMeta, ...target.libMeta };
+    if (!target.settings.mealPlan.length && g.settings.mealPlan.length) { // Mealplan vom Gerät übernehmen, wenn das Konto noch keinen hat
+      target.settings.mealPlan = g.settings.mealPlan;
+      target.settings.mealLog = g.settings.mealLog;
+    }
     for (const s of g.sessions) if (!target.sessions.some((x) => x.id === s.id)) target.sessions.push(s);
     target.sessions.sort((a, b) => a.finishedAt - b.finishedAt);
     for (const d of g.days) {
@@ -2920,6 +3092,7 @@
   const ui = {
     historyTab: 'sessions', chartMode: {}, lastRoute: null, authMode: 'login', authEmail: '',
     foodDate: null,
+    dailyDay: null,          // Daily: angezeigter Tag ('YYYY-MM-DD'); null = heute
     lib: { q: '', muscle: new Set(), equip: new Set(), fav: false, custom: false },
     isAdmin: false,          // wird von cloud.js gesetzt (Prüfung über die Firestore-Regeln)
     admin: { users: null, loading: false, error: null, filter: '', stats: {} },
@@ -2934,31 +3107,38 @@
     popSet: null,            // gerade abgehakter Satz (Haken-Animation)
   };
 
+  /**
+   * Verlauf, Bibliothek und Kalorien-Tagebuch haben keinen eigenen Reiter mehr: Sie öffnen sich aus Profil, Daily
+   * oder Training heraus. Hervorgehoben bleibt der Reiter, von dem aus man gekommen ist (bei einem direkten Aufruf: Profil).
+   */
+  const extraTab = () => (['home', 'daily', 'profile'].includes(ui.lastTab) ? ui.lastTab : 'profile');
+
   function parseRoute() {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
     switch (parts[0]) {
       case 'day': return { name: 'day', id: parts[1], tab: 'home' };
       case 'workout': return { name: 'workout', tab: 'home' };
+      case 'daily': return { name: parts[1] === 'plan' ? 'daily-plan' : 'daily', tab: 'daily' };
       case 'history':
-        if (parts[1] === 'ex') return { name: 'history-ex', key: parts[2] || '', tab: 'history' };
-        if (parts[1] === 'session') return { name: 'history-session', id: parts[2], tab: 'history' };
-        return { name: 'history', tab: 'history' };
+        if (parts[1] === 'ex') return { name: 'history-ex', key: parts[2] || '', tab: extraTab() };
+        if (parts[1] === 'session') return { name: 'history-session', id: parts[2], tab: extraTab() };
+        return { name: 'history', tab: extraTab() };
       case 'settings': return { name: 'settings', sub: parts[1] || null, tab: 'profile' };
       case 'profile': return { name: parts[1] === 'edit' ? 'profile-edit' : 'profile', tab: 'profile' };
       case 'friends': return { name: parts[1] === 'requests' ? 'friends-requests' : 'friends-add', tab: 'profile' };
       case 'friend': return { name: 'friend', id: parts[1] || '', tab: 'profile' };
       case 'leaderboard': return { name: 'leaderboard', tab: 'profile' };
       case 'invite': return { name: 'invite', id: parts[1] || '', tab: 'profile' };
-      case 'food': return { name: 'food', tab: 'food' };
+      case 'food': return { name: 'food', tab: extraTab() };
       case 'chat': return { name: 'chat', tab: 'chat' };
       case 'library':
-        if (parts[1] === 'ex') return { name: 'libex', id: parts[2] || '', tab: 'library' };
-        return { name: 'library', tab: 'library' };
+        if (parts[1] === 'ex') return { name: 'libex', id: parts[2] || '', tab: extraTab() };
+        return { name: 'library', tab: extraTab() };
       case 'summary': return { name: 'summary', id: parts[1], tab: 'home' };
       case 'import': return { name: 'import', code: parts[1] || '', tab: 'home' };
       case 'preview': return { name: 'preview', id: parts[1], tab: 'home' };
       case 'admin': return { name: 'admin', id: parts[1] || null, tab: 'profile' };
-      case 'body': return { name: 'body', id: parts[1] || 'new', tab: 'history' };
+      case 'body': return { name: 'body', id: parts[1] || 'new', tab: extraTab() };
       case 'login': return { name: 'login', tab: 'profile' };
       case 'intro': return { name: 'intro', tab: 'profile' };
       case 'setup': return { name: 'setup', tab: 'home' };
@@ -3063,7 +3243,9 @@
 
   /* ---------- Navigation mit Übergängen ---------- */
 
-  const TAB_ROOT = { home: '#/', history: '#/history', food: '#/food', library: '#/library', profile: '#/profile' };
+  const TAB_ROOT = { home: '#/', daily: '#/daily', chat: '#/chat', profile: '#/profile' };
+  /** Ziel des Zurück-Pfeils auf Seiten ohne eigenen Reiter (Verlauf, Bibliothek, Kalorien-Tagebuch) */
+  const extraBack = () => TAB_ROOT[parseRoute().tab] || '#/profile';
   const navStack = [];
 
   /** Richtung eines Seitenwechsels: push (tiefer), pop (zurück), tab (anderer Reiter). */
@@ -3242,6 +3424,8 @@
     switch (route.name) {
       case 'day': renderDay(view, route.id); break;
       case 'workout': renderWorkout(view); break;
+      case 'daily': renderDaily(view); break;
+      case 'daily-plan': renderMealPlan(view); break;
       case 'history': renderHistory(view); break;
       case 'history-ex': renderExerciseHistory(view, route.key); break;
       case 'history-session': renderSession(view, route.id); break;
@@ -3972,7 +4156,7 @@
   /* ---------- Ansicht: Verlauf ---------- */
 
   function renderHistory(view) {
-    setHeader({ title: 'Verlauf', large: true });
+    setHeader({ title: 'Verlauf', large: true, back: extraBack() });
     const tab = ui.historyTab;
     const seg = `
       <div class="segmented four" role="tablist">
@@ -4146,6 +4330,194 @@
     ui.historyTab = 'body';
     go('#/history');
     toast('Messung gespeichert');
+  }
+
+  /* ---------- Daily: Gewicht eintragen & Mealplan abhaken ---------- */
+
+  /** Der angezeigte Tag: heute oder einer der letzten 6 Tage (zum Nachtragen). */
+  function dailyKey(todayKey) {
+    const k = ui.dailyDay;
+    if (!k || k >= todayKey) return todayKey;
+    return k < Core.mealWeek(db, todayKey, 7)[0].key ? todayKey : k;
+  }
+
+  const fmtSigned = (v) => (v > 0 ? '+' : v < 0 ? '−' : '±') + fmtNum(Math.abs(v));
+
+  function renderDaily(view) {
+    const today = Core.dayKey(Date.now());
+    const key = dailyKey(today);
+    setHeader({
+      title: 'Daily', large: true,
+      eyebrow: new Date(key + 'T12:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }),
+    });
+    view.innerHTML = dailyStripHTML(key, today) + dailyWeightHTML(key) + dailyMealsHTML(key);
+  }
+
+  /** Die letzten 7 Tage: antippen = Tag wechseln; der Punkt zeigt, wie viel vom Mealplan geschafft ist. */
+  function dailyStripHTML(key, today) {
+    const days = Core.mealWeek(db, today, 7).map((w) => {
+      const d = new Date(w.date);
+      const state = w.total && w.done >= w.total ? 'full' : w.done ? 'part' : 'none';
+      const label = d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }) +
+        (w.total ? ' – ' + w.done + ' von ' + w.total + ' Mahlzeiten' : '');
+      return `<button class="dstrip-day ${w.key === key ? 'sel' : ''} ${w.key === today ? 'today' : ''}" data-action="daily-day" data-key="${w.key}" aria-pressed="${w.key === key}" aria-label="${esc(label)}">
+        <small>${esc(d.toLocaleDateString('de-DE', { weekday: 'short' }).replace('.', ''))}</small><b>${d.getDate()}</b><i class="dstrip-dot ${state}" aria-hidden="true"></i></button>`;
+    }).join('');
+    return `<div class="dstrip" role="group" aria-label="Tag wählen">${days}</div>`;
+  }
+
+  function dailyWeightHTML(key) {
+    const cur = Core.weightOn(db, key);
+    const prev = Core.weightBefore(db, key);
+    const pts = db.body.filter((e) => e.weight !== null && Core.dayKey(e.date) <= key).slice(-30).map((e) => ({ x: e.date, y: e.weight }));
+    let sub;
+    if (cur && prev) sub = fmtSigned(Math.round((cur.weight - prev.weight) * 10) / 10) + ' kg seit ' + fmtShortDate(prev.date);
+    else if (cur) sub = 'Erste Messung – ab jetzt siehst du hier deinen Verlauf.';
+    else if (prev) sub = 'Zuletzt ' + fmtNum(prev.weight) + ' kg am ' + fmtShortDate(prev.date);
+    else sub = 'Trag dein Gewicht ein, um deinen Verlauf zu sehen.';
+    return `
+      <section class="card daily-weight">
+        <div class="daily-head"><h2 class="card-title">Gewicht</h2>${cur ? `<span class="count">${ICON.check} gespeichert</span>` : ''}</div>
+        <form id="weight-form" class="weight-form" data-key="${key}" novalidate>
+          <label class="field weight-field"><span class="sr-only">Gewicht in Kilogramm</span>
+            <input class="in num" name="weight" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done"
+              placeholder="${prev ? fmtNum(prev.weight) : '0,0'}" value="${cur ? fmtNum(cur.weight) : ''}">
+            <span class="unit">kg</span>
+          </label>
+          <button class="btn primary" type="submit">${cur ? 'Ändern' : 'Speichern'}</button>
+        </form>
+        <p class="hint daily-sub">${esc(sub)}</p>
+        ${pts.length > 1 ? `<div class="daily-chart">${chartSVG(pts, 'kg')}</div>` : ''}
+        ${db.body.length ? `<button class="btn ghost sm" data-action="open-body">Alle Messungen ${ICON.chevron}</button>` : ''}
+      </section>`;
+  }
+
+  function mealSub(m) {
+    return [m.time ? m.time + ' Uhr' : '', m.note].filter(Boolean).map(esc).join(' · ');
+  }
+
+  function dailyMealsHTML(key) {
+    const plan = db.settings.mealPlan;
+    if (!plan.length) {
+      return `
+        <section class="card daily-meals">
+          <div class="daily-head"><h2 class="card-title">Mealplan</h2></div>
+          <p class="muted">Lege deinen Mealplan an – danach hakst du jede Mahlzeit jeden Tag ab.</p>
+          <button class="btn primary block" data-action="meal-add">${ICON.plus} Mahlzeit hinzufügen</button>
+          <button class="btn soft block" data-action="meal-sample">Beispielplan einfügen</button>
+        </section>`;
+    }
+    const done = new Set(Core.mealsDone(db, key));
+    const pr = Core.mealProgress(db, key);
+    const all = pr.done >= pr.total;
+    const rows = plan.map((m) => {
+      const on = done.has(m.id);
+      const sub = mealSub(m);
+      return `
+        <li><button class="meal-row ${on ? 'done' : ''}" role="checkbox" aria-checked="${on}" data-action="meal-toggle" data-id="${esc(m.id)}" data-key="${key}">
+          <span class="check-c">${ICON.check}</span>
+          <span class="meal-text"><b>${esc(m.name)}</b>${sub ? `<small>${sub}</small>` : ''}</span>
+          ${m.kcal !== null ? `<span class="meal-kcal">${fmtInt(m.kcal)} <small>kcal</small></span>` : ''}
+        </button></li>`;
+    }).join('');
+    return `
+      <section class="card daily-meals">
+        <div class="daily-head"><h2 class="card-title">Mealplan</h2><span class="count ${all ? 'accent' : ''}">${pr.done} / ${pr.total}</span></div>
+        <div class="meter" role="progressbar" aria-label="Mahlzeiten abgehakt" aria-valuemin="0" aria-valuemax="${pr.total}" aria-valuenow="${pr.done}"><i style="transform:scaleX(${(pr.done / pr.total).toFixed(3)})"></i></div>
+        <ul class="meal-list">${rows}</ul>
+        ${pr.kcalTotal ? `<p class="hint daily-sub">${fmtInt(pr.kcalDone)} von ${fmtInt(pr.kcalTotal)} kcal</p>` : ''}
+        ${all ? '<p class="hint daily-sub">Alles abgehakt – stark!</p>' : ''}
+        <a class="btn soft block sm" href="#/daily/plan">${ICON.edit} Mealplan bearbeiten</a>
+      </section>`;
+  }
+
+  function onWeightSubmit(form) {
+    const key = form.dataset.key;
+    const input = form.elements.weight;
+    if (!Core.setWeightOn(db, key, input.value)) {
+      toast('Bitte ein Gewicht zwischen 20 und 500 kg eingeben.');
+      input.focus();
+      return;
+    }
+    save();
+    input.blur();
+    Haptics.tap();
+    render();
+    toast('Gewicht gespeichert');
+  }
+
+  /** Mealplan bearbeiten: Reihenfolge, ändern, löschen */
+  function renderMealPlan(view) {
+    const plan = db.settings.mealPlan;
+    setHeader({
+      title: 'Mealplan', back: '#/daily',
+      actions: `<button class="hdr-btn" data-action="meal-add" aria-label="Mahlzeit hinzufügen">${ICON.plus}</button>`,
+    });
+    if (!plan.length) {
+      view.innerHTML = `
+        <div class="empty"><p><strong>Noch keine Mahlzeiten.</strong></p>
+          <p class="muted">Jede Mahlzeit erscheint jeden Tag in „Daily“ zum Abhaken.</p></div>
+        <button class="btn primary block lg" data-action="meal-add">${ICON.plus} Mahlzeit hinzufügen</button>
+        <button class="btn soft block" data-action="meal-sample">Beispielplan einfügen</button>`;
+      return;
+    }
+    const kcal = plan.reduce((n, m) => n + (m.kcal || 0), 0);
+    const rows = plan.map((m, i) => {
+      const sub = mealSub(m);
+      return `
+        <li class="list-item meal-edit" data-flip="meal-${esc(m.id)}">
+          <button class="meal-edit-main" data-action="meal-edit" data-id="${esc(m.id)}">
+            <span class="li-title">${esc(m.name)}</span>
+            ${sub || m.kcal !== null ? `<span class="li-sub">${[sub, m.kcal !== null ? fmtInt(m.kcal) + ' kcal' : ''].filter(Boolean).join(' · ')}</span>` : ''}
+          </button>
+          <button class="icon-btn sm" data-action="meal-up" data-index="${i}" aria-label="${esc(m.name)} nach oben" ${i === 0 ? 'disabled' : ''}>${ICON.up}</button>
+          <button class="icon-btn sm" data-action="meal-down" data-index="${i}" aria-label="${esc(m.name)} nach unten" ${i === plan.length - 1 ? 'disabled' : ''}>${ICON.down}</button>
+          <button class="icon-btn sm danger" data-action="meal-del" data-id="${esc(m.id)}" aria-label="${esc(m.name)} löschen">${ICON.trash}</button>
+        </li>`;
+    }).join('');
+    view.innerHTML = `
+      <ul class="list meal-edit-list">${rows}</ul>
+      <p class="hint">${plan.length} ${plan.length === 1 ? 'Mahlzeit' : 'Mahlzeiten'}${kcal ? ' · geplant ' + fmtInt(kcal) + ' kcal pro Tag' : ''}</p>
+      <button class="btn soft block" data-action="meal-add">${ICON.plus} Mahlzeit hinzufügen</button>`;
+  }
+
+  function openMealForm(id) {
+    const m = id ? db.settings.mealPlan.find((x) => x.id === id) : null;
+    if (id && !m) return;
+    const modal = customModal(
+      '<h2 class="modal-title">' + (m ? 'Mahlzeit bearbeiten' : 'Neue Mahlzeit') + '</h2>' +
+      '<form id="meal-form" class="ff">' +
+        '<label class="lbl">Name<input class="in" name="name" maxlength="60" autocomplete="off" placeholder="z. B. Frühstück" value="' + esc(m ? m.name : '') + '"></label>' +
+        '<div class="form-grid">' +
+          '<label class="lbl">Uhrzeit<input class="in" type="time" name="time" value="' + esc(m ? m.time : '') + '"></label>' +
+          '<label class="lbl">Kalorien<input class="in" name="kcal" type="text" inputmode="numeric" autocomplete="off" placeholder="optional" value="' + (m && m.kcal !== null ? m.kcal : '') + '"></label>' +
+        '</div>' +
+        '<label class="lbl">Beschreibung<input class="in" name="note" maxlength="200" autocomplete="off" placeholder="z. B. Haferflocken, Skyr, Beeren" value="' + esc(m ? m.note : '') + '"></label>' +
+        '<div class="modal-actions"><button type="button" class="btn ghost" data-close>Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>' +
+        (m ? '<button type="button" class="btn ghost block sm danger-text" data-remove>Mahlzeit löschen</button>' : '') +
+      '</form>');
+    const form = modal.card.querySelector('#meal-form');
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const el = form.elements;
+      if (!el.name.value.trim()) { toast('Bitte einen Namen eingeben.'); el.name.focus(); return; }
+      const fields = { name: el.name.value, time: el.time.value, kcal: el.kcal.value, note: el.note.value };
+      const saved = m ? Core.updateMeal(db, m.id, fields) : Core.addMeal(db, fields);
+      if (!saved) { toast('Der Mealplan kann höchstens 20 Mahlzeiten haben.'); return; }
+      save();
+      modal.close();
+      render();
+    });
+    const rm = modal.card.querySelector('[data-remove]');
+    if (rm) rm.addEventListener('click', async () => {
+      const ok = await confirmAction('Mahlzeit löschen?', '„' + m.name + '“ verschwindet aus dem Mealplan und aus dem Abhak-Verlauf.', 'Löschen');
+      if (!ok) return;
+      Core.deleteMeal(db, m.id);
+      save();
+      modal.close();
+      render();
+    });
+    if (!m) setTimeout(() => form.elements.name.focus(), 350);
   }
 
   /* ---------- Teilen ---------- */
@@ -4537,7 +4909,7 @@
       body =
         '<div class="setup-icon">' + ICON.target + '</div>' +
         '<h1 class="setup-title">Dein Kalorienziel</h1>' +
-        '<p class="setup-text">Für den Kalorienring in „Ernährung“. Keine Ahnung? Nimm erst mal 2.000 kcal – du kannst es jederzeit ändern.</p>' +
+        '<p class="setup-text">Für den Kalorienring im Kalorien-Tagebuch (Profil). Keine Ahnung? Nimm erst mal 2.000 kcal – du kannst es jederzeit ändern.</p>' +
         '<div class="setup-kcal"><b id="setup-kcal-val">' + fmtInt(st.kcal) + '</b><span>kcal pro Tag</span></div>' +
         '<div class="setup-kcal-row">' +
           '<button class="tbtn" data-action="setup-kcal" data-delta="-100" aria-label="100 kcal weniger">−100</button>' +
@@ -5178,7 +5550,7 @@
           <button class="row" data-action="edit-goal" data-key="carbGoal"><span class="row-text"><span>Kohlenhydrat-Ziel</span></span><span class="row-value">${st.carbGoal ? st.carbGoal + ' g' : '–'} ${ICON.chevron}</span></button>
           <button class="row" data-action="edit-goal" data-key="fatGoal"><span class="row-text"><span>Fett-Ziel</span></span><span class="row-value">${st.fatGoal ? st.fatGoal + ' g' : '–'} ${ICON.chevron}</span></button>
         </section>
-        <p class="hint">Die Ziele bestimmen den Kalorienring und die Makro-Balken im Reiter „Ernährung“.</p>`;
+        <p class="hint">Die Ziele bestimmen den Kalorienring und die Makro-Balken im Kalorien-Tagebuch (Profil → Kalorien-Tagebuch).</p>`;
     } else if (sub === 'notifications') {
       html = `
         <p class="section-label">Ton &amp; Haptik</p>
@@ -5410,7 +5782,7 @@
   }
 
   function renderFood(view) {
-    setHeader({ title: 'Ernährung', large: true });
+    setHeader({ title: 'Kalorien-Tagebuch', large: true, back: extraBack() });
     if (!ui.foodDate) ui.foodDate = Core.dayKey(Date.now());
     const key = ui.foodDate;
     const today = Core.dayKey(Date.now());
@@ -5820,7 +6192,7 @@
   }
 
   function renderLibrary(view) {
-    setHeader({ title: 'Bibliothek', large: true });
+    setHeader({ title: 'Bibliothek', large: true, back: extraBack() });
     const f = ui.lib;
     const recent = allExercises().filter((e) => Core.libUsed(db, e.id)).sort((a, b) => Core.libUsed(db, b.id) - Core.libUsed(db, a.id)).slice(0, 5);
     const list = filteredExercises();
@@ -6741,6 +7113,30 @@
       save(); render();
     },
     'open-calendar': () => { ui.historyTab = 'calendar'; go('#/history'); },
+    'open-body': () => { ui.historyTab = 'body'; go('#/history'); },
+    'daily-day': (el) => { ui.dailyDay = el.dataset.key; render(); },
+    'meal-toggle': (el) => {
+      const done = Core.toggleMeal(db, el.dataset.key, el.dataset.id);
+      save();
+      Haptics.tap();
+      render();
+      const pr = Core.mealProgress(db, el.dataset.key);
+      if (done && pr.total && pr.done === pr.total) toast('Alle Mahlzeiten abgehakt – stark!');
+    },
+    'meal-add': () => openMealForm(null),
+    'meal-edit': (el) => openMealForm(el.dataset.id),
+    'meal-up': (el) => { const i = Number(el.dataset.index); if (Core.moveMeal(db, i, i - 1)) { save(); render(); } },
+    'meal-down': (el) => { const i = Number(el.dataset.index); if (Core.moveMeal(db, i, i + 1)) { save(); render(); } },
+    'meal-del': async (el) => {
+      const m = db.settings.mealPlan.find((x) => x.id === el.dataset.id);
+      if (!m) return;
+      const ok = await confirmAction('Mahlzeit löschen?', '„' + m.name + '“ verschwindet aus dem Mealplan und aus dem Abhak-Verlauf.', 'Löschen');
+      if (!ok) return;
+      Core.deleteMeal(db, m.id);
+      save();
+      render();
+    },
+    'meal-sample': () => { Core.sampleMeals().forEach((m) => Core.addMeal(db, m)); save(); render(); },
     'cal-month': (el) => {
       const now = new Date();
       const cur = ui.calMonth ? new Date(ui.calMonth) : new Date(now.getFullYear(), now.getMonth(), 1);
@@ -7617,7 +8013,7 @@
         <p class="privacy-h">Bleibt privat</p>
         <ul class="privacy-list private">
           <li>Einzelne Sätze, Gewichte pro Satz, Notizen und Trainingspläne</li>
-          <li>Ernährung, Körpergewicht und Körpermaße</li>
+          <li>Ernährung, Mealplan, Körpergewicht und Körpermaße</li>
           <li>Deine E-Mail-Adresse</li>
         </ul>
         <p class="hint">Deine vollständigen Trainingsdaten sichert die App wie bisher nur für dich in deinem Konto (für deine Geräte) – Freunde haben darauf keinen Zugriff. Profil, Freundschaften und alle Cloud-Daten löschst du jederzeit unter Einstellungen → Konto.</p>
@@ -7652,7 +8048,7 @@
         <span class="social-cta-ic" aria-hidden="true">${ICON.users}</span>
         <h2>${esc(title || 'Mit Freunden vergleichen')}</h2>
         <p>${esc(text || 'Mit einem Konto kannst du Freunde über ihren Benutzernamen hinzufügen und Trainings, Serien und Rekorde vergleichen.')}</p>
-        <p class="muted">Training, Timer, Ernährung, Bibliothek und Verlauf funktionieren weiterhin komplett ohne Konto und offline.</p>
+        <p class="muted">Training, Daily, Timer, Kalorien-Tagebuch, Bibliothek und Verlauf funktionieren weiterhin komplett ohne Konto und offline.</p>
         ${cloudConfigured
           ? '<button class="btn primary block" data-action="open-login">Anmelden oder Konto erstellen</button>'
           : '<div class="notice">Konten sind noch nicht eingerichtet (Firebase-Daten in <code>firebase-config.js</code> eintragen, siehe README.md).</div>'}
@@ -7706,6 +8102,12 @@
     const now = Date.now();
     const full = myFullStats();
     const m = Core.socialMetrics(full, now);
+    const moreCard = `
+      <section class="card flush">
+        ${menuRow('#/history', svgI('<path d="M3.5 20h17M6 15.5l4-4.5 3.5 3L19 7.5"/>'), 'Verlauf', db.sessions.length ? db.sessions.length + (db.sessions.length === 1 ? ' Einheit' : ' Einheiten') : '', 'Einheiten, Kalender, Übungen, Körper')}
+        ${menuRow('#/library', svgI('<path d="M12 6.5C10.4 5 8 4.5 4 4.5v14c4 0 6.4.5 8 2 1.6-1.5 4-2 8-2v-14c-4 0-6.4.5-8 2zM12 6.5v14"/>'), 'Bibliothek', '', '200+ Übungen mit Anleitung')}
+        ${menuRow('#/food', svgI('<path d="M12 7.3c-1.6-1.3-5.2-1.6-6.5 1.4-1.4 3 .1 7.8 2.5 10.3 1.2 1.3 2.4 1.4 4 .6 1.6.8 2.8.7 4-.6 2.4-2.5 3.9-7.3 2.5-10.3-1.3-3-4.9-2.7-6.5-1.4zM12 7.3c0-1.9.9-3.3 2.6-4.1"/>'), 'Kalorien-Tagebuch', '', 'Lebensmittel scannen, Kalorien und Makros')}
+      </section>`;
     const settingsCard = `
       <section class="card flush">
         ${isUser() && Social.ready() ? menuRow('#/profile/edit', ICON.edit, 'Profil bearbeiten', '', 'Foto, Benutzername, Rekorde teilen') : ''}
@@ -7721,6 +8123,7 @@
           <p>Deine Daten bleiben nur auf diesem Gerät.</p>
         </section>
         ${statTilesHTML(m)}
+        ${moreCard}
         ${favRecordHTML(full)}
         ${socialGuestHTML()}
         ${settingsCard}`;
@@ -7779,6 +8182,7 @@
     view.innerHTML = `
       ${hero}
       ${statTilesHTML(m)}
+      ${moreCard}
       ${favRecordHTML(full)}
       ${friends}
       ${settingsCard}`;
@@ -8185,7 +8589,7 @@
         <h2 class="card-title">Rekorde bei gemeinsamen Übungen</h2>
         ${recs}
       </section>
-      <p class="hint center">Wochenziel: du ${me.goal}×, ${esc(who)} ${fr.goal}× pro Woche. Einzelne Sätze, Gewichte pro Satz und Ernährung bleiben privat.</p>
+      <p class="hint center">Wochenziel: du ${me.goal}×, ${esc(who)} ${fr.goal}× pro Woche. Einzelne Sätze, Gewichte pro Satz, Ernährung und Mealplan bleiben privat.</p>
       ${offlineNote()}`;
   }
 
@@ -9325,6 +9729,7 @@
     document.addEventListener('submit', (e) => {
       if (e.target.id === 'auth-form') { e.preventDefault(); onAuthSubmit(e.target); }
       if (e.target.id === 'body-form') { e.preventDefault(); onBodySubmit(e.target); }
+      if (e.target.id === 'weight-form') { e.preventDefault(); onWeightSubmit(e.target); }
       if (e.target.id === 'profile-form') { e.preventDefault(); onProfileSubmit(e.target); }
     });
     window.addEventListener('online', () => { if (engine) engine.schedule(0); renderSyncStatus(); Social.onOnline(); Chat.onOnline(); });

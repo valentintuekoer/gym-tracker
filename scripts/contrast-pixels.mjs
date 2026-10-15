@@ -1,6 +1,6 @@
 // Pixel-Kontrast (WCAG AA): schaltet jeden sichtbaren Text unsichtbar, fotografiert den Hintergrund dahinter
 // und rechnet die Textfarbe gegen jeden einzelnen Hintergrundpixel (Glas über Farbflecken ist so geprüft,
-// nicht nur gegen eine Annahme). Text unter der Tab-Leiste, dem Timer oder hinter einem Sheet zählt nicht.
+// nicht nur gegen eine Annahme). Text unter der Tab-Leiste (samt Ausblendzone), dem Timer oder hinter einem Sheet zählt nicht.
 //
 //   node scripts/contrast-pixels.mjs [#/,#/history,…] [Breite]      (Standard: Startseite, Verlauf, Ernährung, … bei 390 px)
 //
@@ -67,6 +67,9 @@ for (const scheme of ['dark', 'light']) {
         const r = document.createRange(); r.selectNodeContents(n);
         const b = r.getBoundingClientRect();
         if (b.width < 2 || b.height < 2 || b.bottom < 0 || b.top > innerHeight || b.right < 0 || b.left > innerWidth) continue;
+        // Text in der Ausblendzone über der Tab-Leiste (Inhalt blendet dort absichtlich aus) zählt nicht
+        const tb = document.querySelector('.tabbar');
+        if (!document.querySelector('.modal-card') && tb && getComputedStyle(tb).display !== 'none' && b.bottom > tb.getBoundingClientRect().top - 28) continue;
         // verdeckt (Tab-Leiste, Timer, Sheet-Hintergrund …)? Dann zählt der Text nicht
         const modal = document.querySelector('.modal-card');
         if (modal && !modal.contains(el)) continue;

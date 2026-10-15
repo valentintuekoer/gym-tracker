@@ -170,8 +170,8 @@ Speicherorte: `usernames/{name}`, `publicProfiles/{uid}`, `users/{uid}/friends/{
 
 Die App sieht aus wie die [Liquid-Glass-Demo](#liquid-glass-demo): blauer Verlauf mit drei Farbflecken, darauf Glas aus
 fünf Schichten (Unschärfe, getönte Fläche, Glanz, Lichtkante, Schatten), einfarbig – weiß im dunklen, tiefblau im hellen
-Design. Die Startseite zeigt Wochenring, Kennzahlen („Volumen“, „Serie“), „Als Nächstes“ und die Trainingstage mit
-geschätzten Minuten; die schwebende Tab-Leiste schrumpft beim Herunterscrollen auf reine Icons. Farben, Radien und Regeln
+Design. Es ist nur das Aussehen – Inhalte und Aufbau der Bildschirme sind unverändert. Die schwebende Tab-Leiste
+schrumpft beim Herunterscrollen auf reine Icons. Farben, Radien und Regeln
 stehen in [`DESIGN.md`](DESIGN.md); alle Werte sind Tokens am Anfang von `style.css` (Dunkel und Hell getrennt, Textkontrast
 ≥ 4,5:1 per Pixel gegen die Farbflecken geprüft). Neue Bildschirme prüfst du mit `node scripts/screenshots.mjs` (Bilder, hell + dunkel)
 und `node scripts/contrast-pixels.mjs` (Textkontrast jedes sichtbaren Textes gegen den echten Hintergrund).

@@ -1,121 +1,156 @@
-/* Gym Tracker – Design-System „Ember Glass“
- * Dunkle bzw. helle Glasflächen mit Verlaufs-Kante, ein warmer Akzent (Glut-Orange),
- * nah an iOS. Alle Farben, Abstände, Radien, Dauern und Kurven sind Tokens.
- * Animiert wird nur transform & opacity (einzige Ausnahme: die Höhe der Tab-Leiste).
+/* Gym Tracker – Design-System „Liquid Glass“
+ * Blauer Verlauf mit drei Farbflecken, darauf Glas (Unschärfe, Glanz, Lichtkante),
+ * einfarbig: weiß im dunklen, tiefblau im hellen Design. Alle Farben, Abstände, Radien,
+ * Dauern und Kurven sind Tokens. Animiert wird nur transform & opacity (einzige Ausnahme:
+ * die Höhe der Tab-Leiste).
  */
 
 /* =========================================================
  *  Tokens
  * ========================================================= */
 
+/* „Liquid Glass“ – Werte wie in der Demo unter liquid-glass/ (Material, Farbflecken, Text, Akzent) */
 :root,
 :root[data-theme="dark"] {
-  /* „Ember Glass“: kühles Fast-Schwarz, dunkle Glasflächen, eine warme Akzentfarbe */
-  --bg: #07080c;
-  --surface: #11141b;
-  --surface-2: #181c26;
-  --surface-3: #232836;
-  --press: #1b2030;
-  --border: #1f2431;
-  --border-strong: #363d50;
-  --text: #f6f7fa;
-  --text-2: #d5d9e2;
-  --muted: #9aa1b3;          /* Kontrast ≥ 6:1 auf allen Flächen */
-  --faint: #636a7d;
-  --inv: #ff7a3d;            /* Akzent: gefüllte aktive Elemente (Glut-Orange) */
-  --on-inv: #1c0c03;         /* Text auf Akzent, Kontrast 7,4:1 */
-  --accent-ink: #ff8a50;     /* Akzent als Text/Icon auf dunklem Grund */
-  --accent-soft: rgba(255, 122, 61, 0.16);
-  --accent-line: rgba(255, 138, 80, 0.42);
-  --accent-glow: rgba(255, 122, 61, 0.5);
-  --danger: #ff7088;
+  --bg: #081120;
+  --bg-a: #060d1c;
+  --bg-b: #0b1626;
+  --orb-1: #1b6dff;
+  --orb-2: #0fb89a;
+  --orb-3: #e0762f;
+  --surface: #1e1e22;
+  --surface-2: #26262c;
+  --surface-3: #34343c;
+  --press: rgba(255, 255, 255, 0.12);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.26);
+  --text: #ffffff;
+  --text-2: #f2f2f7;
+  --muted: #e0e4ee;          /* Kontrast ≥ 4,5:1 auch vor den hellsten Farbflecken (geprüft per Pixel) */
+  --faint: #7f8596;
+  --inv: #ffffff;            /* aktive/primäre Fläche: im dunklen Design weiß … */
+  --on-inv: #0b1220;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(255, 255, 255, 0.1);
+  --accent-line: rgba(255, 255, 255, 0.34);
+  --accent-glow: rgba(255, 255, 255, 0.22);
+  --danger: #ff8fa3;
   --on-danger: #2a0610;
-  --input-bg: #141822;
-  --input-border: #2b3142;
-  --glass: rgba(7, 8, 12, 0.82);
+  --input-bg: rgba(255, 255, 255, 0.07);
+  --input-border: rgba(255, 255, 255, 0.2);
+  --glass: rgba(8, 17, 32, 0.82);
   --backdrop: rgba(0, 0, 0, 0.62);
-  --sk: #161a24;
-  --sk-hi: #242a39;
-  /* Karten: Glas mit Verlaufs-Kante (heller oben links, Glut unten rechts) */
-  --card-fill: linear-gradient(155deg, #171b26 0%, #10131b 100%);
-  --card-fill-press: linear-gradient(155deg, #1d2231 0%, #151925 100%);
-  --card-edge: linear-gradient(155deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.05) 42%, rgba(255, 122, 61, 0.2) 100%);
-  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  /* Hintergrundleuchten */
-  --glow-a: rgba(255, 122, 61, 0.2);
-  --glow-b: rgba(92, 108, 255, 0.16);
-  /* Farbtöne für Icon-Kacheln (Kontrast ≥ 4,5:1 auf der getönten Kachel) */
-  --tone-ember: #ff8a50;
-  --tone-amber: #ffc247;
-  --tone-green: #4cdba4;
-  --tone-teal: #5ed5e8;
-  --tone-blue: #7aaeff;
-  --tone-violet: #bb9cff;
-  --tone-rose: #ff7e96;
-  --tone-slate: #aab1c3;
-  /* Liquid Glass */
-  --glass-fill: rgba(26, 30, 42, 0.5);
-  --glass-fill-strong: rgba(18, 21, 30, 0.8);
-  --glass-tint: rgba(255, 255, 255, 0.06);
-  --glass-edge: rgba(255, 255, 255, 0.14);
-  --glass-line: rgba(255, 255, 255, 0.05);
-  --glass-hi: rgba(255, 255, 255, 0.26);
-  --glass-lo: rgba(255, 255, 255, 0.05);
-  --glass-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --glass-lens: rgba(255, 255, 255, 0.11);
+  --sk: rgba(255, 255, 255, 0.07);
+  --sk-hi: rgba(255, 255, 255, 0.16);
+  --ring-track: rgba(255, 255, 255, 0.2);
+
+  /* Material */
+  --lg-blur: 40px;
+  --lg-saturate: 1.8;
+  --lg-brightness: 1.04;
+  --lg-fill: rgba(28, 28, 32, 0.74);
+  --lg-card-fill: rgba(28, 28, 32, 0.8);
+  --lg-fill-press: rgba(48, 48, 56, 0.84);
+  --lg-pill-fill: rgba(255, 255, 255, 0.08);
+  --lg-pill-spec: rgba(255, 255, 255, 0.03);
+  --lg-fill-solid: rgb(34, 34, 38);
+  --lg-card-fill-solid: rgb(30, 30, 34);
+  --lg-text: #ffffff;
+  --lg-text-active: #ffffff;
+  --lg-edge-top: rgba(255, 255, 255, 0.42);
+  --lg-edge-mid: rgba(255, 255, 255, 0.1);
+  --lg-edge-bottom: rgba(0, 0, 0, 0.55);
+  --lg-edge-corner: rgba(255, 255, 255, 0.28);
+  --lg-rim-top: rgba(255, 255, 255, 0.28);
+  --lg-rim-bottom: rgba(0, 0, 0, 0.5);
+  --lg-glow: rgba(255, 255, 255, 0.05);
+  --lg-hairline: rgba(255, 255, 255, 0.08);
+  --lg-spec-dome: rgba(255, 255, 255, 0.14);
+  --lg-spec-spot: rgba(255, 255, 255, 0.12);
+  --lg-spec-sheen: rgba(255, 255, 255, 0.05);
+  --lg-shadow-a: rgba(0, 0, 0, 0.18);
+  --lg-shadow-b: rgba(0, 0, 0, 0.2);
+  --lg-shadow-c: rgba(0, 0, 0, 0.28);
+  --lg-shadow-d: rgba(0, 0, 0, 0.4);
+  /* ältere Namen (Timer, Toast, Sheets, Chips) zeigen auf dasselbe Material */
+  --glass-fill: var(--lg-fill);
+  --glass-fill-strong: rgba(28, 28, 32, 0.86);
+  --glass-tint: rgba(255, 255, 255, 0.05);
+  --glass-edge: rgba(255, 255, 255, 0.18);
+  --glass-line: var(--lg-hairline);
+  --glass-hi: var(--lg-rim-top);
+  --glass-lo: rgba(255, 255, 255, 0.04);
+  --glass-shadow: 0 14px 28px rgba(0, 0, 0, 0.28), 0 4px 10px rgba(0, 0, 0, 0.2);
+  --glass-lens: rgba(255, 255, 255, 0.1);
   color-scheme: dark;
 }
 
 :root[data-theme="light"] {
-  --bg: #f4f2ef;
-  --surface: #ffffff;
-  --surface-2: #f4f2ef;
-  --surface-3: #e6e2dc;
-  --press: #efebe6;
-  --border: #e6e2db;
-  --border-strong: #c9c3b9;
-  --text: #17130f;
-  --text-2: #2c2620;
-  --muted: #6a6358;          /* Kontrast ≥ 5:1 auf allen Flächen */
-  --faint: #a8a196;
-  --inv: #c2410c;            /* Akzent (Glut-Orange, dunkel genug für weißen Text: 5,2:1) */
+  --bg: #f1f4fb;
+  --bg-a: #eaf3ff;
+  --bg-b: #fbf1e4;
+  --orb-1: #6fb7ff;
+  --orb-2: #7fe3c6;
+  --orb-3: #ffbe8a;
+  --surface: #fafafc;
+  --surface-2: #f1f2f6;
+  --surface-3: #e2e4ea;
+  --press: rgba(29, 29, 31, 0.08);
+  --border: rgba(29, 29, 31, 0.12);
+  --border-strong: rgba(29, 29, 31, 0.3);
+  --text: #1d1d1f;
+  --text-2: #3a3a3f;
+  --muted: #3d3d44;          /* Kontrast ≥ 4,5:1 auch vor den hellsten Farbflecken (geprüft per Pixel) */
+  --faint: #9a9aa4;
+  --inv: #0832a8;            /* … im hellen Design tiefblau (weißer Text darauf: 11:1) */
   --on-inv: #ffffff;
-  --accent-ink: #9a3412;     /* Akzent als Text/Icon auf hellem Grund, Kontrast ≥ 5:1 */
-  --accent-soft: rgba(194, 65, 12, 0.11);
-  --accent-line: rgba(194, 65, 12, 0.4);
-  --accent-glow: rgba(194, 65, 12, 0.34);
+  --accent-ink: #0832a8;
+  --accent-soft: rgba(8, 50, 168, 0.1);
+  --accent-line: rgba(8, 50, 168, 0.36);
+  --accent-glow: rgba(8, 50, 168, 0.3);
   --danger: #bb1d42;
   --on-danger: #ffffff;
-  --input-bg: #faf8f5;
-  --input-border: #d8d2c8;
-  --glass: rgba(244, 242, 239, 0.86);
-  --backdrop: rgba(20, 12, 4, 0.24);
-  --sk: #ebe7e0;
-  --sk-hi: #f8f6f2;
-  --card-fill: linear-gradient(155deg, #ffffff 0%, #fdfbf8 100%);
-  --card-fill-press: linear-gradient(155deg, #f6f2ec 0%, #f1ece5 100%);
-  --card-edge: linear-gradient(155deg, rgba(255, 255, 255, 1) 0%, rgba(23, 19, 15, 0.08) 45%, rgba(194, 65, 12, 0.3) 100%);
-  --card-shadow: 0 8px 24px rgba(60, 36, 14, 0.08);
-  --glow-a: rgba(255, 138, 80, 0.26);
-  --glow-b: rgba(120, 130, 255, 0.14);
-  --tone-ember: #a5360a;
-  --tone-amber: #8a5300;
-  --tone-green: #0a6f4b;
-  --tone-teal: #0b6f84;
-  --tone-blue: #1d58c4;
-  --tone-violet: #6538c7;
-  --tone-rose: #b81f45;
-  --tone-slate: #4d5568;
-  /* Liquid Glass */
-  --glass-fill: rgba(255, 255, 255, 0.6);
+  --input-bg: rgba(255, 255, 255, 0.7);
+  --input-border: rgba(29, 29, 31, 0.22);
+  --glass: rgba(241, 244, 251, 0.86);
+  --backdrop: rgba(20, 28, 48, 0.28);
+  --sk: rgba(29, 29, 31, 0.07);
+  --sk-hi: rgba(255, 255, 255, 0.7);
+  --ring-track: rgba(29, 29, 31, 0.14);
+
+  --lg-fill: rgba(255, 255, 255, 0.55);
+  --lg-card-fill: rgba(255, 255, 255, 0.72);
+  --lg-fill-press: rgba(255, 255, 255, 0.86);
+  --lg-pill-fill: rgba(255, 255, 255, 0.88);
+  --lg-pill-spec: rgba(255, 255, 255, 0.55);
+  --lg-fill-solid: rgb(244, 244, 247);
+  --lg-card-fill-solid: rgb(250, 250, 252);
+  --lg-text: #1d1d1f;
+  --lg-text-active: #0832a8;
+  --lg-edge-top: rgba(255, 255, 255, 0.9);
+  --lg-edge-mid: rgba(255, 255, 255, 0.22);
+  --lg-edge-bottom: rgba(0, 0, 0, 0.2);
+  --lg-edge-corner: rgba(255, 255, 255, 0.6);
+  --lg-rim-top: rgba(255, 255, 255, 0.75);
+  --lg-rim-bottom: rgba(0, 0, 0, 0.07);
+  --lg-glow: rgba(255, 255, 255, 0.2);
+  --lg-hairline: rgba(0, 0, 0, 0.07);
+  --lg-spec-dome: rgba(255, 255, 255, 0.55);
+  --lg-spec-spot: rgba(255, 255, 255, 0.4);
+  --lg-spec-sheen: rgba(255, 255, 255, 0.18);
+  --lg-shadow-a: rgba(20, 28, 48, 0.06);
+  --lg-shadow-b: rgba(20, 28, 48, 0.07);
+  --lg-shadow-c: rgba(20, 28, 48, 0.09);
+  --lg-shadow-d: rgba(20, 28, 48, 0.14);
+  --glass-fill: var(--lg-fill);
   --glass-fill-strong: rgba(255, 255, 255, 0.84);
   --glass-tint: rgba(255, 255, 255, 0.7);
   --glass-edge: rgba(255, 255, 255, 0.9);
-  --glass-line: rgba(40, 24, 8, 0.07);
-  --glass-hi: rgba(255, 255, 255, 1);
-  --glass-lo: rgba(40, 24, 8, 0.04);
-  --glass-shadow: 0 10px 30px rgba(60, 36, 14, 0.12), 0 1px 3px rgba(60, 36, 14, 0.06);
-  --glass-lens: rgba(40, 24, 8, 0.07);
+  --glass-line: var(--lg-hairline);
+  --glass-hi: var(--lg-rim-top);
+  --glass-lo: rgba(0, 0, 0, 0.04);
+  --glass-shadow: 0 14px 28px rgba(20, 28, 48, 0.09), 0 4px 10px rgba(20, 28, 48, 0.07);
+  --glass-lens: rgba(29, 29, 31, 0.07);
   color-scheme: light;
 }
 
@@ -3072,10 +3107,11 @@ body.wk-lock .wk-slide > .card { margin-bottom: var(--s-4); }
     --border: #3d3d3d;
     --border-strong: #6b6b6b;
     --input-border: #5a5a5a;
-    --glass: rgba(7, 8, 12, 0.94);
-    --glass-fill: rgba(24, 28, 38, 0.92);
+    --glass: rgba(8, 17, 32, 0.94);
+    --glass-fill: rgba(30, 30, 34, 0.92);
     --glass-edge: rgba(255, 255, 255, 0.4);
-    --card-edge: linear-gradient(155deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.28));
+    --lg-fill: rgba(30, 30, 34, 0.94);
+    --lg-card-fill: rgba(30, 30, 34, 0.94);
   }
   :root[data-theme="light"] {
     --muted: #3d3d3d;
@@ -3083,10 +3119,11 @@ body.wk-lock .wk-slide > .card { margin-bottom: var(--s-4); }
     --border: #b3b3b3;
     --border-strong: #6b6b6b;
     --input-border: #8a8a8a;
-    --glass: rgba(244, 242, 239, 0.96);
+    --glass: rgba(241, 244, 251, 0.96);
     --glass-fill: rgba(255, 255, 255, 0.92);
     --glass-edge: rgba(0, 0, 0, 0.3);
-    --card-edge: linear-gradient(155deg, rgba(23, 19, 15, 0.5), rgba(23, 19, 15, 0.3));
+    --lg-fill: rgba(255, 255, 255, 0.95);
+    --lg-card-fill: rgba(255, 255, 255, 0.95);
   }
 }
 
@@ -3301,30 +3338,30 @@ button.bubble:active { opacity: 0.8; }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 /* =========================================================
- *  Ember Glass – Erscheinungsbild
- *  Überschreibt die Grundwerte oben: warme Akzentfarbe statt Schwarz/Weiß,
- *  Karten als Glas mit Verlaufs-Kante, Leuchten im Hintergrund, große Zahlen.
+ *  Liquid Glass – Erscheinungsbild
+ *  Wie die Demo unter liquid-glass/: blauer Verlauf mit drei Farbflecken, darauf Glas aus fünf Schichten
+ *  (Unschärfe, getönte Fläche, Glanz, Lichtkante, Schatten). Einfarbig: weiß (dunkel) bzw. tiefblau (hell).
  * ========================================================= */
 
 :root {
-  --r-card: 28px;
-  --r-card-sm: 22px;
+  --r-card: 24px;
+  --r-card-sm: 20px;
   --r-input: 14px;
-  --r-sheet: 36px;
+  --r-sheet: 34px;
   --tabbar-hc: 54px;          /* Tab-Leiste ohne Beschriftung (beim Herunterscrollen) */
-  --sheen: rgba(255, 255, 255, 0.22);
+  --lg-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --lg-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Hintergrund: Verlauf + drei ruhige Farbflecken (Mittelpunkt/Radius wie in der Demo) */
+  --stage:
+    radial-gradient(circle 37vmax at 15vmax 11vmax, color-mix(in srgb, var(--orb-1) 85%, transparent), transparent),
+    radial-gradient(circle 37vmax at calc(100vw - 3vmax) calc(22vh + 37vmax), color-mix(in srgb, var(--orb-2) 80%, transparent), transparent),
+    radial-gradient(circle 37vmax at 31vmax calc(100vh - 3vmax), color-mix(in srgb, var(--orb-3) 80%, transparent), transparent),
+    linear-gradient(165deg, var(--bg-a), var(--bg-b));
 }
-:root[data-theme="light"] { --sheen: rgba(255, 255, 255, 0.12); }
 
-:focus-visible { outline-color: var(--accent-ink); }
-:root { accent-color: var(--inv); }
-input, textarea { caret-color: var(--accent-ink); }
-.accent { color: var(--accent-ink); }
-.danger-text, .btn.ghost.danger-text, .hdr-btn.danger { color: var(--danger) !important; }
+/* ---------- Hintergrund ---------- */
 
-/* ---------- Hintergrund: zwei weiche Leuchtflecken (fest, kostet beim Scrollen nichts) ---------- */
-
-/* Der Körper ist durchsichtig, damit die Leuchtflecken (z-index −1) über der Fläche der Seite liegen */
+/* Der Körper ist durchsichtig: die Farbflecken (z-index −1) liegen über der Fläche von <html> */
 body { background: transparent; }
 body::before {
   content: "";
@@ -3332,180 +3369,292 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
+  background: var(--stage);
+}
+.nav-ghost { background: var(--stage); }
+body.navving .view { background: var(--stage); background-attachment: fixed; }
+.hdr-bg {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 84%, transparent) 0%, color-mix(in srgb, var(--bg) 55%, transparent) 55%, transparent 100%);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+}
+body::after { background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--bg) 60%, transparent)); }
+.wk-pager {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 62%, transparent) 0%, color-mix(in srgb, var(--bg) 40%, transparent) 70%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent);
+  mask-image: linear-gradient(180deg, #000 72%, transparent);
+}
+
+:focus-visible { outline-color: var(--lg-text-active); }
+:root { accent-color: var(--inv); }
+input, textarea { caret-color: var(--lg-text-active); }
+.accent { color: var(--lg-text-active); }
+.danger-text, .btn.ghost.danger-text, .hdr-btn.danger { color: var(--danger) !important; }
+
+/* ---------- Material ---------- */
+
+/* Schichten 1, 2, 5: Unschärfe + getönte Fläche + gestaffelte Schatten.
+   Leisten und Knöpfe (.lg-surface in der Demo) */
+.tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented {
+  background: var(--lg-fill);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  border: 0;
+  color: var(--lg-text);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    inset 0 0 22px var(--lg-glow),
+    0 0 0 0.5px var(--lg-hairline),
+    0 1px 2px var(--lg-shadow-a),
+    0 4px 10px var(--lg-shadow-b),
+    0 14px 28px var(--lg-shadow-c);
+}
+/* Flächen mit Fließtext (.lg-card): deckender */
+.card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div {
+  background: var(--lg-card-fill);
+  -webkit-backdrop-filter: blur(32px) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  backdrop-filter: blur(32px) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  border: 0;
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    inset 0 0 18px var(--lg-glow),
+    0 0 0 0.5px var(--lg-hairline),
+    0 1px 2px var(--lg-shadow-a),
+    0 6px 16px var(--lg-shadow-b),
+    0 18px 36px var(--lg-shadow-c);
+}
+/* Listeneinträge: gleiches Aussehen, aber ohne eigene Unschärfe (lange Listen, Rechenleistung) */
+.list-item, .ex-row, .body-tile {
+  background: var(--lg-card-fill);
+  border: 0;
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    0 0 0 0.5px var(--lg-hairline),
+    0 1px 2px var(--lg-shadow-a),
+    0 6px 14px var(--lg-shadow-b);
+}
+.steps li { background: var(--lg-card-fill); border: 0; box-shadow: inset 0 1px 0 var(--lg-rim-top), 0 0 0 0.5px var(--lg-hairline); }
+
+.card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div,
+.list-item, .ex-row, .body-tile, .hdr-btn, .hdr-brand { position: relative; }
+.card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div,
+.list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented { isolation: isolate; }
+
+/* Schicht 3 – Glanz: Kuppel oben, Glanzpunkt oben links. Liegt hinter dem Inhalt (z-index −1 im eigenen Stapel). */
+:is(.card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div,
+    .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
   background:
-    radial-gradient(72vmax 54vmax at 6% -10%, var(--glow-a), transparent 62%),
-    radial-gradient(60vmax 52vmax at 110% 36%, var(--glow-b), transparent 66%);
+    radial-gradient(120% 70% at 50% -22%, var(--lg-spec-dome) 0%, transparent 62%),
+    radial-gradient(46% 62% at 11% 6%, var(--lg-spec-spot) 0%, transparent 72%),
+    linear-gradient(180deg, var(--lg-spec-sheen) 0%, transparent 42%);
 }
-body.navving .view { background: transparent; }
+/* Schicht 4 – Lichtkante: 1-px-Verlaufsrahmen (nur der Rand wird gezeichnet) */
+:is(.card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div,
+    .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, var(--lg-edge-corner) 0%, transparent 28%, transparent 72%, var(--lg-edge-corner) 100%),
+    linear-gradient(180deg, var(--lg-edge-top) 0%, var(--lg-edge-mid) 38%, transparent 58%, var(--lg-edge-bottom) 100%);
+  -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  -webkit-mask-clip: content-box, border-box;
+  -webkit-mask-composite: xor;
+  mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  mask-clip: content-box, border-box;
+  mask-composite: exclude;
+}
+.timer-bar.done::before, .timer-bar.done::after, .btn .hdr-btn::before { display: none; }
 
-/* ---------- Karten: Glas mit Verlaufs-Kante ---------- */
-
-.card,
-.day-card,
-.week-card,
-.gym-card:not(.gym-empty),
-.list-item,
-.stats div,
-.body-tile,
-.steps li,
-.ex-row {
-  border: 1px solid transparent;
-  background: var(--card-fill) padding-box, var(--card-edge) border-box;
-}
-.card, .day-card, .week-card, .gym-card:not(.gym-empty) { box-shadow: var(--card-shadow); }
-.day-card:active, .week-card:active, .list-item:active {
-  background: var(--card-fill-press) padding-box, var(--card-edge) border-box;
-}
+/* Gedrückt: etwas hellere Fläche (die älteren Regeln setzen eine durchsichtige Farbe) */
+.day-card:active, .week-card:active, .list-item:active, .hero-card:active, .next-card:active { background: var(--lg-fill-press); }
+.hero-card, .next-card { text-align: left; cursor: pointer; transition: transform var(--d-base) var(--spring), background-color var(--d-fast) var(--ease-out); }
+.hero-card:active, .next-card:active { transform: scale(0.98); transition-duration: var(--d-tap); }
 .day-card.is-active {
   border-color: transparent;
-  background: var(--card-fill) padding-box, linear-gradient(155deg, var(--inv), color-mix(in srgb, var(--inv) 18%, transparent) 70%) border-box;
-  box-shadow: 0 14px 38px -14px var(--accent-glow);
+  box-shadow:
+    inset 0 0 0 1.5px var(--lg-text-active),
+    0 1px 2px var(--lg-shadow-a),
+    0 6px 16px var(--lg-shadow-b),
+    0 18px 36px var(--lg-shadow-c);
 }
-.gym-card.gym-empty { border-color: var(--accent-line); background: var(--accent-soft); }
-.gym-card.gym-empty > svg { color: var(--accent-ink); }
-.ex-list.sorting .ex-row.dragging { background: var(--card-fill-press) padding-box, var(--card-edge) border-box; border-color: transparent; }
+.gym-card.gym-empty { border: 1.5px dashed var(--border-strong); background: var(--lg-card-fill); }
+.ex-list.sorting .ex-row.dragging { background: var(--lg-fill-press); }
+
+/* Sheets: Material ohne Pseudo-Elemente (die Karte scrollt) */
+.modal-card {
+  background: var(--lg-card-fill);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  border: 0;
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 0 22px var(--lg-glow),
+    0 0 0 0.5px var(--lg-hairline),
+    0 4px 10px var(--lg-shadow-b),
+    0 14px 28px var(--lg-shadow-c),
+    0 28px 56px var(--lg-shadow-d);
+}
+.toast { background: var(--lg-card-fill); }
+.timer-bar { background: var(--lg-card-fill); }
+.timer-bar.done { background: var(--inv); color: var(--on-inv); }
 
 /* ---------- Titel & Beschriftungen ---------- */
 
-.large-title { font-weight: 800; font-size: 38px; letter-spacing: -0.04em; margin-bottom: var(--s-5); }
-.large-eyebrow {
-  margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: var(--accent-ink);
-}
-.section-label { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; }
+.large-title { font-size: clamp(34px, 9vw, 44px); line-height: 1.05; font-weight: 750; letter-spacing: -0.03em; margin-bottom: var(--s-4); }
+.large-eyebrow { margin-bottom: 4px; color: var(--text-2); font-size: 13px; font-weight: 600; letter-spacing: 0.06em; }
+.section-label { color: var(--text-2); letter-spacing: 0.06em; }
+.day-name { font-weight: 750; letter-spacing: -0.03em; }
 
 /* ---------- Schaltflächen ---------- */
 
 .btn.primary,
 .hdr-btn.accent {
-  background: linear-gradient(180deg, var(--sheen), transparent 55%), var(--inv);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 55%), var(--inv);
   color: var(--on-inv);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 10px 28px -8px var(--accent-glow);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 10px 26px -6px var(--accent-glow), 0 2px 6px var(--lg-shadow-b);
 }
+.hdr-btn.accent::before, .hdr-btn.accent::after { display: none; }
 .btn.danger {
-  background: linear-gradient(180deg, var(--sheen), transparent 55%), var(--danger);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 55%), var(--danger);
   color: var(--on-danger);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 .btn.danger-soft { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .badge.danger { background: var(--danger); color: var(--on-danger); border-color: var(--danger); }
 .msg-state.bad { color: var(--danger); }
 .msg.failed .bubble { color: var(--danger); border-color: var(--danger); }
-.msg.mine .bubble { background: linear-gradient(180deg, var(--sheen), transparent 70%), var(--inv); }
+.swipe-bg { background: var(--danger); color: var(--on-danger); }
 .input-error, .form-error { color: var(--danger); }
+.btn.apple { background: #ffffff; color: #000000; box-shadow: none; }
+:root[data-theme="light"] .btn.apple { background: #000000; color: #ffffff; }
 
-/* Chips: Glas, aktiv = getönt mit Akzent-Kante (statt voller Fläche) */
-.chip { border-color: var(--glass-edge); }
-.chip.on,
-.filter-chips .chip:not(.dim),
-.plan-chips .chip[aria-pressed="true"] {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-  border-color: var(--accent-line);
-  box-shadow: none;
+/* Glas-Pillen (wie die aktive Pille in der Demo): weich, mit Randlicht */
+.btn.soft, .chip, .step, .tbtn:not(.tbtn-accent), .strip-day, .search .in {
+  background: var(--lg-pill-fill);
+  border-color: transparent;
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    0 0 0 0.5px var(--lg-hairline),
+    0 1px 1px var(--lg-shadow-a),
+    0 4px 10px var(--lg-shadow-b);
 }
-.tag.accent { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent-line); }
+.chip.dim { background: transparent; box-shadow: none; border: 1px dashed var(--border-strong); }
+.filter-chips .chip.dim { background: var(--lg-pill-fill); border: 1px solid transparent; }
+.chip.on, .filter-chips .chip:not(.dim), .plan-chips .chip[aria-pressed="true"], .strip-day.sel, .step:active, .step.repeating {
+  background: var(--inv);
+  color: var(--on-inv);
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.tag.accent { background: var(--inv); color: var(--on-inv); border-color: var(--inv); }
 
-/* „Live“-Punkt: grün, atmet ruhig (nur transform/opacity) */
-.live-dot {
-  position: relative;
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--tone-green);
-  flex: none;
-}
-.live-dot::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: var(--tone-green);
-  animation: pulse-ring 2s var(--ease-out) infinite;
-}
+/* Umriss-Pille („in 2 Tagen“) */
+.chip-o { padding: 6px 12px; border-radius: var(--r-pill); font-size: 13px; font-weight: 600; box-shadow: inset 0 0 0 1.5px var(--text-2); white-space: nowrap; }
+
+/* „Läuft gerade“ */
 .live-badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   margin-bottom: var(--s-2);
-  padding: 3px 12px 3px 10px;
+  padding: 4px 12px 4px 10px;
   border-radius: var(--r-pill);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-line);
-  color: var(--accent-ink);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1.5px var(--text-2);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+.live-dot { position: relative; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text); flex: none; }
+.live-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--text); animation: pulse-ring 2s var(--ease-out) infinite; }
 
-/* ---------- Startseite: große Zahlen ---------- */
+/* ---------- Kopfzeile: Marke links, Glas-Knöpfe rechts ---------- */
 
-.day-card { align-items: center; padding: var(--s-5) var(--s-2) var(--s-5) var(--s-5); }
+.hdr-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 18px 0 14px;
+  border-radius: var(--r-pill);
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  opacity: calc(1 - var(--hdr-title, 0));
+}
+.brand-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--lg-text); box-shadow: 0 0 0 3px var(--lg-fill-solid), 0 0 0 4px var(--lg-text); flex: none; }
+
+/* ---------- Startseite: Ring, Kennzahlen, „Als Nächstes“ ---------- */
+
+.hero-card { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 20px; width: 100%; padding: 18px 20px; margin-bottom: 14px; border-radius: var(--r-card); }
+.ring { width: 112px; height: 112px; }
+.ring circle { fill: none; stroke-width: 10; }
+.ring-bg { stroke: var(--ring-track); }
+.ring-fg { stroke: var(--lg-text-active); stroke-linecap: round; animation: ring-in 800ms var(--lg-ease-spring) both; }
+@keyframes ring-in { from { stroke-dashoffset: var(--ring-from, 314.16); } }
+.hero-text { display: grid; gap: 6px; min-width: 0; }
+.hero-big { display: flex; align-items: baseline; gap: 4px; }
+.hero-big b { font-size: 52px; line-height: 1; font-weight: 750; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.hero-big small { font-size: 22px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.hero-sub { font-size: 14px; line-height: 1.45; color: var(--text-2); text-wrap: pretty; }
+
+.kpi-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.kpi-card { display: grid; gap: 8px; align-content: start; min-width: 0; padding: 18px 20px; border-radius: var(--r-card); }
+.kpi-label { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); }
+.kpi-val { font-size: 24px; line-height: 1.15; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kpi-sub { font-size: 14px; line-height: 1.45; color: var(--text-2); }
+.next-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; padding: 18px 20px; margin-bottom: 14px; border-radius: var(--r-card); }
+.next-main { display: grid; gap: 8px; min-width: 0; }
+.next-name { font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
+
+.day-card { align-items: center; }
 .day-card .icon-btn { margin-top: 0; }
-.day-name { font-size: 26px; font-weight: 800; letter-spacing: -0.035em; }
-.day-side {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  padding-right: var(--s-1);
-  text-align: right;
-}
-.day-side b {
-  font: 800 clamp(30px, 9vw, 40px)/1 var(--font-display);
-  letter-spacing: -0.045em;
-  font-variant-numeric: tabular-nums;
-}
-.day-side small {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
+.day-side { flex: none; display: flex; flex-direction: column; align-items: flex-end; padding-right: var(--s-1); text-align: right; }
+.day-side b { font: 750 clamp(30px, 9vw, 40px)/1 var(--font-display); letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.day-side small { margin-top: 4px; color: var(--text-2); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.week-dots i.on { background: var(--inv); border-color: var(--inv); }
 
-.active-banner {
-  background: linear-gradient(180deg, var(--sheen), transparent 55%), var(--inv);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 14px 36px -12px var(--accent-glow);
-}
+/* ---------- Segment & Eingaben ---------- */
 
-.week-card { gap: var(--s-4); padding: var(--s-4) var(--s-5) var(--s-4) var(--s-5); }
-.week-num { flex: none; display: flex; align-items: baseline; min-width: 52px; font-variant-numeric: tabular-nums; }
-.week-num b { font: 800 40px/1 var(--font-display); letter-spacing: -0.05em; }
-.week-num small { margin-left: 2px; color: var(--muted); font-size: 18px; font-weight: 700; }
-.week-text strong { font-size: 16px; }
-.week-dots { gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 96px; }
-.week-dots i { width: 11px; height: 11px; }
-.week-dots i.on { background: var(--inv); border-color: var(--inv); box-shadow: 0 0 12px var(--accent-glow); }
-
-.gym-ic { border: 0; background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); color: var(--accent-ink); }
-
-/* ---------- Segmentiertes Steuerelement: Glas mit getöntem Daumen ---------- */
-
-.segmented { border-color: var(--glass-edge); }
-.segmented button[aria-selected="true"] {
-  background: var(--accent-soft);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--accent-line);
-}
-.segmented.has-thumb button[aria-selected="true"] { background: transparent; box-shadow: none; }
+.segmented button[aria-selected="true"] { background: var(--lg-pill-fill); color: var(--lg-text-active); }
+.segmented.has-thumb button[aria-selected="true"] { background: transparent; }
 .seg-thumb {
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent-line), 0 6px 18px -8px var(--accent-glow);
+  background: radial-gradient(90% 80% at 30% -10%, var(--lg-pill-spec), transparent 65%), var(--lg-pill-fill);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    0 0 0 0.5px var(--lg-hairline),
+    0 1px 1px var(--lg-shadow-a),
+    0 4px 10px var(--lg-shadow-b),
+    0 8px 20px var(--lg-shadow-c);
 }
-
-/* ---------- Eingaben ---------- */
-
-.in:focus { border-color: var(--accent-ink); box-shadow: 0 0 0 3px var(--accent-soft); }
+.in:focus { border-color: var(--lg-text-active); box-shadow: 0 0 0 3px var(--accent-soft); }
 .in.note:focus { box-shadow: none; }
+.set { background: transparent; }
 
-/* ---------- Tab-Leiste: schwebende Glas-Kapsel, Akzent-Linse, Kompaktmodus ---------- */
+/* ---------- Tab-Leiste: gleitende Glas-Pille, beim Herunterscrollen nur Icons ---------- */
 
 .tabbar {
   transition:
@@ -3513,75 +3662,67 @@ body.navving .view { background: transparent; }
     opacity var(--d-fast) var(--ease-out),
     height var(--d-base) var(--ease-sheet);
 }
-.tab { color: var(--muted); }
-.tab span { font-size: 10.5px; letter-spacing: -0.02em; }
-.tab.active { color: var(--accent-ink); }
-.tab span {
-  height: 13px;
-  line-height: 13px;
-  overflow: hidden;
-  transition: height var(--d-base) var(--ease-sheet), margin var(--d-base) var(--ease-sheet), opacity var(--d-fast) var(--ease-out);
-}
+.tab { color: var(--lg-text); }
+.tab span { height: 13px; font-size: 11px; line-height: 13px; letter-spacing: 0.01em; overflow: hidden; transition: height var(--d-base) var(--ease-sheet), margin var(--d-base) var(--ease-sheet), opacity var(--d-fast) var(--ease-out); }
+.tab.active { color: var(--lg-text-active); }
 .tab-lens {
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent-line), inset 0 1px 0 var(--glass-hi);
+  background: radial-gradient(90% 80% at 30% -10%, var(--lg-pill-spec), transparent 65%), var(--lg-pill-fill);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    0 0 0 0.5px var(--lg-hairline),
+    0 1px 1px var(--lg-shadow-a),
+    0 4px 10px var(--lg-shadow-b),
+    0 8px 20px var(--lg-shadow-c);
 }
-.tab-dot { background: var(--inv); box-shadow: 0 0 0 2px var(--bg), 0 0 8px var(--accent-glow); }
+.tab-dot { background: var(--inv); box-shadow: 0 0 0 2px var(--lg-fill-solid); }
 body.tabs-compact .tabbar { height: var(--tabbar-hc); }
 body.tabs-compact .tab span { height: 0; margin-top: -2px; opacity: 0; }
-body.tabs-compact .tab svg { width: 24px; height: 24px; }
 body.tabs-compact .tab-dot { top: 4px; }
-/* Auf dem Seitenanfang und bei offener Tastatur gibt es keinen Kompaktmodus */
 body.kb-open.tabs-compact .tabbar { height: var(--tabbar-h); }
 @media (prefers-reduced-motion: reduce) {
-  .tabbar, .tab span { transition-duration: 1ms !important; }
+  .tabbar, .tab span, .ring-fg { transition-duration: 1ms !important; animation: none !important; }
 }
 
-/* ---------- Menüzeilen: farbige Icon-Kacheln ---------- */
+/* Mini-Vorschauen der Darstellung */
+.theme-mock.dark { background: #060d1c; }
+.theme-mock.dark i { background: rgba(255, 255, 255, 0.14); }
+.theme-mock.dark i:first-child { background: #ffffff; }
+.theme-mock.light { background: #eaf3ff; }
+.theme-mock.light i { background: #ffffff; }
+.theme-mock.light i:first-child { background: #0832a8; }
+.theme-mock.system { background: linear-gradient(135deg, #eaf3ff 50%, #060d1c 50%); }
 
-.row-ic {
-  --tone: var(--text);
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  color: var(--tone);
-  background: color-mix(in srgb, var(--tone) 15%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tone) 32%, transparent);
-  box-shadow: none;
+/* ---------- Fallbacks (wie in der Demo) ---------- */
+
+@media (prefers-reduced-transparency: reduce) {
+  .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented, .modal-card,
+  .card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div {
+    background: var(--lg-card-fill-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
-.row-ic.t-ember { --tone: var(--tone-ember); }
-.row-ic.t-amber { --tone: var(--tone-amber); }
-.row-ic.t-green { --tone: var(--tone-green); }
-.row-ic.t-teal { --tone: var(--tone-teal); }
-.row-ic.t-blue { --tone: var(--tone-blue); }
-.row-ic.t-violet { --tone: var(--tone-violet); }
-.row-ic.t-rose { --tone: var(--tone-rose); }
-.row-ic.t-slate { --tone: var(--tone-slate); }
-.menu-row + .menu-row::before { left: calc(var(--s-4) + 50px); }
-
-/* ---------- Kleinteile ---------- */
-
-.profile-avatar { background: linear-gradient(180deg, var(--sheen), transparent 55%), var(--inv); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 24px -8px var(--accent-glow); }
-.timer-progress-fill { background: var(--inv); }
-.timer-bar.done { background: linear-gradient(180deg, var(--sheen), transparent 55%), var(--inv); }
-.theme-mock.dark { background: #07080c; }
-.theme-mock.dark i { background: #1b2030; }
-.theme-mock.dark i:first-child { background: #ff7a3d; }
-.theme-mock.light { background: #f4f2ef; }
-.theme-mock.light i:first-child { background: #c2410c; }
-.theme-mock.system { background: linear-gradient(135deg, #f4f2ef 50%, #07080c 50%); }
-
-/* Sätze liegen auf der Karte (kein eigener Hintergrund), Wisch-Löschen ist rot statt Akzent, Fortschrittsleiste durchscheinend */
-.set { background: transparent; }
-.swipe-bg { background: var(--danger); color: var(--on-danger); }
-.wk-pager {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 90%, transparent) 0%, color-mix(in srgb, var(--bg) 78%, transparent) 70%, transparent);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-  -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent);
-  mask-image: linear-gradient(180deg, #000 72%, transparent);
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented, .modal-card,
+  .card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div { background: var(--lg-card-fill-solid); }
 }
-
-/* „Mit Apple anmelden“ folgt den Apple-Richtlinien: schwarz oder weiß, nie farbig */
-.btn.apple { background: #ffffff; color: #000000; box-shadow: none; }
-:root[data-theme="light"] .btn.apple { background: #000000; color: #ffffff; }
+@media (prefers-contrast: more) {
+  :is(.card, .profile-card, .day-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented)::after {
+    padding: 2px;
+    background: linear-gradient(var(--text), var(--text));
+  }
+}
+@media (forced-colors: active) {
+  .card, .profile-card, .day-card, .hero-card, .kpi-card, .next-card, .gym-card, .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented, .modal-card {
+    background: Canvas;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+    border: 1px solid CanvasText;
+  }
+  :is(.card, .profile-card, .day-card, .hero-card, .kpi-card, .next-card, .gym-card, .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented)::before,
+  :is(.card, .profile-card, .day-card, .hero-card, .kpi-card, .next-card, .gym-card, .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented)::after { display: none; }
+  .ring-fg { stroke: Highlight; }
+  .ring-bg { stroke: GrayText; }
+}

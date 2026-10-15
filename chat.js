@@ -95,6 +95,16 @@ export function createChat({ F, fs, auth }) {
       return post(room, id, { name, kind: 'gym', when, workout: workout || '', note: note || '', joined: {} }, true);
     },
 
+    /**
+     * Darf der Chat gelesen werden? Unterscheidet bei einem abgelehnten Senden, ob die Firestore-Regeln den Chat
+     * grundsätzlich nicht zulassen (veraltet/nicht veröffentlicht) oder nur dieses eine Schreiben abgelehnt wurde.
+     * → { read: true } | { read: false, code }
+     */
+    async probe(room) {
+      try { await F.getDocs(F.query(msgsCol(room || ROOM), F.limit(1))); return { read: true }; }
+      catch (e) { return { read: false, code: (e && e.code) || '' }; }
+    },
+
     /** Wurde die Nachricht schon angenommen? (Nach einem Verbindungsabbruch, bevor „Erneut senden“ sie doppelt anlegt) */
     async exists(room, id) {
       try { return (await F.getDocFromServer(msgDoc(room, id))).exists(); } catch (e) { return false; }

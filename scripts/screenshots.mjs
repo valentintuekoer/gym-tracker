@@ -28,7 +28,7 @@ try {
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
 const SCREENS = [
-  ['home', '#/'], ['daily', '#/daily'], ['daily-plan', '#/daily/plan'], ['history', '#/history'], ['food', '#/food'], ['library', '#/library'],
+  ['home', '#/'], ['daily', '#/daily'], ['daily-plan', '#/daily/plan'], ['history', '#/history'], ['library', '#/library'],
   ['settings', '#/settings'], ['settings-training', '#/settings/training'],
 ];
 const DEVICES = [['phone', { width: 390, height: 844 }]].concat(WIDE ? [['tablet', { width: 820, height: 1180 }]] : []);
@@ -61,7 +61,7 @@ for (const [device, viewport] of DEVICES) {
     await page.goto(base + '/');
     await page.locator('[data-action="intro-done"]').click();
     await page.locator('[data-action="auth-guest"]').click();
-    for (let i = 0; i < 4; i++) { await page.locator('[data-action="setup-next"]').click(); await settle(page); }
+    for (let i = 0; i < 3; i++) { await page.locator('[data-action="setup-next"]').click(); await settle(page); }
     await page.evaluate((theme) => {
       const { Core, db } = window.GymApp;
       db.settings.theme = theme; // die App hat eine eigene Darstellung-Einstellung (Standard: dunkel)

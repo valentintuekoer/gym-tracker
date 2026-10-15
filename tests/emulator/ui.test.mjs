@@ -154,14 +154,14 @@ test.after(async () => {
   if (server) server.close();
 });
 
-test('Ohne Konto und ohne Firebase: Training, Timer, Kalorien-Tagebuch, Bibliothek, Verlauf, Profil', async () => {
+test('Ohne Konto und ohne Firebase: Training, Timer, Bibliothek, Verlauf, Profil', async () => {
   const { ctx, page } = await device('gast', { cloud: false });
   await openApp(page);
   await page.locator('.btn.apple').waitFor(); // „Mit Apple anmelden“ wird angeboten
   await page.locator('[data-action="auth-guest"]').click();
   // Einrichtung mit Beispielplan
   await waitHash(page, /#\/setup/);
-  for (let i = 0; i < 4; i++) await page.locator('[data-action="setup-next"]').click();
+  for (let i = 0; i < 3; i++) await page.locator('[data-action="setup-next"]').click();
   await waitHash(page, /#\/$/);
   // Musik aus anderen Apps darf nicht pausieren: Ton ist auf „mischen“ gestellt, und solange keine Pause läuft,
   // wird gar kein Audiokanal geöffnet (schon das Öffnen würde unter iOS die Musik anhalten)
@@ -229,21 +229,15 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Kalorien-Tagebuch, Biblioth
   ]);
   assert.equal(popup.url().split('#')[0], 'https://maps.apple.com/?daddr=52.520008%2C13.404954&dirflg=w');
   await popup.close();
-  // Vier Reiter: Training, Daily, Chat, Profil – Verlauf, Bibliothek und Kalorien-Tagebuch öffnen sich aus dem Profil
+  // Vier Reiter: Training, Daily, Chat, Profil – Verlauf und Bibliothek öffnen sich aus dem Profil; ein Kalorien-Tagebuch gibt es nicht mehr
   assert.deepEqual(await page.locator('.tab').evaluateAll((els) => els.map((e) => e.dataset.tab)), ['home', 'daily', 'chat', 'profile']);
   await page.locator('.tab[data-tab="profile"]').click();
   await page.locator('.profile-hero h2', { hasText: 'Ohne Konto' }).waitFor();
-  // Kalorien-Tagebuch: Schnelleingabe
-  await page.locator('a[href="#/food"]').click();
-  await page.locator('[data-action="food-add"][data-meal="lunch"]').click();
-  await dlgButton(page, 'Schnelleingabe').click();
-  await page.fill('.modal:not(.closing) #dlg-input', 'Pasta');
-  await dlgButton(page, 'Weiter').click();
-  await page.locator('.modal:not(.closing) #dlg-input').fill('650');
-  await dlgButton(page, 'Speichern').click();
-  await page.locator('.food-row', { hasText: 'Pasta' }).waitFor();
-  assert.equal(await page.locator('.tab.active').getAttribute('data-tab'), 'profile'); // Profil bleibt hervorgehoben
-  await page.locator('.app-header a.hdr-btn[href="#/profile"]').click();
+  assert.equal(await page.locator('a[href="#/food"]').count(), 0);
+  await page.goto(base + '/#/food'); // die alte Adresse führt einfach zur Startseite statt zu einem Fehler
+  await page.locator('.large-title', { hasText: 'Training' }).waitFor();
+  await page.locator('.tab[data-tab="profile"]').click();
+  await page.locator('.profile-hero h2', { hasText: 'Ohne Konto' }).waitFor();
   // Bibliothek lädt die Übungen
   await page.locator('a[href="#/library"]').click();
   await page.locator('.section-label', { hasText: 'Alle Übungen (207)' }).waitFor();
@@ -265,7 +259,8 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Kalorien-Tagebuch, Biblioth
   await page.locator('.social-cta').waitFor();
   const data = await page.evaluate(() => JSON.parse(localStorage.getItem('gymtracker.data.v1')));
   assert.equal(data.sessions.length, 1);
-  assert.equal(data.nutrition.length, 1);
+  assert.equal(data.nutrition, undefined);
+  assert.equal(data.foods, undefined);
   await ctx.close();
 });
 
@@ -275,7 +270,7 @@ test('Daily: Gewicht eintragen, Mealplan anlegen, jeden Tag abhaken', async () =
   await openApp(page);
   await page.locator('[data-action="auth-guest"]').click();
   await waitHash(page, /#\/setup/);
-  for (let i = 0; i < 4; i++) await page.locator('[data-action="setup-next"]').click();
+  for (let i = 0; i < 3; i++) await page.locator('[data-action="setup-next"]').click();
   await waitHash(page, /#\/$/);
   await page.locator('.tab[data-tab="daily"]').click();
   await waitHash(page, /#\/daily/);
@@ -789,6 +784,19 @@ test('Chat: Nachrichten in Echtzeit, Gym-Karte, mitkommen, Wiener Zeit, Fehler m
   assert.equal(await A.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && document.querySelector('.chat').scrollWidth <= document.querySelector('.chat').clientWidth + 1), true, 'kein seitliches Scrollen bei 320 px');
   assert.ok(await A.page.locator('.chat-composer').isVisible());
   await A.page.setViewportSize({ width: 390, height: 844 });
+
+  // --- Hilfe „Chat freischalten“: kopiert die Firestore-Regeln mit der eigenen Nutzer-ID als Administrator ---
+  await A.ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await A.page.evaluate(() => { const b = document.createElement('button'); b.dataset.action = 'chat-rules-help'; document.body.append(b); b.click(); b.remove(); });
+  await A.page.locator('.modal:not(.closing) .modal-title', { hasText: 'Chat freischalten' }).waitFor();
+  await A.page.locator('.modal:not(.closing) [data-copy]').click();
+  await A.page.locator('.modal:not(.closing) [data-copy]', { hasText: 'Kopiert' }).waitFor();
+  const copied = await A.page.evaluate(() => navigator.clipboard.readText());
+  const myUid = await A.page.evaluate(() => window.GymCloud.currentUser().uid);
+  assert.ok(copied.includes('service cloud.firestore') && copied.includes('match /rooms/{room}'), 'kopiert die Regeln samt Chat');
+  assert.ok(copied.includes("'" + myUid + "'") && !copied.includes('ADMIN-NUTZER-ID-HIER-EINTRAGEN'), 'eigene Nutzer-ID statt Platzhalter');
+  assert.match(await A.page.locator('.modal:not(.closing) a.btn', { hasText: 'Firebase-Regeln öffnen' }).getAttribute('href'), /^https:\/\/console\.firebase\.google\.com\/project\/demo-gym\/firestore\/databases\/-default-\/rules$/);
+  await A.page.locator('.modal:not(.closing) [data-close]').last().click();
 
   // --- Konto löschen räumt auch den Chat auf ---
   await B.page.goto(base + '/#/settings/account');

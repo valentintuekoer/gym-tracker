@@ -1,6 +1,6 @@
 ---
 name: Gym Tracker
-description: Training, Pausen-Timer, Ernährung und Fortschritt – „Liquid Glass“: blauer Verlauf mit Farbflecken, Glas aus fünf Schichten, einfarbig, nah an iOS, gebaut für eine Hand im Gym.
+description: Training, Pausen-Timer, Daily (Gewicht & Mealplan) und Fortschritt – „Liquid Glass“: blauer Verlauf mit Farbflecken, Glas aus fünf Schichten, einfarbig, nah an iOS, gebaut für eine Hand im Gym.
 colors:
   bg-dark: "#081120"
   bg-a-dark: "#060d1c"
@@ -180,7 +180,7 @@ Zwei Themes über `data-theme="dark|light"` auf `<html>`; „System“ folgt `pr
 | `--border`, `--border-strong` | Haarlinien, Umrandungen |
 | `--glass-*` | ältere Namen für dasselbe Material (Timer, Toast, Sheets) |
 
-Vergleiche (Freunde, Makros): **Du = `--inv`** (Akzent), **andere = `--muted`**. Makros unterscheiden sich zusätzlich durch Muster (voll / schraffiert / gepunktet) – Information nie nur über Helligkeit.
+Vergleiche (Freunde): **Du = `--inv`** (Akzent), **andere = `--muted`** – Information nie nur über Helligkeit (Beschriftung „Du“ / „@name“ steht immer dabei).
 
 `@media (prefers-contrast: more)` hebt `--muted`, Linien und Glas-Deckkraft an (iOS: „Kontrast erhöhen“).
 
@@ -235,7 +235,7 @@ Radien: 4/8 für Kleinteile · Eingabe 14 · kleine Karte/Listeneintrag 20 · Ka
 - **Vergleichsbalken (`.cmp`):** Beschriftung „Du“/„@name“, Track `--surface-2`, Füllung per `scaleX`.
 - **Toast:** unten über der Tab-Leiste, optional mit „Rückgängig“ (5 s).
 - **Laufendes Training:** Die Seite steht fest (`body.wk-lock`) – kein vertikales Scrollen, nur seitliches Wischen zwischen den Übungskarten. Jede Karte füllt den freien Bereich bis zur Tab-Leiste bzw. zum Pausentimer; ist sie länger, scrollt nur sie (unten weich ausgeblendet). Nach dem Abhaken rollt die Karte zum nächsten offenen Satz. Weitere Aktionen (Übung hinzufügen, Plan bearbeiten, Verwerfen) im „⋯“-Menü der Kopfzeile neben „Beenden“.
-- **Tab-Leiste:** vier Reiter – Training, Daily, Chat, Profil (Verlauf, Bibliothek und Kalorien-Tagebuch öffnen sich aus dem Profil; dabei bleibt der Reiter hervorgehoben, von dem man kam).
+- **Tab-Leiste:** vier Reiter – Training, Daily, Chat, Profil (Verlauf und Bibliothek öffnen sich aus dem Profil; dabei bleibt der Reiter hervorgehoben, von dem man kam).
 - **Daily (`#/daily`):** Streifen der letzten 7 Tage (`.dstrip`: Pillen, gewählter Tag in `--inv`, Punkt leer/halb/voll = Mealplan-Fortschritt), Karte **Gewicht** (Eingabe + „Speichern/Ändern“, Zeile „± seit …“, Diagramm), Karte **Mealplan** (`.meal-row`: runder Haken `--inv`, Name 17/650 – abgehakt durchgestrichen und gedämpft –, Uhrzeit · Beschreibung, Kalorien rechts; Fortschrittsbalken `.meter` und „3 / 5“). Bearbeiten auf `#/daily/plan` (Zeilen mit Hoch/Runter/Löschen), Neu/Ändern als Sheet.
 - **Chat (`.chat`):** feststehende Seite (`body.chat-lock`) – nur die Nachrichtenliste scrollt, das Eingabefeld sitzt über der Tab-Leiste (mit Tastatur: Tab-Leiste und „Heute im Gym“ weg). Eigene Nachrichten rechts in der Akzentfläche (`--inv`), fremde links in `--surface-3` mit Avatar (32 px) und @Name; gruppiert innerhalb 5 min, Tagestrenner als Pille. Gym-Karte (`.plan`): 1,5-px-Umriss `--border-strong`, runder Kreis mit Hantel-Icon in `--inv`, Zeit als Titel, Teilnehmer als überlappende Avatare, ein Knopf „Ich komme mit“ (`primary`) bzw. „Ich komme doch nicht mit“ (`soft`). „Heute im Gym“ (`.chat-today`): Karte mit horizontal scrollenden Zeit-Kacheln. Fehlgeschlagene Nachrichten: gestrichelter Umriss, Warn-Icon, „Erneut senden“.
 - **Aufwärmsätze (`.set.warm`):** gleiche Zeile wie ein Arbeitssatz, Nummer „A“/„A1…“ statt Zahl; übersprungene (offen, obwohl schon ein Arbeitssatz abgehakt ist) werden wie erledigte gedimmt (`.passed`). Im Verlauf: „A“ + kleines Label „Aufwärmen“, gedämpfte Farbe, kein 1RM. Unter jeder Übungskarte zwei gleich breite Knöpfe „+ Satz“ / „Aufwärmen“ (`.set-adds`).

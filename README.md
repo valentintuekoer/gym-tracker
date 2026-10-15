@@ -160,7 +160,7 @@ QR-Code) → der Freund nimmt unter *Anfragen* an → Freund antippen = Vergleic
 
 Was geteilt wird (nur mit bestätigten Freunden): Benutzername, Foto, Einheiten pro Tag, Wochen-Serie, Gesamtzahl,
 Volumen pro Tag sowie – abschaltbar – Rekorde bei Übungen aus der Bibliothek (über die feste Übungs-ID vergleichbar).
-Nie geteilt: einzelne Sätze, Gewichte pro Satz, Notizen, Pläne, Ernährung, Körpermaße, E-Mail.
+Nie geteilt: einzelne Sätze, Gewichte pro Satz, Notizen, Pläne, Ernährung, Mealplan, Körpermaße, E-Mail.
 Benutzername und Foto sind zusätzlich für angemeldete Nutzer in der Suche sichtbar.
 Ohne Internet zeigt die App die zuletzt geladenen Freundesdaten mit „zuletzt aktualisiert am …“.
 
@@ -182,6 +182,22 @@ Eigenständige Demo für ein Glas-Material im Apple-Stil mit schwebender Tab-Lei
 Richtungs-Übergängen – als Web Components ohne Framework. Ohne Einfluss auf die App.
 Öffnen: [`liquid-glass/liquid-glass-demo.html`](liquid-glass/liquid-glass-demo.html) (eine Datei, Doppelklick genügt) bzw.
 nach dem Veröffentlichen `…/liquid-glass/index.html`. Doku: [`liquid-glass/README.md`](liquid-glass/README.md).
+
+## Daily: Gewicht & Mealplan
+
+Die Tab-Leiste hat vier Reiter: **Training**, **Daily**, **Chat**, **Profil**. *Verlauf*, *Bibliothek* und das
+*Kalorien-Tagebuch* haben keinen eigenen Reiter mehr, sondern öffnen sich im **Profil** (die Seiten und Daten sind unverändert).
+
+*Daily* gilt für jeden Tag:
+
+- **Gewicht** eintragen (Komma oder Punkt, 20–500 kg). Es ist dieselbe Messung wie unter *Profil → Verlauf → Körper*:
+  am selben Tag ändert ein neuer Wert die Messung, statt eine zweite anzulegen. Darunter „± seit …“ und der Verlauf der letzten 30 Messungen.
+- **Mealplan**: einmal anlegen (Name, Uhrzeit, Beschreibung, Kalorien – alles außer dem Namen optional; bis zu 20 Mahlzeiten,
+  Reihenfolge änderbar, auf Wunsch mit einem Beispielplan als Start). Jeden Tag hakst du die Mahlzeiten ab – Fortschritt
+  („3 / 5“, Kalorien) und Streifen der letzten 7 Tage zeigen, wie viel geschafft ist. Über den Streifen kannst du
+  einen der letzten 6 Tage nachtragen.
+- Mealplan und Abhak-Verlauf liegen bei den Einstellungen und werden wie diese mit dem Konto abgeglichen – ohne neue
+  Cloud-Felder, die Firestore-Regeln bleiben unverändert. Sie werden nie mit Freunden geteilt.
 
 ## Mitglieder-Chat
 

@@ -1041,3 +1041,106 @@ test('Chat-Listen: zusammenführen, „Heute im Gym“, Teilnehmer', () => {
   assert.equal(Core.chatWorkoutLabel('legs'), 'Legs');
   assert.equal(Core.chatWorkoutLabel('x'), '');
 });
+
+test('Daily: Mealplan anlegen, ändern, sortieren, abhaken, löschen', () => {
+  const db = Core.emptyData();
+  assert.deepEqual(db.settings.mealPlan, []);
+  assert.deepEqual(Core.emptyData().settings.mealPlan, []); // jede Datenbank hat ihre eigene Liste
+
+  // ohne Namen wird nichts angelegt; Uhrzeit, Kalorien und Texte werden bereinigt
+  assert.equal(Core.addMeal(db, { name: '   ' }), null);
+  const a = Core.addMeal(db, { name: '  Frühstück ', time: '8:05', note: ' Haferflocken ', kcal: '520,4' });
+  assert.deepEqual({ ...a, id: 0 }, { id: 0, name: 'Frühstück', time: '08:05', note: 'Haferflocken', kcal: 520 });
+  const b = Core.addMeal(db, { name: 'Mittag', time: '25:99', kcal: -5 });
+  assert.equal(b.time, '');
+  assert.equal(b.kcal, null);
+  const c = Core.addMeal(db, { name: 'Abend', time: '19:30' });
+  assert.deepEqual(db.settings.mealPlan.map((m) => m.name), ['Frühstück', 'Mittag', 'Abend']);
+
+  // ändern (Name darf nicht leer werden), verschieben
+  assert.equal(Core.updateMeal(db, b.id, { name: '' }), null);
+  assert.equal(Core.updateMeal(db, b.id, { name: 'Mittagessen', kcal: 740 }).kcal, 740);
+  assert.equal(Core.moveMeal(db, 2, 0), true);
+  assert.equal(Core.moveMeal(db, 0, 9), false);
+  assert.deepEqual(db.settings.mealPlan.map((m) => m.name), ['Abend', 'Frühstück', 'Mittagessen']);
+
+  // abhaken: pro Tag, wieder lösbar, Fortschritt und Kalorien
+  const day = '2026-10-15';
+  assert.equal(Core.toggleMeal(db, day, a.id), true);
+  assert.equal(Core.toggleMeal(db, day, b.id), true);
+  assert.deepEqual(Core.mealProgress(db, day), { done: 2, total: 3, kcalDone: 1260, kcalTotal: 1260 });
+  assert.deepEqual(Core.mealProgress(db, '2026-10-14'), { done: 0, total: 3, kcalDone: 0, kcalTotal: 1260 });
+  assert.equal(Core.toggleMeal(db, day, a.id), false);
+  assert.deepEqual(Core.mealsDone(db, day), [b.id]);
+  assert.equal(Core.toggleMeal(db, 'kaputt', a.id), false); // ungültiger Tag
+  assert.equal(Core.toggleMeal(db, day, 'gibt-es-nicht'), false);
+  assert.equal(Core.toggleMeal(db, day, b.id), false); // letzte gelöst → Tag verschwindet aus dem Verlauf
+  assert.deepEqual(db.settings.mealLog, {});
+
+  // Wochenstreifen: 7 Tage, älteste zuerst, endet am angegebenen Tag
+  Core.toggleMeal(db, day, c.id);
+  const week = Core.mealWeek(db, day, 7);
+  assert.equal(week.length, 7);
+  assert.equal(week[6].key, day);
+  assert.equal(week[0].key, '2026-10-09');
+  assert.equal(week[6].done, 1);
+  assert.equal(week[5].done, 0);
+
+  // Löschen räumt auch den Verlauf auf
+  assert.equal(Core.deleteMeal(db, c.id), true);
+  assert.deepEqual(db.settings.mealLog, {});
+  assert.equal(db.settings.mealPlan.length, 2);
+
+  // höchstens 20 Mahlzeiten
+  while (Core.addMeal(db, { name: 'x' })) { /* auffüllen */ }
+  assert.equal(db.settings.mealPlan.length, 20);
+});
+
+test('Daily: Mealplan übersteht Speichern, Import und Cloud-Abgleich (bereinigt)', () => {
+  const db = Core.emptyData();
+  Core.sampleMeals().forEach((m) => Core.addMeal(db, m));
+  Core.toggleMeal(db, '2026-10-15', db.settings.mealPlan[1].id);
+  const copy = Core.normalize(JSON.parse(JSON.stringify(db)));
+  assert.deepEqual(copy.settings.mealPlan, db.settings.mealPlan);
+  assert.deepEqual(copy.settings.mealLog, db.settings.mealLog);
+
+  // Müll wird entfernt: doppelte IDs, falsche Tage, leere Listen, uralte Einträge
+  const dirty = Core.normalize({ days: [], settings: {
+    mealPlan: [{ id: 'a', name: 'A' }, { id: 'a', name: 'doppelt' }, null, 'x', { id: 'b' }],
+    mealLog: { '2026-10-15': ['a', 'a', 7], 'morgen': ['a'], '2026-10-14': [] },
+  } });
+  assert.deepEqual(dirty.settings.mealPlan.map((m) => [m.id, m.name]), [['a', 'A'], ['b', 'Mahlzeit']]);
+  assert.deepEqual(dirty.settings.mealLog, { '2026-10-15': ['a', '7'] });
+  assert.deepEqual(Core.normalize({ days: [] }).settings.mealPlan, []);
+  const many = {};
+  for (let i = 0; i < 500; i++) many[new Date(2025, 0, 1 + i, 12).toISOString().slice(0, 10)] = ['a'];
+  assert.equal(Object.keys(Core.normMealLog(many)).length, 400);
+});
+
+test('Daily: Gewicht für einen Tag eintragen und ändern (gleiche Messungen wie im Verlauf)', () => {
+  const db = Core.emptyData();
+  const day = '2026-10-15';
+  assert.equal(Core.weightOn(db, day), null);
+  assert.equal(Core.setWeightOn(db, day, '5'), null);      // zu leicht
+  assert.equal(Core.setWeightOn(db, day, '600'), null);    // zu schwer
+  assert.equal(Core.setWeightOn(db, day, 'abc'), null);
+  const first = Core.setWeightOn(db, day, '82,46');
+  assert.equal(first.weight, 82.5);
+  assert.equal(Core.dayKey(first.date), day);
+  assert.equal(db.body.length, 1);
+
+  // am selben Tag ändern statt doppelt anlegen – andere Maße der Messung bleiben
+  Core.saveBodyEntry(db, { ...first, waist: 90 });
+  const again = Core.setWeightOn(db, day, 81.9);
+  assert.equal(again.id, first.id);
+  assert.equal(db.body.length, 1);
+  assert.equal(db.body[0].waist, 90);
+  assert.equal(Core.weightOn(db, day).weight, 81.9);
+
+  // vorheriger Wert für „± seit …“
+  assert.equal(Core.weightBefore(db, day), null);
+  Core.setWeightOn(db, '2026-10-12', 83.4);
+  assert.equal(Core.weightBefore(db, day).weight, 83.4);
+  assert.equal(Core.weightBefore(db, '2026-10-12'), null);
+  assert.deepEqual(db.body.map((e) => e.weight), [83.4, 81.9]);
+});

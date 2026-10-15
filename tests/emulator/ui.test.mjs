@@ -154,7 +154,7 @@ test.after(async () => {
   if (server) server.close();
 });
 
-test('Ohne Konto und ohne Firebase: Training, Timer, Ernährung, Bibliothek, Verlauf, Profil', async () => {
+test('Ohne Konto und ohne Firebase: Training, Timer, Kalorien-Tagebuch, Bibliothek, Verlauf, Profil', async () => {
   const { ctx, page } = await device('gast', { cloud: false });
   await openApp(page);
   await page.locator('.btn.apple').waitFor(); // „Mit Apple anmelden“ wird angeboten
@@ -229,8 +229,12 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Ernährung, Bibliothek, Ver
   ]);
   assert.equal(popup.url().split('#')[0], 'https://maps.apple.com/?daddr=52.520008%2C13.404954&dirflg=w');
   await popup.close();
-  // Ernährung: Schnelleingabe
-  await page.locator('.tab[data-tab="food"]').click();
+  // Vier Reiter: Training, Daily, Chat, Profil – Verlauf, Bibliothek und Kalorien-Tagebuch öffnen sich aus dem Profil
+  assert.deepEqual(await page.locator('.tab').evaluateAll((els) => els.map((e) => e.dataset.tab)), ['home', 'daily', 'chat', 'profile']);
+  await page.locator('.tab[data-tab="profile"]').click();
+  await page.locator('.profile-hero h2', { hasText: 'Ohne Konto' }).waitFor();
+  // Kalorien-Tagebuch: Schnelleingabe
+  await page.locator('a[href="#/food"]').click();
   await page.locator('[data-action="food-add"][data-meal="lunch"]').click();
   await dlgButton(page, 'Schnelleingabe').click();
   await page.fill('.modal:not(.closing) #dlg-input', 'Pasta');
@@ -238,14 +242,17 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Ernährung, Bibliothek, Ver
   await page.locator('.modal:not(.closing) #dlg-input').fill('650');
   await dlgButton(page, 'Speichern').click();
   await page.locator('.food-row', { hasText: 'Pasta' }).waitFor();
+  assert.equal(await page.locator('.tab.active').getAttribute('data-tab'), 'profile'); // Profil bleibt hervorgehoben
+  await page.locator('.app-header a.hdr-btn[href="#/profile"]').click();
   // Bibliothek lädt die Übungen
-  await page.locator('.tab[data-tab="library"]').click();
+  await page.locator('a[href="#/library"]').click();
   await page.locator('.section-label', { hasText: 'Alle Übungen (207)' }).waitFor();
+  await page.locator('.app-header a.hdr-btn[href="#/profile"]').click();
   // Verlauf zeigt die Einheit
-  await page.locator('.tab[data-tab="history"]').click();
+  await page.locator('a[href="#/history"]').click();
   await page.locator('.list-item.card-like', { hasText: 'Push' }).waitFor();
+  await page.locator('.app-header a.hdr-btn[href="#/profile"]').click();
   // Profil ohne Konto: eigene Kennzahlen + Hinweis, keine Fehler
-  await page.locator('.tab[data-tab="profile"]').click();
   await page.locator('.profile-hero h2', { hasText: 'Ohne Konto' }).waitFor();
   assert.match(await page.locator('.stats').innerText(), /1\s*Einheiten/);
   await page.locator('.social-cta', { hasText: 'Mit Freunden vergleichen' }).waitFor();
@@ -259,6 +266,102 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Ernährung, Bibliothek, Ver
   const data = await page.evaluate(() => JSON.parse(localStorage.getItem('gymtracker.data.v1')));
   assert.equal(data.sessions.length, 1);
   assert.equal(data.nutrition.length, 1);
+  await ctx.close();
+});
+
+test('Daily: Gewicht eintragen, Mealplan anlegen, jeden Tag abhaken', async () => {
+  const errorsBefore = errors.length;
+  const { ctx, page } = await device('daily', { cloud: false });
+  await openApp(page);
+  await page.locator('[data-action="auth-guest"]').click();
+  await waitHash(page, /#\/setup/);
+  for (let i = 0; i < 4; i++) await page.locator('[data-action="setup-next"]').click();
+  await waitHash(page, /#\/$/);
+  await page.locator('.tab[data-tab="daily"]').click();
+  await waitHash(page, /#\/daily/);
+  await page.locator('.large-title', { hasText: 'Daily' }).waitFor();
+
+  // Gewicht: ungültig wird abgelehnt, gültig gespeichert (Komma ok) und danach geändert statt doppelt angelegt
+  await page.fill('#weight-form input[name="weight"]', '5');
+  await page.locator('#weight-form button[type="submit"]').click();
+  await page.locator('.toast-msg', { hasText: 'zwischen 20 und 500 kg' }).waitFor();
+  await page.fill('#weight-form input[name="weight"]', '82,46');
+  await page.locator('#weight-form button[type="submit"]').click();
+  await page.locator('.daily-head .count', { hasText: 'gespeichert' }).waitFor();
+  assert.equal(await page.locator('#weight-form input[name="weight"]').inputValue(), '82,5');
+  await page.fill('#weight-form input[name="weight"]', '81,9');
+  await page.locator('#weight-form button[type="submit"]').click();
+  await page.waitForFunction(() => window.GymApp.db.body.length === 1 && window.GymApp.db.body[0].weight === 81.9);
+
+  // Mealplan: leer → Beispielplan → eigene Mahlzeit mit Uhrzeit, Beschreibung, Kalorien
+  await page.locator('[data-action="meal-sample"]').click();
+  assert.equal(await page.locator('.meal-row').count(), 4);
+  await page.locator('a[href="#/daily/plan"]').click();
+  await waitHash(page, /#\/daily\/plan/);
+  await page.locator('.hdr-btn[data-action="meal-add"]').click();
+  await page.fill('.modal:not(.closing) #meal-form input[name="name"]', 'Shake nach dem Training');
+  await page.fill('.modal:not(.closing) #meal-form input[name="time"]', '18:45');
+  await page.fill('.modal:not(.closing) #meal-form input[name="kcal"]', '320');
+  await page.fill('.modal:not(.closing) #meal-form input[name="note"]', 'Whey + Banane');
+  await page.locator('.modal:not(.closing) #meal-form button[type="submit"]').click();
+  await page.locator('.meal-edit', { hasText: 'Shake nach dem Training' }).waitFor();
+  // Reihenfolge ändern: nach oben
+  await page.locator('.meal-edit', { hasText: 'Shake nach dem Training' }).locator('[data-action="meal-up"]').click();
+  await page.waitForFunction(() => window.GymApp.db.settings.mealPlan[3].name === 'Shake nach dem Training');
+  // Name ändern
+  await page.locator('.meal-edit-main', { hasText: 'Snack' }).click();
+  await page.fill('.modal:not(.closing) #meal-form input[name="name"]', 'Mittags-Snack');
+  await page.locator('.modal:not(.closing) #meal-form button[type="submit"]').click();
+  await page.locator('.meal-edit', { hasText: 'Mittags-Snack' }).waitFor();
+  await page.locator('.app-header a.hdr-btn[href="#/daily"]').click();
+  await waitHash(page, /#\/daily$/);
+
+  // Abhaken: Fortschritt, Kalorien, Durchgestrichen, bleibt nach dem Neuladen erhalten
+  assert.equal(await page.locator('.meal-row').count(), 5);
+  await page.locator('.meal-row', { hasText: 'Frühstück' }).click();
+  await page.locator('.meal-row.done', { hasText: 'Frühstück' }).waitFor();
+  await page.locator('.meal-row', { hasText: 'Shake nach dem Training' }).click();
+  await page.locator('.daily-head .count', { hasText: '2 / 5' }).waitFor();
+  await page.locator('.daily-meals .daily-sub', { hasText: '320 von 320 kcal' }).waitFor();
+  assert.equal(await page.locator('.meal-row[aria-checked="true"]').count(), 2);
+  assert.equal(await page.locator('.dstrip-day.sel .dstrip-dot.part').count(), 1);
+  await page.reload();
+  await page.locator('.meal-row.done', { hasText: 'Frühstück' }).waitFor();
+  assert.equal(await page.locator('.meal-row[aria-checked="true"]').count(), 2);
+  // wieder lösen
+  await page.locator('.meal-row.done', { hasText: 'Frühstück' }).click();
+  await page.locator('.daily-head .count', { hasText: '1 / 5' }).waitFor();
+
+  // Gestern nachtragen: eigener Stand pro Tag
+  await page.locator('.dstrip-day').nth(5).click();
+  await page.locator('.dstrip-day.sel').nth(0).waitFor();
+  assert.equal(await page.locator('.meal-row[aria-checked="true"]').count(), 0);
+  await page.locator('.meal-row', { hasText: 'Abendessen' }).click();
+  await page.locator('.daily-head .count', { hasText: '1 / 5' }).waitFor();
+  await page.locator('.dstrip-day').nth(6).click(); // heute: unverändert 1 / 5 (Shake)
+  assert.equal(await page.locator('.meal-row[aria-checked="true"]').count(), 1);
+
+  // Alles gespeichert: Mealplan, Abhak-Verlauf und Gewicht (inkl. Verlauf → Körper)
+  const data = await page.evaluate(() => JSON.parse(localStorage.getItem('gymtracker.data.v1')));
+  assert.equal(data.settings.mealPlan.length, 5);
+  assert.equal(Object.keys(data.settings.mealLog).length, 2);
+  assert.equal(data.body[0].weight, 81.9);
+  // Mahlzeit löschen räumt auch den Abhak-Verlauf auf
+  await page.locator('a[href="#/daily/plan"]').click();
+  await page.locator('.meal-edit', { hasText: 'Shake nach dem Training' }).locator('[data-action="meal-del"]').click();
+  await dlgButton(page, 'Löschen').click();
+  await page.locator('.meal-edit', { hasText: 'Shake nach dem Training' }).waitFor({ state: 'detached' });
+  assert.equal(await page.evaluate(() => Object.values(window.GymApp.db.settings.mealLog).flat().length), 1);
+  // „Alle Messungen“ führt zum Verlauf (Körper), der Zurück-Pfeil zurück zu Daily
+  await page.locator('.app-header a.hdr-btn[href="#/daily"]').click();
+  await waitHash(page, /#\/daily$/);
+  await page.locator('[data-action="open-body"]').click();
+  await waitHash(page, /#\/history/);
+  await page.locator('.body-tile', { hasText: 'Körpergewicht' }).waitFor();
+  assert.equal(await page.locator('.tab.active').getAttribute('data-tab'), 'daily');
+  await page.locator('.app-header a.hdr-btn[href="#/daily"]').click();
+  await waitHash(page, /#\/daily$/);
+  assert.equal(errors.length, errorsBefore, errors.slice(errorsBefore).join('\n'));
   await ctx.close();
 });
 

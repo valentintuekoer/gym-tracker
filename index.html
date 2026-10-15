@@ -62,7 +62,7 @@
       <div class="timer-controls" id="timer-controls">
         <button class="tbtn" data-timer="minus" aria-label="15 Sekunden weniger">−15</button>
         <button class="tbtn" data-timer="plus" aria-label="15 Sekunden mehr">+15</button>
-        <button class="tbtn tbtn-accent" data-timer="skip">Überspringen</button>
+        <button class="tbtn tbtn-accent" data-timer="skip" aria-label="Pause überspringen"><span class="tbtn-long">Überspringen</span><span class="tbtn-short" aria-hidden="true">Weiter</span></button>
       </div>
       <div class="timer-controls" id="timer-done-controls" hidden>
         <button class="tbtn tbtn-accent tbtn-wide" data-timer="dismiss">Los geht’s</button>
@@ -76,17 +76,9 @@
       <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/></svg>
       <span>Training</span><i class="tab-dot" id="tab-dot" hidden></i>
     </a>
-    <a href="#/history" class="tab" data-tab="history">
-      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 20h17M6 15.5l4-4.5 3.5 3L19 7.5"/></svg>
-      <span>Verlauf</span>
-    </a>
-    <a href="#/food" class="tab" data-tab="food">
-      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7.3c-1.6-1.3-5.2-1.6-6.5 1.4-1.4 3 .1 7.8 2.5 10.3 1.2 1.3 2.4 1.4 4 .6 1.6.8 2.8.7 4-.6 2.4-2.5 3.9-7.3 2.5-10.3-1.3-3-4.9-2.7-6.5-1.4zM12 7.3c0-1.9.9-3.3 2.6-4.1"/></svg>
-      <span>Ernährung</span>
-    </a>
-    <a href="#/library" class="tab" data-tab="library">
-      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.5C10.4 5 8 4.5 4 4.5v14c4 0 6.4.5 8 2 1.6-1.5 4-2 8-2v-14c-4 0-6.4.5-8 2zM12 6.5v14"/></svg>
-      <span>Bibliothek</span>
+    <a href="#/daily" class="tab" data-tab="daily">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M8.5 3v4M15.5 3v4M9 15l2 2 4-4"/></svg>
+      <span>Daily</span>
     </a>
     <a href="#/chat" class="tab" data-tab="chat">
       <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H11l-4.5 3.5V16.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"/></svg>

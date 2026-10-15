@@ -432,3 +432,45 @@ test('Veralteter Zwischenstand "Hauptdokument fehlt" löscht nichts und meldet n
   assert.equal(server.writes, writes, 'nichts zurückgeschrieben');
   assert.equal(A.engine.pending(), false);
 });
+
+test('Daily: Mealplan, Abhaken und Gewicht kommen auf dem anderen Gerät an', async () => {
+  const server = new FakeServer();
+  const A = await firstDevice(server);
+  const B = device(server, Core.emptyData());
+  B.engine.start(); await settle();
+
+  Core.sampleMeals().forEach((m) => Core.addMeal(A.db, m));
+  Core.toggleMeal(A.db, '2026-10-15', A.db.settings.mealPlan[0].id);
+  Core.setWeightOn(A.db, '2026-10-15', 82.4);
+  A.change(); await settle();
+  assert.equal(B.db.settings.mealPlan.length, 4);
+  assert.deepEqual(B.db.settings.mealLog, A.db.settings.mealLog);
+  assert.equal(Core.weightOn(B.db, '2026-10-15').weight, 82.4);
+  assert.equal(snapshot(A.db), snapshot(B.db));
+
+  // auf dem zweiten Gerät abhaken → kommt zurück
+  Core.toggleMeal(B.db, '2026-10-15', B.db.settings.mealPlan[1].id);
+  B.change(); await settle();
+  assert.equal(Core.mealsDone(A.db, '2026-10-15').length, 2);
+  assert.equal(snapshot(A.db), snapshot(B.db));
+});
+
+test('Daily: Mealplan eines Geräts ohne Konto wird beim Anmelden übernommen', () => {
+  const guest = Core.emptyData();
+  Core.sampleMeals().forEach((m) => Core.addMeal(guest, m));
+  assert.equal(Sync.hasUserContent(guest), true);
+  // Konto ohne eigene Daten → alles vom Gerät
+  const empty = Core.emptyData();
+  Sync.mergeGuest(empty, guest);
+  assert.equal(empty.settings.mealPlan.length, 4);
+  // Konto mit Daten, aber ohne Mealplan → Mealplan vom Gerät dazu; mit eigenem Mealplan bleibt der des Kontos
+  const full = Core.emptyData();
+  Core.saveBodyEntry(full, { date: T0, weight: 80 });
+  Sync.mergeGuest(full, guest);
+  assert.equal(full.settings.mealPlan.length, 4);
+  const own = Core.emptyData();
+  Core.saveBodyEntry(own, { date: T0, weight: 80 });
+  Core.addMeal(own, { name: 'Mein Plan' });
+  Sync.mergeGuest(own, guest);
+  assert.deepEqual(own.settings.mealPlan.map((m) => m.name), ['Mein Plan']);
+});

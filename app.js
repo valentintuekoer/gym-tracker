@@ -2232,6 +2232,8 @@
     edit: svgI('<path d="M4.5 19.5h4l10.5-10.5-4-4L4.5 15.5zM13.5 6.5l4 4"/>'),
     play: svgI('<path class="fill" d="M8 5.5v13l10-6.5z"/>'),
     chevron: svgI('<path d="M9 5l7 7-7 7"/>'),
+    sun: svgI('<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>'),
+    moon: svgI('<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>'),
     flame: svgI('<path d="M12 21c3.6 0 6-2.4 6-5.8 0-3.7-2.8-5.6-3.6-8.7-.3 1.6-1 2.8-2.2 3.6C12.5 7.3 11 4.7 8.6 3c.4 3.3-2.6 5.8-2.6 10.2C6 18.6 8.4 21 12 21z"/>'),
     bulb: svgI('<path d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>'),
     warn: svgI('<path d="M12 4 2.8 19.5h18.4zM12 10v4.5M12 17.2h.01"/>'),
@@ -2971,13 +2973,13 @@
     else location.hash = hash;
   }
 
-  function setHeader({ title, back, actions, large, hidden, eyebrow }) {
+  function setHeader({ title, back, actions, large, hidden, eyebrow, brand }) {
     const h = $('#header');
     h.hidden = !!hidden;
     h.className = 'app-header' + (large ? ' large' : '');
     h.innerHTML = `
       <div class="hdr-bg" aria-hidden="true"></div>
-      <div class="hdr-side">${back ? `<a class="hdr-btn" href="${back}" aria-label="Zurück">${ICON.back}<span>Zurück</span></a>` : ''}</div>
+      <div class="hdr-side">${back ? `<a class="hdr-btn" href="${back}" aria-label="Zurück">${ICON.back}<span>Zurück</span></a>` : brand ? '<span class="hdr-brand"><i class="brand-dot" aria-hidden="true"></i>Gym Tracker</span>' : ''}</div>
       <h1 class="hdr-title">${esc(title)}</h1>
       <div class="hdr-side right">${actions || ''}</div>`;
     ui.hdr = { title, back: back || null, large: !!large, eyebrow: eyebrow || '', set: true };
@@ -3433,7 +3435,12 @@
       return;
     }
     const now = Date.now();
-    setHeader({ title: 'Training', large: true, eyebrow: new Date(now).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }) });
+    const dark = document.documentElement.dataset.theme === 'dark';
+    setHeader({
+      title: 'Training', large: true, brand: true,
+      eyebrow: new Date(now).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }),
+      actions: `<button class="hdr-btn" data-action="theme-toggle" aria-label="${dark ? 'Zum hellen Design wechseln' : 'Zum dunklen Design wechseln'}">${dark ? ICON.moon : ICON.sun}</button>`,
+    });
     const s = db.activeSession;
     const active = s ? `
       <a class="active-banner" href="#/workout">
@@ -3464,7 +3471,8 @@
 
     view.innerHTML = `
       ${active}
-      ${db.sessions.length ? weekCard() : ''}
+      ${db.sessions.length ? weekCard() + kpiCards(now) : ''}
+      ${db.days.length && !s ? nextCard(now) : ''}
       ${db.days.length ? gymCard() : ''}
       ${db.days.length ? `
         <div class="day-list">${cards}</div>
@@ -3551,16 +3559,67 @@
       </div>`;
   }
 
-  /** Kleine Karte „Diese Woche 2 von 3 · 🔥 4 Wochen in Folge“ */
+  /** Große Karte „3 / 4“ mit Fortschrittsring: Einheiten diese Woche (Tipp öffnet den Kalender) */
   function weekCard() {
     const w = Core.weekStats(db, Date.now(), db.settings.weeklyGoal);
-    const dots = Array.from({ length: w.goal }, (_, i) => `<i class="${i < w.thisWeek ? 'on' : ''}"></i>`).join('');
+    const C = 314.16; // Umfang des Rings (r = 50)
+    const offset = (C * (1 - Math.min(1, w.thisWeek / Math.max(1, w.goal)))).toFixed(2);
+    const left = w.goal - w.thisWeek;
+    const text = left <= 0 ? 'Wochenziel erreicht – stark!' : 'Einheiten diese Woche. ' + (left === 1 ? 'Noch eine' : 'Noch ' + left) + ' bis zum Wochenziel.';
     return `
-      <button class="week-card" data-action="open-calendar" aria-label="Diese Woche: ${w.thisWeek} von ${w.goal}">
-        <span class="week-num" aria-hidden="true"><b>${w.thisWeek}</b><small>/${w.goal}</small></span>
-        <span class="week-text"><strong>Diese Woche</strong>
-          <small>${w.streak ? ICON.flame + w.streak + (w.streak === 1 ? ' Woche' : ' Wochen') + ' in Folge geschafft' : 'Wochenziel: ' + w.goal + '× trainieren'}</small></span>
-        <span class="week-dots" aria-hidden="true">${dots}</span>
+      <button class="hero-card" data-action="open-calendar" aria-label="Diese Woche: ${w.thisWeek} von ${w.goal} Einheiten. Kalender öffnen">
+        <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="ring-bg" cx="60" cy="60" r="50"/>
+          <circle class="ring-fg" cx="60" cy="60" r="50" transform="rotate(-90 60 60)" stroke-dasharray="${C}" stroke-dashoffset="${offset}" style="--ring-from:${C}"/>
+        </svg>
+        <span class="hero-text">
+          <span class="hero-big"><b>${w.thisWeek}</b><small> / ${w.goal}</small></span>
+          <span class="hero-sub">${text}</span>
+        </span>
+      </button>`;
+  }
+
+  /** Zwei Kennzahlen: Volumen der letzten 7 Tage (im Vergleich zur Vorwoche) und Wochen-Serie */
+  function kpiCards(now) {
+    const DAY = 86400000;
+    const vol = (from, to) => db.sessions.reduce((n, x) => (x.finishedAt >= from && x.finishedAt < to ? n + Core.sessionStats(x).volume : n), 0);
+    const v7 = vol(now - 7 * DAY, now + 1);
+    const prev = vol(now - 14 * DAY, now - 7 * DAY);
+    const pct = prev ? Math.round((v7 - prev) / prev * 100) : null;
+    const w = Core.weekStats(db, now, db.settings.weeklyGoal);
+    return `
+      <div class="kpi-pair">
+        <div class="kpi-card">
+          <span class="kpi-label">Volumen</span>
+          <span class="kpi-val">${v7 ? fmtInt(v7) + ' kg' : '–'}</span>
+          <span class="kpi-sub">${pct !== null && v7 ? (pct > 0 ? '+' : '') + pct + ' % zur Vorwoche' : 'Letzte 7 Tage'}</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Serie</span>
+          <span class="kpi-val">${w.streak} ${w.streak === 1 ? 'Woche' : 'Wochen'}</span>
+          <span class="kpi-sub">${w.streak ? 'Ziel jede Woche erreicht' : 'Wochenziel: ' + w.goal + '×'}</span>
+        </div>
+      </div>`;
+  }
+
+  /** „Als Nächstes“: der Trainingstag, der am längsten nicht dran war */
+  function nextCard(now) {
+    const days = db.days.filter((d) => d.exercises.length);
+    if (!days.length) return '';
+    let pick = null, pickAt = Infinity;
+    for (const d of days) {
+      const t = Core.lastTrained(db, d.id) || 0; // nie trainiert = zuerst
+      if (t < pickAt) { pick = d; pickAt = t; }
+    }
+    const mins = Core.estimateMinutes(pick);
+    return `
+      <button class="next-card" data-action="preview-day" data-id="${esc(pick.id)}">
+        <span class="next-main">
+          <span class="kpi-label">Als Nächstes</span>
+          <span class="next-name">${esc(pick.name)}</span>
+          <span class="kpi-sub">${pick.exercises.length} ${pick.exercises.length === 1 ? 'Übung' : 'Übungen'}${mins ? ' · ca. ' + mins + ' min' : ''}</span>
+        </span>
+        <span class="chip-o">${pickAt ? 'zuletzt ' + fmtRelative(pickAt, now) : 'neu'}</span>
       </button>`;
   }
 
@@ -5065,10 +5124,10 @@
   }
 
   /** Menüzeile mit Icon-Kachel, die in eine Unterseite führt (wie in den iOS-Einstellungen). */
-  function menuRow(href, icon, label, value, sub, tone) {
+  function menuRow(href, icon, label, value, sub) {
     return `
       <a class="row menu-row" href="${href}">
-        <span class="row-ic${tone ? ' t-' + tone : ''}" aria-hidden="true">${icon}</span>
+        <span class="row-ic" aria-hidden="true">${icon}</span>
         <span class="row-text"><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</span>
         <span class="row-value">${value || ''} ${ICON.chevron}</span>
       </a>`;
@@ -5115,17 +5174,17 @@
           </span>
           ${ICON.chevron}
         </a>
-        ${ui.isAdmin && isUser() ? `<section class="card flush">${menuRow('#/admin', svgI('<circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3 2.8-4.8 5.5-4.8s4.9 1.8 5.5 4.8M16 7.5h5M18.5 5v5"/>'), 'Nutzerverwaltung', '', 'Alle Konten verwalten', 'violet')}</section>` : ''}
+        ${ui.isAdmin && isUser() ? `<section class="card flush">${menuRow('#/admin', svgI('<circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3 2.8-4.8 5.5-4.8s4.9 1.8 5.5 4.8M16 7.5h5M18.5 5v5"/>'), 'Nutzerverwaltung', '', 'Alle Konten verwalten')}</section>` : ''}
         <section class="card flush">
-          ${menuRow('#/settings/training', ICON.dumbbell, 'Training & Timer', fmtRest(st.defaultRest), 'Pause, Gewichtsschritt, Wochenziel', 'ember')}
-          ${menuRow('#/settings/nutrition', ICON.target, 'Ernährung', st.calorieGoal ? fmtInt(st.calorieGoal) + ' kcal' : '–', 'Kalorien- und Makroziele', 'green')}
-          ${menuRow('#/settings/notifications', ICON.clock, 'Benachrichtigungen & Ton', permShort, 'Signalton, Haptik, Pausen-Hinweis', 'amber')}
-          ${isUser() ? menuRow('#/settings/chat', ICON.chat, 'Chat', (st.chatBlocked || []).length ? (st.chatBlocked.length + ' blockiert') : '', 'Hinweise zu Gym-Karten, blockierte Nutzer', 'blue') : ''}
-          ${menuRow('#/settings/appearance', svgI('<circle cx="12" cy="12" r="8"/><path class="fill" d="M12 4a8 8 0 0 1 0 16z"/>'), 'Darstellung', themeLabel, '', 'violet')}
+          ${menuRow('#/settings/training', ICON.dumbbell, 'Training & Timer', fmtRest(st.defaultRest), 'Pause, Gewichtsschritt, Wochenziel')}
+          ${menuRow('#/settings/nutrition', ICON.target, 'Ernährung', st.calorieGoal ? fmtInt(st.calorieGoal) + ' kcal' : '–', 'Kalorien- und Makroziele')}
+          ${menuRow('#/settings/notifications', ICON.clock, 'Benachrichtigungen & Ton', permShort, 'Signalton, Haptik, Pausen-Hinweis')}
+          ${isUser() ? menuRow('#/settings/chat', ICON.chat, 'Chat', (st.chatBlocked || []).length ? (st.chatBlocked.length + ' blockiert') : '', 'Hinweise zu Gym-Karten, blockierte Nutzer') : ''}
+          ${menuRow('#/settings/appearance', svgI('<circle cx="12" cy="12" r="8"/><path class="fill" d="M12 4a8 8 0 0 1 0 16z"/>'), 'Darstellung', themeLabel)}
         </section>
         <section class="card flush">
-          ${menuRow('#/settings/backup', ICON.inbox, 'Datensicherung', backupOld ? ICON.warn : '', isUser() ? 'In der Cloud · Export als Datei' : 'Letztes Backup: ' + lastBackup, 'teal')}
-          ${menuRow('#/settings/data', ICON.list, 'Daten', `${db.days.length} Tage`, `${db.sessions.length} Einheiten gespeichert`, 'slate')}
+          ${menuRow('#/settings/backup', ICON.inbox, 'Datensicherung', backupOld ? ICON.warn : '', isUser() ? 'In der Cloud · Export als Datei' : 'Letztes Backup: ' + lastBackup)}
+          ${menuRow('#/settings/data', ICON.list, 'Daten', `${db.days.length} Tage`, `${db.sessions.length} Einheiten gespeichert`)}
         </section>
         <p class="hint center">Gym Tracker · ${isUser() ? 'Daten in deinem Konto gespeichert.' : 'Daten bleiben nur auf diesem Gerät.'}</p>`;
       return;
@@ -6028,7 +6087,7 @@
     const t = db.settings.theme;
     const dark = t === 'dark' || (t === 'system' && darkQuery.matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    $('meta[name="theme-color"]').setAttribute('content', dark ? '#07080c' : '#f4f2ef');
+    $('meta[name="theme-color"]').setAttribute('content', dark ? '#081120' : '#f1f4fb');
     // Statusleiste der Home-Bildschirm-App (wirkt ab dem nächsten Start der App)
     const bar = $('meta[name="apple-mobile-web-app-status-bar-style"]');
     if (bar) bar.setAttribute('content', dark ? 'black-translucent' : 'default');
@@ -6881,6 +6940,7 @@
       const ok = await Notify.show('Gym Tracker', 'So sieht die Pausen-Benachrichtigung aus.');
       if (!ok) toast('Benachrichtigung konnte nicht angezeigt werden.');
     },
+    'theme-toggle': () => actions.theme({ dataset: { value: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' } }),
     'theme': (el) => {
       db.settings.theme = el.dataset.value;
       save();
@@ -7711,9 +7771,9 @@
     const m = Core.socialMetrics(full, now);
     const settingsCard = `
       <section class="card flush">
-        ${isUser() && Social.ready() ? menuRow('#/profile/edit', ICON.edit, 'Profil bearbeiten', '', 'Foto, Benutzername, Rekorde teilen', 'ember') : ''}
-        ${isUser() ? `<button class="row menu-row" data-action="privacy-info"><span class="row-ic t-green" aria-hidden="true">${ICON.shield}</span><span class="row-text"><span>Datenschutz</span><small>Was Freunde sehen – und was privat bleibt</small></span><span class="row-value">${ICON.chevron}</span></button>` : ''}
-        ${menuRow('#/settings', ICON.gear, 'Einstellungen', '', 'Training, Ernährung, Konto, Datensicherung', 'slate')}
+        ${isUser() && Social.ready() ? menuRow('#/profile/edit', ICON.edit, 'Profil bearbeiten', '', 'Foto, Benutzername, Rekorde teilen') : ''}
+        ${isUser() ? `<button class="row menu-row" data-action="privacy-info"><span class="row-ic" aria-hidden="true">${ICON.shield}</span><span class="row-text"><span>Datenschutz</span><small>Was Freunde sehen – und was privat bleibt</small></span><span class="row-value">${ICON.chevron}</span></button>` : ''}
+        ${menuRow('#/settings', ICON.gear, 'Einstellungen', '', 'Training, Ernährung, Konto, Datensicherung')}
       </section>`;
 
     if (!isUser()) {
@@ -7769,9 +7829,9 @@
       }
       friends = `
         <section class="card flush">
-          ${menuRow('#/friends/requests', ICON.inbox, 'Anfragen', nIn ? `<span class="count-badge">${nIn}</span>` : '', nIn ? (nIn === 1 ? '1 neue Anfrage' : nIn + ' neue Anfragen') : 'Eingehend und gesendet', 'rose')}
-          ${menuRow('#/friends/add', ICON.userPlus, 'Freund hinzufügen', '', 'Suchen, Link teilen, QR-Code', 'green')}
-          ${menuRow('#/leaderboard', ICON.podium, 'Rangliste', '', 'Wer trainiert am meisten?', 'amber')}
+          ${menuRow('#/friends/requests', ICON.inbox, 'Anfragen', nIn ? `<span class="count-badge">${nIn}</span>` : '', nIn ? (nIn === 1 ? '1 neue Anfrage' : nIn + ' neue Anfragen') : 'Eingehend und gesendet')}
+          ${menuRow('#/friends/add', ICON.userPlus, 'Freund hinzufügen', '', 'Suchen, Link teilen, QR-Code')}
+          ${menuRow('#/leaderboard', ICON.podium, 'Rangliste', '', 'Wer trainiert am meisten?')}
         </section>
         <p class="section-label">Freunde${list && list.length ? ' (' + list.length + ')' : ''}</p>
         ${body}

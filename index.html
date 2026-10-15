@@ -8,7 +8,7 @@
 
   <!-- PWA / iOS -->
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#07080c">
+  <meta name="theme-color" content="#081120">
   <meta name="color-scheme" content="dark light">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -33,7 +33,7 @@
         var t = m ? m[1] : 'dark';
         var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         d.setAttribute('data-theme', dark ? 'dark' : 'light');
-        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#07080c' : '#f4f2ef');
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#081120' : '#f1f4fb');
         document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').setAttribute('content', dark ? 'black-translucent' : 'default');
         if (navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) d.classList.add('standalone');
       } catch (e) { /* Standard: dunkel */ }

@@ -20,7 +20,7 @@ Verboten, weil sie jede Oberfläche gleich aussehen lassen:
 
 Stattdessen:
 
-- **Eine** Farbstrategie pro Produkt: neutrale, leicht getönte Basis; ein Akzent (in dieser App Glut-Orange, Tokens `--inv`/`--accent-ink`) auf höchstens ~10 % der Fläche. Farbe trägt Bedeutung (Zustand, Aktion), nie Dekoration.
+- **Eine** Farbstrategie pro Produkt: neutrale, leicht getönte Basis; ein Akzent (in dieser App bewusst keine eigene Farbe: weiß im dunklen, tiefblau im hellen Design, Token `--inv`) auf höchstens ~10 % der Fläche. Farbe trägt Bedeutung (Zustand, Aktion), nie Dekoration.
 - Wiedererkennbarkeit durch präzise Details: Abstände, Zahlendarstellung (`tabular-nums`), Bewegungskurven, eigene Icons-Strichstärke – nicht durch Effekte.
 - Immer mit Tokens arbeiten (`var(--…)`), keine Hex-Werte oder Pixel-Zufallswerte in Komponenten.
 

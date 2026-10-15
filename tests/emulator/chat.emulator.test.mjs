@@ -78,6 +78,9 @@ test('Nur Mitglieder mit Profil dürfen lesen und schreiben', async () => {
   await say(anna, 'Hallo zusammen');
   await denied(say(ohne, 'Darf ich?'));
   await denied(F.getDocs(F.query(F.collection(ohne.fs, 'rooms', ROOM, 'messages'), F.limit(10))));
+  // Die App unterscheidet bei einem abgelehnten Senden, ob schon das Lesen verboten ist (Regeln fehlen/veraltet)
+  assert.deepEqual(await anna.chat.probe(ROOM), { read: true });
+  assert.deepEqual(await ohne.chat.probe(ROOM), { read: false, code: 'permission-denied' });
   // Abgemeldet: nichts
   const fremd = await user('fremd');
   await A.signOut(fremd.auth);

@@ -14,7 +14,7 @@ Reines HTML/CSS/JavaScript, kein Build-Schritt.
 | `firestore.rules`, `storage.rules` | Sicherheitsregeln für Datenbank und Profilfotos |
 | `firebase.json` | Regeln-Dateien + Emulator-Einstellungen (für `firebase deploy` / Tests) |
 | `service-worker.js`, `manifest.json`, `icons/` | Offline-Fähigkeit und Home-Bildschirm-App |
-| `vendor/` | ZXing (Barcode-/QR-Scanner), qrcode-generator (QR-Code für Einladungen, MIT) |
+| `vendor/` | ZXing (QR-Scanner für Freunde), qrcode-generator (QR-Code für Einladungen, MIT) |
 | `tests/` | automatische Tests (`node --test tests/*.test.js`) |
 | `tests/emulator/` | Tests gegen den Firebase-Emulator: Regeln, Freunde, App im Browser (siehe unten) |
 
@@ -160,7 +160,7 @@ QR-Code) → der Freund nimmt unter *Anfragen* an → Freund antippen = Vergleic
 
 Was geteilt wird (nur mit bestätigten Freunden): Benutzername, Foto, Einheiten pro Tag, Wochen-Serie, Gesamtzahl,
 Volumen pro Tag sowie – abschaltbar – Rekorde bei Übungen aus der Bibliothek (über die feste Übungs-ID vergleichbar).
-Nie geteilt: einzelne Sätze, Gewichte pro Satz, Notizen, Pläne, Ernährung, Mealplan, Körpermaße, E-Mail.
+Nie geteilt: einzelne Sätze, Gewichte pro Satz, Notizen, Pläne, Mealplan, Körpermaße, E-Mail.
 Benutzername und Foto sind zusätzlich für angemeldete Nutzer in der Suche sichtbar.
 Ohne Internet zeigt die App die zuletzt geladenen Freundesdaten mit „zuletzt aktualisiert am …“.
 
@@ -185,8 +185,9 @@ nach dem Veröffentlichen `…/liquid-glass/index.html`. Doku: [`liquid-glass/RE
 
 ## Daily: Gewicht & Mealplan
 
-Die Tab-Leiste hat vier Reiter: **Training**, **Daily**, **Chat**, **Profil**. *Verlauf*, *Bibliothek* und das
-*Kalorien-Tagebuch* haben keinen eigenen Reiter mehr, sondern öffnen sich im **Profil** (die Seiten und Daten sind unverändert).
+Die Tab-Leiste hat vier Reiter: **Training**, **Daily**, **Chat**, **Profil**. *Verlauf* und *Bibliothek* haben keinen
+eigenen Reiter mehr, sondern öffnen sich im **Profil**. Ein Kalorien-Tagebuch gibt es nicht mehr (der Mealplan in *Daily* ersetzt es);
+Daten, die du früher dort eingetragen hast, werden nicht mehr angezeigt und nicht mehr abgeglichen – ältere Backups lassen sich weiterhin importieren.
 
 *Daily* gilt für jeden Tag:
 
@@ -218,6 +219,11 @@ Neuer Reiter **Chat** (nur mit Konto und Profil): ein gemeinsamer Raum für alle
 
 **Einrichtung:** nur die neuen [`firestore.rules`](firestore.rules) veröffentlichen (siehe 1d). Keine Umgebungsvariablen,
 keine Migration, keine zusätzlichen Indizes.
+
+**Zeigt der Chat „permission-denied“** (oder „Nicht gesendet – keine Berechtigung“)? Dann kennt Firebase die Chat-Regeln noch nicht.
+Die App erklärt es selbst: Im Chat auf **„So schaltest du ihn frei“** (bzw. bei einer fehlgeschlagenen Nachricht auf **„Was tun?“**)
+tippen → **„Regeln kopieren“** (deine Nutzer-ID steht dann schon als Administrator drin) → **„Firebase-Regeln öffnen“**, den Text dort
+ersetzen und **Veröffentlichen** → zurück in die App → **„Erneut versuchen“**. Veröffentlichen kann nur der Besitzer des Firebase-Projekts.
 
 **Schutz vor Missbrauch (erzwingen die Sicherheitsregeln, nicht nur die App):** nur Mitglieder mit Profil lesen und schreiben;
 der Absendername kommt aus dem Profil (keine Fremdnamen); Text höchstens 500 Zeichen, Notiz 120; eine Nachricht alle 2 s,

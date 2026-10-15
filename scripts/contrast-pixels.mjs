@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = 'http://127.0.0.1:' + server.address().port;
 const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { executablePath: '/opt/pw-browsers/chromium' });
-const ROUTES = (process.argv[2] || '#/,#/daily,#/daily/plan,#/history,#/food,#/library,#/profile,#/settings,#/settings/training,#/workout').split(',');
+const ROUTES = (process.argv[2] || '#/,#/daily,#/daily/plan,#/history,#/library,#/profile,#/settings,#/settings/training,#/workout').split(',');
 const WIDTH = Number(process.argv[3] || 390);
 let worst = [];
 for (const scheme of ['dark', 'light']) {
@@ -33,7 +33,7 @@ for (const scheme of ['dark', 'light']) {
   await page.goto(base + '/');
   await page.locator('[data-action="intro-done"]').click();
   await page.locator('[data-action="auth-guest"]').click();
-  for (let i = 0; i < 4; i++) { await page.locator('[data-action="setup-next"]').click(); await page.waitForTimeout(300); }
+  for (let i = 0; i < 3; i++) { await page.locator('[data-action="setup-next"]').click(); await page.waitForTimeout(300); }
   await page.evaluate((theme) => {
     const { Core, db } = window.GymApp;
     db.settings.theme = theme;

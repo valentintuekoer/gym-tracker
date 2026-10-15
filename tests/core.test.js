@@ -682,72 +682,14 @@ test('Migration: altes Backup (v1) bleibt importierbar, neue Felder werden ergä
   };
   const db = Core.normalize(oldBackup);
   assert.equal(db.version, 2, 'Schema-Version erhoeht');
-  assert.deepEqual(db.nutrition, []);
-  assert.deepEqual(db.foods, []);
   assert.deepEqual(db.customExercises, []);
   assert.deepEqual(db.libMeta, {});
-  assert.equal(db.settings.calorieGoal, 2000);
-  assert.equal(db.settings.proteinGoal, 150);
+  assert.deepEqual(db.settings.mealPlan, []);
+  assert.deepEqual(db.settings.mealLog, {});
   assert.equal(db.days[0].exercises[0].libId, null);
   assert.equal(db.days[0].name, 'Push');
   assert.equal(db.sessions.length, 1);
   assert.equal(Core.lastPerformance(db, 'Bankdrücken').sets[0].weight, 80);
-});
-
-test('Open Food Facts: Parser uebernimmt vorhandene Werte, fehlende bleiben null', () => {
-  const ok = Core.parseOFF({ status: 1, product: {
-    code: '4000417025005', product_name: 'Haferflocken', brands: 'Kölln, Marke',
-    serving_size: '40 g', nutriments: { 'energy-kcal_100g': 372, 'proteins_100g': 13.5, 'carbohydrates_100g': 58.7, 'fat_100g': 7 },
-  } });
-  assert.deepEqual(ok, { barcode: '4000417025005', name: 'Haferflocken', brand: 'Kölln', kcal: 372, protein: 13.5, carbs: 58.7, fat: 7, serving: 40, custom: false });
-  const partial = Core.parseOFF({ status: 1, product: { code: '1', product_name: 'X', nutriments: { 'energy-kcal_100g': 100, 'proteins_100g': 5 } } });
-  assert.equal(partial.fat, null);
-  assert.equal(partial.carbs, null);
-  assert.equal(partial.serving, null);
-  assert.equal(Core.parseOFF({ status: 0 }), null);
-  assert.equal(Core.parseOFF(null), null);
-});
-
-test('Portionsumrechnung: unbekannte Naehrwerte bleiben null', () => {
-  const food = { kcal: 372, protein: 13.5, carbs: 58.7, fat: null };
-  assert.deepEqual(Core.scaleFood(food, 40), { kcal: 148.8, protein: 5.4, carbs: 23.5, fat: null });
-  assert.deepEqual(Core.scaleFood(food, 0), { kcal: 0, protein: 0, carbs: 0, fat: null });
-});
-
-test('Ernaehrungseintraege: hinzufuegen, Tagessumme, aendern, loeschen', () => {
-  const db = Core.emptyData();
-  const today = Core.dayKey(Date.now());
-  Core.addNutrition(db, { date: today, meal: 'breakfast', name: 'Haferflocken', kcal: 149, protein: 5.4, carbs: 23.5, fat: 3, grams: 40 });
-  Core.addNutrition(db, { date: today, meal: 'lunch', name: 'Reis', kcal: 200, protein: 4, carbs: 44, fat: null });
-  Core.addNutrition(db, { date: '2020-01-01', meal: 'snack', name: 'Alt', kcal: 999 });
-  assert.deepEqual(Core.dayTotals(db, today), { kcal: 349, protein: 9.4, carbs: 67.5, fat: 3 });
-  assert.equal(Core.nutritionForDay(db, today).length, 2);
-  const id = db.nutrition.find((n) => n.name === 'Reis').id;
-  Core.updateNutrition(db, id, { kcal: 250 });
-  assert.equal(Core.dayTotals(db, today).kcal, 399);
-  Core.deleteNutrition(db, id);
-  assert.equal(Core.nutritionForDay(db, today).length, 1);
-  Core.addNutrition(db, { date: today, meal: 'snack', name: 'Apfel', kcal: 80 });
-  const apfel = db.nutrition.find((n) => n.name === 'Apfel');
-  assert.equal(apfel.protein, null);
-  assert.equal(apfel.grams, null);
-});
-
-test('Lebensmittel: speichern, per Barcode finden, Favorit, Suche', () => {
-  const db = Core.emptyData();
-  const a = Core.saveFood(db, { barcode: '111', name: 'Magerquark', brand: 'Milbona', kcal: 67, protein: 12, carbs: 4, fat: 0.2 });
-  Core.saveFood(db, { barcode: '222', name: 'Vollkornbrot', kcal: 220, protein: 8 });
-  assert.equal(Core.findFoodByBarcode(db, '111').name, 'Magerquark');
-  assert.equal(Core.findFoodByBarcode(db, '999'), null);
-  Core.saveFood(db, Object.assign({}, a, { kcal: 68 }));
-  assert.equal(db.foods.length, 2);
-  assert.equal(Core.foodById(db, a.id).kcal, 68);
-  Core.toggleFoodFavorite(db, a.id);
-  Core.markFoodUsed(db, db.foods[1].id, T0);
-  assert.equal(Core.searchFoods(db, '')[0].name, 'Magerquark');
-  assert.equal(Core.searchFoods(db, 'quark').length, 1);
-  Core.deleteFood(db, a.id);
-  assert.equal(db.foods.length, 1);
 });
 
 test('Uebungen mit der Bibliothek verknuepfen (feste ID, Name/Alias, Gross-/Kleinschreibung)', () => {
@@ -797,32 +739,15 @@ test('Export/Import: neue Daten sind enthalten und ueberstehen die Runde', () =>
   const db = Core.emptyData();
   const d = Core.addDay(db, 'Push');
   Core.addExercise(db, d.id, 'Bankdrücken', 120, 3, Core.resolveExercise(db, 'Bankdrücken', LIB));
-  Core.addNutrition(db, { date: Core.dayKey(T0), meal: 'lunch', name: 'Reis', kcal: 200, protein: 4, carbs: 44, fat: 1, grams: 100 });
-  Core.saveFood(db, { barcode: '111', name: 'Magerquark', kcal: 67, protein: 12 });
+  Core.addMeal(db, { name: 'Frühstück', time: '08:00', kcal: 500 });
   Core.toggleLibFav(db, 'kniebeugen');
   Core.saveCustomExercise(db, { name: 'Custom', muscle: 'Bauch', equipment: 'Körpergewicht', type: 'Isolation', steps: ['x'] });
   const exported = JSON.parse(JSON.stringify({ app: 'gym-tracker', version: 2, data: db }));
   const back = Core.normalize(exported);
-  assert.deepEqual(back.nutrition, db.nutrition);
-  assert.deepEqual(back.foods, db.foods);
+  assert.deepEqual(back.settings.mealPlan, db.settings.mealPlan);
   assert.deepEqual(back.customExercises, db.customExercises);
   assert.deepEqual(back.libMeta, db.libMeta);
   assert.equal(back.days[0].exercises[0].libId, 'bankdruecken-lh');
-});
-
-test('Open Food Facts: kJ-Umrechnung, Portionswerte und deutsche Namen', () => {
-  // Nur kJ vorhanden -> kcal aus kJ (÷4.184)
-  const kj = Core.parseOFF({ status:1, product:{ code:'2', product_name:'Saft', nutriments:{ 'energy-kj_100g':180 } } });
-  assert.equal(kj.kcal, 43);
-  // Werte nur pro Portion -> auf 100 g hochgerechnet
-  const serv = Core.parseOFF({ status:1, product:{ code:'3', product_name:'Riegel', serving_size:'50 g', nutriments:{ 'energy-kcal_serving':200, 'proteins_serving':10 } } });
-  assert.equal(serv.serving, 50);
-  assert.equal(serv.kcal, 400);
-  assert.equal(serv.protein, 20);
-  // Deutscher Name bevorzugt; ml-Portion erkannt
-  const de = Core.parseOFF({ status:1, product:{ code:'4', product_name:'Milk', product_name_de:'Milch', serving_size:'250 ml', nutriments:{ 'energy-kcal_100g':47 } } });
-  assert.equal(de.name, 'Milch');
-  assert.equal(de.serving, 250);
 });
 
 /* ---------- Mein Gym ---------- */
@@ -1143,4 +1068,18 @@ test('Daily: Gewicht für einen Tag eintragen und ändern (gleiche Messungen wie
   assert.equal(Core.weightBefore(db, day).weight, 83.4);
   assert.equal(Core.weightBefore(db, '2026-10-12'), null);
   assert.deepEqual(db.body.map((e) => e.weight), [83.4, 81.9]);
+});
+
+test('Das Kalorien-Tagebuch gibt es nicht mehr: alte Felder in Backups werden ignoriert, nichts bricht', () => {
+  const old = Core.normalize({
+    days: [], nutrition: [{ id: 'n1', date: '2026-10-01', meal: 'lunch', name: 'Reis', kcal: 200 }],
+    foods: [{ id: 'f1', name: 'Quark', kcal: 67 }],
+    settings: { calorieGoal: 2200, proteinGoal: 140, carbGoal: 200, fatGoal: 70, weeklyGoal: 4 },
+  });
+  assert.equal(old.nutrition, undefined);
+  assert.equal(old.foods, undefined);
+  assert.equal(old.settings.calorieGoal, undefined);
+  assert.equal(old.settings.proteinGoal, undefined);
+  assert.equal(old.settings.weeklyGoal, 4);
+  assert.deepEqual(Object.keys(Core.emptyData()).sort(), ['activeSession', 'body', 'customExercises', 'days', 'libMeta', 'sessions', 'settings', 'version']);
 });

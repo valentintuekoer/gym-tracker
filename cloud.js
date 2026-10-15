@@ -52,6 +52,8 @@ async function init() {
   const userDoc = (uid) => F.doc(fs, 'users', uid);
   const sessionsCol = (uid) => F.collection(fs, 'users', uid, 'sessions');
   const bodyCol = (uid) => F.collection(fs, 'users', uid, 'body');
+  // Altlast: Das Kalorien-Tagebuch gibt es nicht mehr. Die Sammlungen werden nicht mehr abgeglichen,
+  // beim Löschen des Kontos aber weiterhin geleert (damit nichts übrig bleibt).
   const nutritionCol = (uid) => F.collection(fs, 'users', uid, 'nutrition');
   const foodCol = (uid) => F.collection(fs, 'users', uid, 'food');
 
@@ -179,13 +181,7 @@ async function init() {
           const u3 = F.onSnapshot(bodyCol(uid), opts, (snap) => {
             if (clean(snap)) handlers.body(list(snap));
           }, onError);
-          const u4 = F.onSnapshot(nutritionCol(uid), opts, (snap) => {
-            if (clean(snap)) handlers.nutrition(list(snap));
-          }, onError);
-          const u5 = F.onSnapshot(foodCol(uid), opts, (snap) => {
-            if (clean(snap)) handlers.foods(list(snap));
-          }, onError);
-          return () => { u1(); u2(); u3(); u4(); u5(); };
+          return () => { u1(); u2(); u3(); };
         },
         commit: (ops) => commitOps(uid, ops),
         /** Gibt es das Hauptdokument wirklich nicht mehr? (direkt beim Server nachgefragt) */

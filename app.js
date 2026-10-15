@@ -24,7 +24,7 @@
    * 1. Hilfsfunktionen
    * ========================================================= */
 
-  const DATA_VERSION = 2; // v2: Ernährung, Lebensmittel, Übungsbibliothek/eigene Übungen
+  const DATA_VERSION = 2; // v2: Übungsbibliothek/eigene Übungen (die Ernährungsfelder früherer Versionen werden ignoriert)
   const MAX_REST = 1800;
   const DEFAULT_SETS = 3;  // Sätze pro Übung, wenn nichts anderes eingestellt ist
   const MAX_SETS = 20;
@@ -38,10 +38,6 @@
     lastBackup: null,  // Zeitstempel des letzten Exports
     increment: 2.5,    // Gewichtsschritt (kg) für Steigerungsvorschläge und +/−-Buttons
     weeklyGoal: 3,     // Trainings pro Woche (für Wochenziel & Serie)
-    calorieGoal: 2000, // Kalorien-Tagesziel (kcal)
-    proteinGoal: 150,  // Makroziele in Gramm
-    carbGoal: 220,
-    fatGoal: 70,
     effort: 'off',     // Anstrengung pro Satz erfassen: 'off' | 'rir' | 'rpe'
     chatNotify: true,  // Hinweis bei neuen Gym-Karten im Chat
     chatBlocked: [],   // im Chat blockierte Nutzer: [{ uid, name }] (nur für dich, synchron mit dem Konto)
@@ -189,63 +185,6 @@
     return (min === max ? String(min) : min + '–' + max) + ' Wdh.';
   }
 
-  const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
-
-  /** Nährwert lesen: Zahl ≥ 0 (auf 1 Nachkommastelle) oder null (= unbekannt, NICHT mit 0 füllen). */
-  function parseNut(v) {
-    const n = parseNum(v);
-    return n === null ? null : Math.round(n * 10) / 10;
-  }
-
-  /** Tagesziel/Menge: ganze Zahl ≥ 0 oder null. */
-  function parseGoal(v) {
-    const n = parseNum(v);
-    return n === null ? null : Math.round(n);
-  }
-
-  /** 'YYYY-MM-DD' aus String (unverändert) oder Zeitstempel; sonst null. */
-  function parseDayKey(v) {
-    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? Core.dayKey(n) : null;
-  }
-
-  /** Lebensmittel bereinigen. Nährwerte pro 100 g, unbekannte Werte bleiben null. */
-  function normFood(f) {
-    return {
-      id: String((f && f.id) || uid()),
-      barcode: f && f.barcode ? String(f.barcode) : null,
-      name: String((f && f.name) || 'Lebensmittel').slice(0, 120),
-      brand: String((f && f.brand) || '').slice(0, 80),
-      kcal: parseNut(f && f.kcal),
-      protein: parseNut(f && f.protein),
-      carbs: parseNut(f && f.carbs),
-      fat: parseNut(f && f.fat),
-      serving: parseNut(f && f.serving),      // Gramm pro Portion (optional)
-      favorite: !!(f && f.favorite),
-      lastUsed: Number(f && f.lastUsed) || null,
-      custom: !!(f && f.custom),              // manuell angelegt
-      at: Number(f && f.at) || Date.now(),
-    };
-  }
-
-  /** Ernährungseintrag bereinigen. Gespeichert werden die absoluten Werte für die Menge. */
-  function normNutrition(n) {
-    return {
-      id: String((n && n.id) || uid()),
-      date: parseDayKey(n && n.date) || Core.dayKey(Date.now()),
-      meal: MEALS.includes(n && n.meal) ? n.meal : 'snack',
-      name: String((n && n.name) || '').slice(0, 120),
-      kcal: parseNut(n && n.kcal),
-      protein: parseNut(n && n.protein),
-      carbs: parseNut(n && n.carbs),
-      fat: parseNut(n && n.fat),
-      grams: parseNut(n && n.grams),          // verzehrte Menge in g (optional, z. B. bei Schnelleingabe null)
-      foodId: n && n.foodId ? String(n.foodId) : null,
-      at: Number(n && n.at) || Date.now(),
-    };
-  }
-
   const MUSCLES = ['Brust', 'Rücken', 'Schultern', 'Bizeps', 'Trizeps', 'Beine', 'Gesäß', 'Waden', 'Bauch', 'Unterarme', 'Ganzkörper'];
   const EQUIPMENT = ['Langhantel', 'Kurzhantel', 'Maschine', 'Kabel', 'Körpergewicht', 'Kettlebell', 'Band'];
 
@@ -293,7 +232,7 @@
   Core.emptyData = function () {
     return {
       version: DATA_VERSION, days: [], sessions: [], activeSession: null, body: [],
-      nutrition: [], foods: [], customExercises: [], libMeta: {},
+      customExercises: [], libMeta: {},
       settings: { ...DEFAULT_SETTINGS, mealPlan: [], mealLog: {}, chatBlocked: [] }, // Listen nie mit den Vorgaben teilen
     };
   };
@@ -379,16 +318,10 @@
     db.settings.gym = normGym(db.settings.gym);
     db.settings.chatNotify = db.settings.chatNotify !== false;
     db.settings.chatBlocked = Core.normChatBlocked(db.settings.chatBlocked);
-    db.settings.calorieGoal = parseGoal(db.settings.calorieGoal);
-    db.settings.proteinGoal = parseGoal(db.settings.proteinGoal);
-    db.settings.carbGoal = parseGoal(db.settings.carbGoal);
-    db.settings.fatGoal = parseGoal(db.settings.fatGoal);
+    for (const k of ['calorieGoal', 'proteinGoal', 'carbGoal', 'fatGoal']) delete db.settings[k]; // Kalorien-Tagebuch gibt es nicht mehr
     db.settings.mealPlan = Core.normMealPlan(db.settings.mealPlan);
     db.settings.mealLog = Core.normMealLog(db.settings.mealLog);
 
-    db.foods = (Array.isArray(raw.foods) ? raw.foods : []).filter(Boolean).map(normFood);
-    db.nutrition = (Array.isArray(raw.nutrition) ? raw.nutrition : []).filter(Boolean).map(normNutrition)
-      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.at - b.at));
     db.customExercises = (Array.isArray(raw.customExercises) ? raw.customExercises : []).filter(Boolean).map(normCustomExercise);
     db.libMeta = normLibMeta(raw.libMeta);
 
@@ -1309,128 +1242,6 @@
     return null;
   };
 
-  /* ---------- Ernährung & Kalorien ---------- */
-
-  Core.MEALS = MEALS;
-
-  Core.nutritionForDay = (db, dayKey) => db.nutrition.filter((n) => n.date === dayKey).sort((a, b) => a.at - b.at);
-
-  /** Tagessummen (unbekannte Einzelwerte zählen als 0). */
-  Core.dayTotals = function (db, dayKey) {
-    const t = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
-    for (const n of db.nutrition) {
-      if (n.date !== dayKey) continue;
-      for (const k of ['kcal', 'protein', 'carbs', 'fat']) if (n[k] !== null) t[k] += n[k];
-    }
-    for (const k in t) t[k] = Math.round(t[k] * 10) / 10;
-    return t;
-  };
-
-  /** Nährwerte eines Lebensmittels (pro 100 g) auf eine Menge in Gramm umrechnen; unbekannt bleibt null. */
-  Core.scaleFood = function (food, grams) {
-    const f = (Number(grams) || 0) / 100;
-    const out = {};
-    for (const k of ['kcal', 'protein', 'carbs', 'fat']) {
-      out[k] = food[k] === null || food[k] === undefined ? null : Math.round(food[k] * f * 10) / 10;
-    }
-    return out;
-  };
-
-  function sortNutrition(db) {
-    db.nutrition.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.at - b.at));
-  }
-
-  Core.addNutrition = function (db, entry) {
-    const n = normNutrition(entry);
-    db.nutrition.push(n);
-    sortNutrition(db);
-    return n;
-  };
-
-  Core.updateNutrition = function (db, id, patch) {
-    const i = db.nutrition.findIndex((n) => n.id === id);
-    if (i < 0) return false;
-    db.nutrition[i] = normNutrition({ ...db.nutrition[i], ...patch, id });
-    sortNutrition(db);
-    return true;
-  };
-
-  Core.deleteNutrition = function (db, id) {
-    const before = db.nutrition.length;
-    db.nutrition = db.nutrition.filter((n) => n.id !== id);
-    return db.nutrition.length < before;
-  };
-
-  /* ---------- Lebensmittel ---------- */
-
-  Core.findFoodByBarcode = (db, code) => db.foods.find((f) => f.barcode && f.barcode === String(code)) || null;
-  Core.foodById = (db, id) => db.foods.find((f) => f.id === id) || null;
-
-  /** Lebensmittel anlegen oder aktualisieren (per id). Rückgabe: gespeichertes Lebensmittel. */
-  Core.saveFood = function (db, food) {
-    const f = normFood(food);
-    const i = db.foods.findIndex((x) => x.id === f.id);
-    if (i >= 0) db.foods[i] = f; else db.foods.push(f);
-    return f;
-  };
-
-  Core.deleteFood = function (db, id) {
-    const before = db.foods.length;
-    db.foods = db.foods.filter((f) => f.id !== id);
-    return db.foods.length < before;
-  };
-
-  Core.toggleFoodFavorite = function (db, id) {
-    const f = Core.foodById(db, id);
-    if (!f) return false;
-    f.favorite = !f.favorite;
-    return true;
-  };
-
-  Core.markFoodUsed = function (db, id, now) {
-    const f = Core.foodById(db, id);
-    if (f) f.lastUsed = now || Date.now();
-  };
-
-  /** Lebensmittel durchsuchen; Favoriten zuerst, dann zuletzt verwendet. Leerer Query = alle. */
-  Core.searchFoods = function (db, q) {
-    const key = normName(q || '');
-    const list = key ? db.foods.filter((f) => normName(f.name).includes(key) || normName(f.brand).includes(key)) : db.foods.slice();
-    return list.sort((a, b) => (b.favorite - a.favorite) || ((b.lastUsed || 0) - (a.lastUsed || 0)) || a.name.localeCompare(b.name, 'de'));
-  };
-
-  /** Produktdaten aus der Open-Food-Facts-Antwort lesen (pro 100 g). Fehlende Werte bleiben null. */
-  Core.parseOFF = function (json) {
-    const p = json && json.product;
-    if (!json || json.status === 0 || !p) return null;
-    const nutr = p.nutriments || {};
-    const num = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.round(n * 10) / 10 : null; };
-    // Portionsgröße in g (auch aus ml; für Getränke ~1 ml = 1 g als Näherung)
-    const m = String(p.serving_size || '').match(/([\d.,]+)\s*(g|ml)/i);
-    const serving = m ? num(m[1].replace(',', '.')) : num(p.serving_quantity);
-    // pro 100 g: direkter Wert, sonst aus dem Portionswert hochgerechnet
-    const per = (k100, kServ) => {
-      let v = num(nutr[k100]);
-      if (v === null && serving && num(nutr[kServ]) !== null) v = Math.round(num(nutr[kServ]) / serving * 1000) / 10;
-      return v;
-    };
-    // Kalorien: kcal direkt, sonst aus kJ, sonst aus dem Portionswert
-    let kcal = num(nutr['energy-kcal_100g']);
-    if (kcal === null && num(nutr['energy-kj_100g']) !== null) kcal = Math.round(num(nutr['energy-kj_100g']) / 4.184 * 10) / 10;
-    if (kcal === null) kcal = per('energy-kcal', 'energy-kcal_serving');
-    return {
-      barcode: p.code ? String(p.code) : null,
-      name: String(p.product_name_de || p.product_name || p.product_name_en || p.generic_name || '').trim(),
-      brand: String(p.brands || '').split(',')[0].trim(),
-      kcal,
-      protein: per('proteins_100g', 'proteins_serving'),
-      carbs: per('carbohydrates_100g', 'carbohydrates_serving'),
-      fat: per('fat_100g', 'fat_serving'),
-      serving,
-      custom: false,
-    };
-  };
-
   /* ---------- Übungsbibliothek & eigene Übungen ---------- */
 
   Core.libFav = (db, id) => !!(db.libMeta[id] && db.libMeta[id].fav);
@@ -1598,7 +1409,7 @@
   /* ---------- Freunde: Benutzername & geteilte Kennzahlen ----------
    * Geteilt werden nur Aggregate: Anzahl Einheiten und Volumen pro Kalendertag (letzte 53 Wochen),
    * Gesamtzahl, Wochenziel und – abschaltbar – Rekorde je Bibliotheks-Übung (feste ID).
-   * Einzelne Sätze, Notizen, Pläne, Körpermaße, Ernährung und Mealplan verlassen das Gerät dafür nie.
+   * Einzelne Sätze, Notizen, Pläne, Körpermaße und Mealplan verlassen das Gerät dafür nie.
    */
 
   const USERNAME_RE = /^[a-z0-9][a-z0-9._]{2,19}$/;
@@ -1964,7 +1775,7 @@
   Sync.MAIN_FIELDS = MAIN_FIELDS;
 
   /** Ist das ein Schlüssel, der einem Dokument/Feld auf dem Server entspricht? */
-  const isDocKey = (k) => k in MAIN_FIELDS || k.startsWith('session:') || k.startsWith('body:') || k.startsWith('nutrition:') || k.startsWith('food:');
+  const isDocKey = (k) => k in MAIN_FIELDS || k.startsWith('session:') || k.startsWith('body:');
 
   /** JSON mit sortierten Schlüsseln → gleicher Inhalt ergibt immer denselben Text. */
   Sync.stableStringify = function stable(v) {
@@ -1998,22 +1809,18 @@
   /** Alles außer den Einheiten – praktisch zum Vergleichen zweier Geräte (Tests). */
   Sync.mainOf = (db) => ({
     days: db.days, settings: db.settings, activeSession: db.activeSession, body: db.body,
-    nutrition: db.nutrition, foods: db.foods, customExercises: db.customExercises, libMeta: db.libMeta,
+    customExercises: db.customExercises, libMeta: db.libMeta,
   });
 
   Sync.keysOf = (db) => Object.keys(MAIN_FIELDS).concat(
     db.sessions.map((s) => 'session:' + s.id),
     db.body.map((b) => 'body:' + b.id),
-    db.nutrition.map((n) => 'nutrition:' + n.id),
-    db.foods.map((f) => 'food:' + f.id),
   );
 
   Sync.getDoc = function (db, key) {
     if (key in MAIN_FIELDS) return db[MAIN_FIELDS[key]];
     if (key.startsWith('session:')) return db.sessions.find((s) => s.id === key.slice(8)) || null;
     if (key.startsWith('body:')) return db.body.find((b) => b.id === key.slice(5)) || null;
-    if (key.startsWith('nutrition:')) return db.nutrition.find((n) => n.id === key.slice(10)) || null;
-    if (key.startsWith('food:')) return db.foods.find((f) => f.id === key.slice(5)) || null;
     return null;
   };
 
@@ -2053,31 +1860,15 @@
         db.body.push(b);
         db.body.sort((x, y) => x.date - y.date);
       }
-      return;
-    }
-    if (key.startsWith('nutrition:')) {
-      const id = key.slice(10);
-      db.nutrition = db.nutrition.filter((n) => n.id !== id);
-      const n = data && Core.normalize({ days: [], nutrition: [{ ...data, id }] }).nutrition[0];
-      if (n) db.nutrition.push(n);
-      db.nutrition.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.at - b.at));
-      return;
-    }
-    if (key.startsWith('food:')) {
-      const id = key.slice(5);
-      db.foods = db.foods.filter((f) => f.id !== id);
-      const f = data && Core.normalize({ days: [], foods: [{ ...data, id }] }).foods[0];
-      if (f) db.foods.push(f);
     }
   };
 
   Sync.isEmpty = (db) => !db.days.length && !db.sessions.length && !db.activeSession && !db.body.length
-    && !db.nutrition.length && !db.foods.length && !db.customExercises.length;
+    && !db.customExercises.length;
 
   /** Hat jemand ohne Konto schon etwas Eigenes angelegt (mehr als die Beispieldaten)? */
   Sync.hasUserContent = function (db) {
-    if (db.sessions.length || db.activeSession || db.body.length
-      || db.nutrition.length || db.foods.length || db.customExercises.length || db.settings.mealPlan.length) return true;
+    if (db.sessions.length || db.activeSession || db.body.length || db.customExercises.length || db.settings.mealPlan.length) return true;
     const sig = (days) => days.map((d) => normName(d.name) + ':' + d.exercises.map((e) => normName(e.name)).join('|')).join(';');
     return db.days.length > 0 && sig(db.days) !== sig(Core.sampleDays());
   };
@@ -2119,16 +1910,12 @@
       target.activeSession = g.activeSession;
       target.settings = { ...g.settings };
       target.body = g.body;
-      target.nutrition = g.nutrition;
-      target.foods = g.foods;
       target.customExercises = g.customExercises;
       target.libMeta = { ...g.libMeta };
       return target;
     }
     for (const b of g.body) if (!target.body.some((x) => x.id === b.id)) target.body.push(b);
     target.body.sort((a, b) => a.date - b.date);
-    for (const f of g.foods) if (!target.foods.some((x) => x.id === f.id)) target.foods.push(f);
-    for (const n of g.nutrition) if (!target.nutrition.some((x) => x.id === n.id)) target.nutrition.push(n);
     for (const e of g.customExercises) if (!target.customExercises.some((x) => x.id === e.id)) target.customExercises.push(e);
     target.libMeta = { ...g.libMeta, ...target.libMeta };
     if (!target.settings.mealPlan.length && g.settings.mealPlan.length) { // Mealplan vom Gerät übernehmen, wenn das Konto noch keinen hat
@@ -2317,8 +2104,9 @@
         main: handleMain,
         sessions: (list) => handleCollection('session:', list),
         body: (list) => handleCollection('body:', list),
-        nutrition: (list) => handleCollection('nutrition:', list),
-        foods: (list) => handleCollection('food:', list),
+        // Das Kalorien-Tagebuch gibt es nicht mehr. Die Handler bleiben leer, falls eine ältere cloud.js noch Listen meldet.
+        nutrition: () => {},
+        foods: () => {},
       }, (err) => {
         // Listener ist nach einem Fehler beendet → später neu verbinden
         setStatus('error', err);
@@ -3091,7 +2879,6 @@
 
   const ui = {
     historyTab: 'sessions', chartMode: {}, lastRoute: null, authMode: 'login', authEmail: '',
-    foodDate: null,
     dailyDay: null,          // Daily: angezeigter Tag ('YYYY-MM-DD'); null = heute
     lib: { q: '', muscle: new Set(), equip: new Set(), fav: false, custom: false },
     isAdmin: false,          // wird von cloud.js gesetzt (Prüfung über die Firestore-Regeln)
@@ -3103,12 +2890,11 @@
     navDir: null,
     scrollMem: {},           // Scrollposition je Seite (für Zurück & Tab-Wechsel)
     fadeContent: null,       // Inhalt unterhalb dieses Elements beim nächsten Zeichnen einblenden
-    foodFx: null,            // letzte Werte des Kalorienrings (für Zähl-Animation)
     popSet: null,            // gerade abgehakter Satz (Haken-Animation)
   };
 
   /**
-   * Verlauf, Bibliothek und Kalorien-Tagebuch haben keinen eigenen Reiter mehr: Sie öffnen sich aus Profil, Daily
+   * Verlauf und Bibliothek haben keinen eigenen Reiter mehr: Sie öffnen sich aus Profil, Daily
    * oder Training heraus. Hervorgehoben bleibt der Reiter, von dem aus man gekommen ist (bei einem direkten Aufruf: Profil).
    */
   const extraTab = () => (['home', 'daily', 'profile'].includes(ui.lastTab) ? ui.lastTab : 'profile');
@@ -3129,7 +2915,6 @@
       case 'friend': return { name: 'friend', id: parts[1] || '', tab: 'profile' };
       case 'leaderboard': return { name: 'leaderboard', tab: 'profile' };
       case 'invite': return { name: 'invite', id: parts[1] || '', tab: 'profile' };
-      case 'food': return { name: 'food', tab: extraTab() };
       case 'chat': return { name: 'chat', tab: 'chat' };
       case 'library':
         if (parts[1] === 'ex') return { name: 'libex', id: parts[2] || '', tab: extraTab() };
@@ -3244,7 +3029,7 @@
   /* ---------- Navigation mit Übergängen ---------- */
 
   const TAB_ROOT = { home: '#/', daily: '#/daily', chat: '#/chat', profile: '#/profile' };
-  /** Ziel des Zurück-Pfeils auf Seiten ohne eigenen Reiter (Verlauf, Bibliothek, Kalorien-Tagebuch) */
+  /** Ziel des Zurück-Pfeils auf Seiten ohne eigenen Reiter (Verlauf, Bibliothek) */
   const extraBack = () => TAB_ROOT[parseRoute().tab] || '#/profile';
   const navStack = [];
 
@@ -3442,7 +3227,6 @@
       case 'friend': renderFriend(view, route.id); break;
       case 'leaderboard': renderLeaderboard(view); break;
       case 'invite': renderInvite(view, route.id); break;
-      case 'food': renderFood(view); break;
       case 'library': renderLibrary(view); break;
       case 'libex': renderLibEx(view, route.id); break;
       case 'chat': renderChat(view); break;
@@ -3568,7 +3352,6 @@
     document.body.classList.toggle('wk-lock', rn === 'workout' && !!$('#wk-track', view));
     // Im Chat steht die Seite ebenfalls fest: nur die Nachrichtenliste scrollt, das Eingabefeld bleibt unten
     document.body.classList.toggle('chat-lock', rn === 'chat' && !!$('#chat', view));
-    if (rn === 'food') FoodFx.play(view, sameRoute);
     if (!sameRoute && (rn === 'friend' || rn === 'leaderboard')) SocialFx.bars(view);
     if (rn === 'workout') WorkoutPager.init(view); else WorkoutPager.stop();
     if (rn === 'chat') ChatView.mount(view, sameRoute); else { ChatView.unmount(); Chat.sync(); } // verbindet sich, sobald das Profil da ist
@@ -4805,11 +4588,11 @@
         '<div class="ia-badge">' + ICON.trophy + '<span>Neuer Rekord: 85 kg</span></div></div>',
     },
     {
-      title: 'Ernährung & 200+ Übungen',
-      text: 'Kalorien und Makros per Barcode scannen und über 200 Übungen mit Anleitung entdecken – alles in einer App.',
-      art: '<div class="ia-card ia-food"><svg class="ia-ring" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" class="ia-ring-bg"/>' +
-        '<circle cx="60" cy="60" r="50" class="ia-ring-fg" pathLength="1" transform="rotate(-90 60 60)"/><text x="60" y="66">1.840</text></svg>' +
-        '<div class="ia-chips"><span>' + ICON.scan + ' Scannen</span><span>' + ICON.dumbbell + ' Bibliothek</span></div></div>',
+      title: 'Daily & 200+ Übungen',
+      text: 'Trag dein Gewicht ein, hake deinen Mealplan jeden Tag ab und entdecke über 200 Übungen mit Anleitung – alles in einer App.',
+      art: '<div class="ia-card ia-daily"><svg class="ia-ring" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" class="ia-ring-bg"/>' +
+        '<circle cx="60" cy="60" r="50" class="ia-ring-fg" pathLength="1" transform="rotate(-90 60 60)"/><text x="60" y="66">3 / 4</text></svg>' +
+        '<div class="ia-chips"><span>' + ICON.check + ' Mealplan</span><span>' + svgI('<path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>') + ' Bibliothek</span></div></div>', // ICON.dumbbell gibt es hier noch nicht (wird weiter unten ergänzt)
     },
   ];
 
@@ -4864,21 +4647,20 @@
 
   /* ---------- Einrichtung nach dem Registrieren / „Ohne Konto“ ---------- */
 
-  const SETUP_STEPS = 4;
+  const SETUP_STEPS = 3;
 
   function startSetup() {
     ui.setup = {
       step: 0,
       goal: db.settings.weeklyGoal || 3,
       start: 'sample',
-      kcal: db.settings.calorieGoal || 2000,
       dir: 1,
     };
     go('#/setup');
   }
 
   function renderSetup(view) {
-    if (!ui.setup) { ui.setup = { step: 0, goal: db.settings.weeklyGoal || 3, start: 'sample', kcal: db.settings.calorieGoal || 2000, dir: 1 }; }
+    if (!ui.setup) { ui.setup = { step: 0, goal: db.settings.weeklyGoal || 3, start: 'sample', dir: 1 }; }
     const st = ui.setup;
     setHeader({ title: 'Einrichtung', hidden: true });
     const bar = Array.from({ length: SETUP_STEPS }, (_, i) => '<i class="' + (i <= st.step ? 'on' : '') + '"></i>').join('');
@@ -4905,19 +4687,6 @@
           opt('own', 'Eigenen Plan erstellen', 'Du legst Tage und Übungen selbst an', ICON.edit) +
           opt('import', 'Geteilten Plan einfügen', 'Link von Freunden übernehmen', ICON.share) +
         '</div>';
-    } else if (st.step === 2) {
-      body =
-        '<div class="setup-icon">' + ICON.target + '</div>' +
-        '<h1 class="setup-title">Dein Kalorienziel</h1>' +
-        '<p class="setup-text">Für den Kalorienring im Kalorien-Tagebuch (Profil). Keine Ahnung? Nimm erst mal 2.000 kcal – du kannst es jederzeit ändern.</p>' +
-        '<div class="setup-kcal"><b id="setup-kcal-val">' + fmtInt(st.kcal) + '</b><span>kcal pro Tag</span></div>' +
-        '<div class="setup-kcal-row">' +
-          '<button class="tbtn" data-action="setup-kcal" data-delta="-100" aria-label="100 kcal weniger">−100</button>' +
-          '<input class="setup-range" id="setup-range" type="range" min="1200" max="4000" step="50" value="' + st.kcal + '" aria-label="Kalorienziel">' +
-          '<button class="tbtn" data-action="setup-kcal" data-delta="100" aria-label="100 kcal mehr">+100</button>' +
-        '</div>' +
-        '<div class="chips setup-presets">' + [1800, 2000, 2200, 2500, 2800].map((k) =>
-          '<button class="chip' + (st.kcal === k ? ' on' : '') + '" data-action="setup-kcal-set" data-value="' + k + '">' + fmtInt(k) + '</button>').join('') + '</div>';
     } else {
       cta = 'Fertig';
       const tips = [];
@@ -4949,14 +4718,6 @@
         '<div class="setup-body" id="setup-body">' + body + '</div>' +
         '<div class="setup-foot"><button class="btn primary block lg" data-action="setup-next">' + cta + '</button></div>' +
       '</div>';
-    const range = $('#setup-range', view);
-    if (range) {
-      range.addEventListener('input', () => {
-        st.kcal = Number(range.value);
-        $('#setup-kcal-val').textContent = fmtInt(st.kcal);
-        $$('.setup-presets .chip', view).forEach((c) => c.classList.toggle('on', Number(c.dataset.value) === st.kcal));
-      });
-    }
     if (st.animate && !reduced()) {
       anim($('#setup-body', view), [{ opacity: 0, transform: 'translateX(' + (st.dir * 40) + 'px)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: EASE.sheet });
     }
@@ -4978,7 +4739,6 @@
     ui.setup = null;
     if (!skip && st) {
       db.settings.weeklyGoal = st.goal;
-      db.settings.calorieGoal = st.kcal;
       if (st.start === 'sample' && !db.days.length) db.days.push(...Core.sampleDays());
       save();
     }
@@ -5446,7 +5206,6 @@
   const SETTINGS_PAGES = {
     account: 'Konto',
     training: 'Training & Timer',
-    nutrition: 'Ernährung',
     notifications: 'Benachrichtigungen & Ton',
     chat: 'Chat',
     appearance: 'Darstellung',
@@ -5487,7 +5246,6 @@
         ${ui.isAdmin && isUser() ? `<section class="card flush">${menuRow('#/admin', svgI('<circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3 2.8-4.8 5.5-4.8s4.9 1.8 5.5 4.8M16 7.5h5M18.5 5v5"/>'), 'Nutzerverwaltung', '', 'Alle Konten verwalten')}</section>` : ''}
         <section class="card flush">
           ${menuRow('#/settings/training', ICON.dumbbell, 'Training & Timer', fmtRest(st.defaultRest), 'Pause, Gewichtsschritt, Wochenziel')}
-          ${menuRow('#/settings/nutrition', ICON.target, 'Ernährung', st.calorieGoal ? fmtInt(st.calorieGoal) + ' kcal' : '–', 'Kalorien- und Makroziele')}
           ${menuRow('#/settings/notifications', ICON.clock, 'Benachrichtigungen & Ton', permShort, 'Signalton, Haptik, Pausen-Hinweis')}
           ${isUser() ? menuRow('#/settings/chat', ICON.chat, 'Chat', (st.chatBlocked || []).length ? (st.chatBlocked.length + ' blockiert') : '', 'Hinweise zu Gym-Karten, blockierte Nutzer') : ''}
           ${menuRow('#/settings/appearance', svgI('<circle cx="12" cy="12" r="8"/><path class="fill" d="M12 4a8 8 0 0 1 0 16z"/>'), 'Darstellung', themeLabel)}
@@ -5541,16 +5299,6 @@
           <p class="hint"><b>RIR</b> („Reps in Reserve“): Wie viele Wiederholungen wären noch gegangen? 0 = bis zum Versagen.
             <b>RPE</b>: gefühlte Anstrengung von 1 bis 10 (10 = Maximum). Das Feld erscheint im Training neben der Notiz.</p>
         </section>`;
-    } else if (sub === 'nutrition') {
-      html = `
-        <p class="section-label">Tagesziele</p>
-        <section class="card flush">
-          <button class="row" data-action="edit-goal" data-key="calorieGoal"><span class="row-text"><span>Kalorienziel</span></span><span class="row-value">${st.calorieGoal ? st.calorieGoal + ' kcal' : '–'} ${ICON.chevron}</span></button>
-          <button class="row" data-action="edit-goal" data-key="proteinGoal"><span class="row-text"><span>Protein-Ziel</span></span><span class="row-value">${st.proteinGoal ? st.proteinGoal + ' g' : '–'} ${ICON.chevron}</span></button>
-          <button class="row" data-action="edit-goal" data-key="carbGoal"><span class="row-text"><span>Kohlenhydrat-Ziel</span></span><span class="row-value">${st.carbGoal ? st.carbGoal + ' g' : '–'} ${ICON.chevron}</span></button>
-          <button class="row" data-action="edit-goal" data-key="fatGoal"><span class="row-text"><span>Fett-Ziel</span></span><span class="row-value">${st.fatGoal ? st.fatGoal + ' g' : '–'} ${ICON.chevron}</span></button>
-        </section>
-        <p class="hint">Die Ziele bestimmen den Kalorienring und die Makro-Balken im Kalorien-Tagebuch (Profil → Kalorien-Tagebuch).</p>`;
     } else if (sub === 'notifications') {
       html = `
         <p class="section-label">Ton &amp; Haptik</p>
@@ -5645,11 +5393,10 @@
   }
 
   /* =========================================================
-   *  v2-Oberfläche: Ernährung & Übungsbibliothek
+   *  v2-Oberfläche: Übungsbibliothek
    * ========================================================= */
 
   Object.assign(ICON, {
-    scan: svgI('<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M8 8.5v7M11 8.5v7M14 8.5v7M17 8.5v7"/>'),
     star: svgI('<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'),
     search: svgI('<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/>'),
     dumbbell: svgI('<path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>'),
@@ -5673,7 +5420,6 @@
   };
   const muscleIcon = (m) => MUSCLE_ICON[m] || ICON.dumbbell;
 
-  const MEAL_LABEL = { breakfast: 'Frühstück', lunch: 'Mittag', dinner: 'Abend', snack: 'Snacks' };
 
   /* ---------- Übungsbibliothek laden ---------- */
 
@@ -5750,187 +5496,12 @@
     return handle;
   }
 
-  /* ---------- Ansicht: Ernährung ---------- */
+  /* ---------- Kamera-Scanner (QR-Code für Freunde) ---------- */
 
-  function shiftDayKey(key, delta) {
-    const p = key.split('-').map(Number);
-    const d = new Date(p[0], p[1] - 1, p[2] + delta, 12);
-    return Core.dayKey(d.getTime());
-  }
-
-  function macroBar(label, value, goal, cls) {
-    const pct = goal ? Math.min(100, Math.round((value / goal) * 100)) : 0;
-    return '<div class="macro">' +
-      '<div class="macro-head"><span>' + label + '</span><span><b class="count-up" data-to="' + Math.round(value) + '" style="font-weight:600">' + fmtNum(Math.round(value)) + '</b>' + (goal ? ' / ' + goal : '') + ' g</span></div>' +
-      '<div class="macro-track"><div class="macro-fill ' + cls + '" data-pct="' + pct + '" style="transform:translateX(' + (pct - 100) + '%)"></div></div></div>';
-  }
-
-  /** Streifen der letzten 14 Tage (Scroll-Snap) – Tippen wählt den Tag. */
-  function dateStripHTML(sel, today) {
-    const withData = new Set(db.nutrition.map((n) => n.date));
-    let html = '';
-    for (let i = 13; i >= 0; i--) {
-      const k = shiftDayKey(today, -i);
-      const p = k.split('-').map(Number);
-      const d = new Date(p[0], p[1] - 1, p[2], 12);
-      html += '<button class="strip-day' + (k === sel ? ' sel' : '') + (k === today ? ' today' : '') + '" data-action="food-date" data-key="' + k + '"' +
-        ' aria-label="' + esc(fmtLongDate(d.getTime())) + '"' + (k === sel ? ' aria-current="date"' : '') + '>' +
-        '<small>' + d.toLocaleDateString('de-DE', { weekday: 'short' }).replace('.', '') + '</small><b>' + d.getDate() + '</b>' +
-        (withData.has(k) ? '<i></i>' : '') + '</button>';
-    }
-    return '<div class="date-strip" id="date-strip">' + html + '</div>';
-  }
-
-  function renderFood(view) {
-    setHeader({ title: 'Kalorien-Tagebuch', large: true, back: extraBack() });
-    if (!ui.foodDate) ui.foodDate = Core.dayKey(Date.now());
-    const key = ui.foodDate;
-    const today = Core.dayKey(Date.now());
-    const parts = key.split('-').map(Number);
-    const ts = new Date(parts[0], parts[1] - 1, parts[2], 12).getTime();
-    const dLabel = key === today ? 'Heute' : (key === shiftDayKey(today, -1) ? 'Gestern' : fmtLongDate(ts));
-
-    const t = Core.dayTotals(db, key);
-    const goal = db.settings.calorieGoal;
-    const pct = goal ? Math.min(1, t.kcal / goal) : 0;
-    const R = 52, C = 2 * Math.PI * R;
-    const ring = '<svg class="cal-ring" viewBox="0 0 120 120" role="img" aria-label="Kalorien heute">' +
-      '<circle cx="60" cy="60" r="' + R + '" class="ring-bg"/>' +
-      '<circle cx="60" cy="60" r="' + R + '" class="ring-fg" id="ring-fg" data-off="' + (C * (1 - pct)).toFixed(1) + '" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - pct)).toFixed(1) + '" transform="rotate(-90 60 60)"/>' +
-      '<text x="60" y="58" class="ring-num count-up" data-to="' + Math.round(t.kcal) + '">' + fmtInt(Math.round(t.kcal)) + '</text>' +
-      '<text x="60" y="76" class="ring-sub">' + (goal ? '/ ' + fmtInt(goal) + ' kcal' : 'kcal') + '</text></svg>';
-    const remaining = goal ? goal - t.kcal : null;
-
-    const meals = MEALS.map((meal) => {
-      const entries = Core.nutritionForDay(db, key).filter((n) => n.meal === meal);
-      const sum = entries.reduce((a, n) => a + (n.kcal || 0), 0);
-      const rows = entries.map((n) => '' +
-        '<div class="food-row" data-action="food-edit" data-id="' + esc(n.id) + '" data-flip="n-' + esc(n.id) + '" data-swipe="food:' + esc(n.id) + '" role="button" tabindex="0">' +
-          '<div class="fr-main"><div class="fr-name">' + esc(n.name || 'Eintrag') + '</div>' +
-          '<div class="fr-sub">' + (n.grams !== null ? fmtNum(n.grams) + ' g · ' : '') +
-            [n.protein !== null ? 'E ' + fmtNum(n.protein) : '', n.carbs !== null ? 'K ' + fmtNum(n.carbs) : '', n.fat !== null ? 'F ' + fmtNum(n.fat) : ''].filter(Boolean).join(' · ') + '</div></div>' +
-          '<div class="fr-kcal">' + (n.kcal !== null ? fmtInt(Math.round(n.kcal)) + ' kcal' : '–') + '</div>' +
-          '<button class="icon-btn sm danger" data-action="food-del" data-id="' + esc(n.id) + '" aria-label="Eintrag löschen">' + ICON.trash + '</button>' +
-        '</div>').join('');
-      return '<section class="card meal" data-flip="meal-' + meal + '">' +
-        '<div class="meal-head"><h2>' + MEAL_LABEL[meal] + '</h2><span class="meal-sum">' + (sum ? fmtInt(Math.round(sum)) + ' kcal' : '') + '</span></div>' +
-        (rows || '<p class="meal-empty">Noch nichts eingetragen.</p>') +
-        '<button class="btn soft block sm" data-flip="madd-' + meal + '" data-action="food-add" data-meal="' + meal + '">' + ICON.plus + ' Hinzufügen</button>' +
-      '</section>';
-    }).join('');
-
-    view.innerHTML =
-      '<div class="date-nav">' +
-        '<button class="icon-btn" data-action="food-prev" aria-label="Vorheriger Tag">' + ICON.back + '</button>' +
-        '<button class="date-label" data-action="food-today">' + dLabel + '</button>' +
-        '<button class="icon-btn" data-action="food-next" aria-label="Nächster Tag" ' + (key >= today ? 'disabled' : '') + '>' + ICON.chevron + '</button>' +
-      '</div>' +
-      dateStripHTML(key, today) +
-      '<section class="card cal-card">' +
-        ring +
-        '<div class="cal-side">' +
-          (goal ? '<div class="cal-remain ' + (remaining < 0 ? 'over' : '') + '"><strong class="count-up" data-to="' + Math.abs(Math.round(remaining)) + '">' + fmtInt(Math.abs(Math.round(remaining))) + '</strong><small>kcal ' + (remaining < 0 ? 'drüber' : 'übrig') + '</small></div>' : '<div class="cal-remain"><strong class="count-up" data-to="' + Math.round(t.kcal) + '">' + fmtInt(Math.round(t.kcal)) + '</strong><small>kcal heute</small></div>') +
-          macroBar('Protein', t.protein, db.settings.proteinGoal, 'p') +
-          macroBar('Kohlenhydrate', t.carbs, db.settings.carbGoal, 'c') +
-          macroBar('Fett', t.fat, db.settings.fatGoal, 'f') +
-        '</div>' +
-      '</section>' +
-      meals +
-      '<p class="hint center" data-flip="food-hint">Ziele änderst du in den Einstellungen. Barcode scannen über „Hinzufügen“ bei einer Mahlzeit. Einträge nach links wischen zum Löschen.</p>';
-  }
-
-  /**
-   * Kalorienring & Makros: Ring füllt sich weich (stroke-dashoffset), Balken gleiten
-   * per transform, Zahlen zählen hoch/runter – ausgehend vom zuletzt gezeigten Stand.
-   */
-  const FoodFx = {
-    play(view, sameRoute) {
-      const ring = $('#ring-fg', view);
-      if (!ring) return;
-      const nums = $$('.count-up', view);
-      const fills = $$('.macro-fill', view);
-      const cur = {
-        date: ui.foodDate,
-        off: Number(ring.dataset.off),
-        nums: nums.map((el) => Number(el.dataset.to)),
-        pcts: fills.map((el) => Number(el.dataset.pct)),
-      };
-      const prev = ui.foodFx;
-      ui.foodFx = cur;
-      // Streifen: gewählten Tag sichtbar halten, ohne zu springen
-      const strip = $('#date-strip', view);
-      if (strip) {
-        if (sameRoute && ui.stripScroll !== undefined) strip.scrollLeft = ui.stripScroll;
-        else strip.scrollLeft = strip.scrollWidth;
-        const sel = strip.querySelector('.sel');
-        if (sel) {
-          const l = sel.offsetLeft - strip.offsetLeft, r = l + sel.offsetWidth;
-          if (l < strip.scrollLeft + 16 || r > strip.scrollLeft + strip.clientWidth - 16) {
-            strip.scrollTo({ left: l - strip.clientWidth / 2 + sel.offsetWidth / 2, behavior: reduced() || !sameRoute ? 'auto' : 'smooth' });
-          }
-        }
-        strip.addEventListener('scroll', () => { ui.stripScroll = strip.scrollLeft; }, { passive: true });
-        ui.stripScroll = strip.scrollLeft;
-      }
-      if (reduced()) return;
-      const C = Number(ring.getAttribute('stroke-dasharray'));
-      // Beim Öffnen der Seite von leer aus füllen, sonst vom vorherigen Stand
-      const from = sameRoute && prev ? prev : { off: C, nums: cur.nums.map(() => 0), pcts: cur.pcts.map(() => 0) };
-      if (from.off !== cur.off) anim(ring, [{ strokeDashoffset: from.off }, { strokeDashoffset: cur.off }], { duration: 900, easing: EASE.out });
-      nums.forEach((el, i) => {
-        const to = cur.nums[i];
-        const f = from.nums[i] !== undefined ? from.nums[i] : 0;
-        countUp(el, f, to, (v) => fmtInt(Math.round(v)), 800);
-      });
-      fills.forEach((el, i) => {
-        const f = from.pcts[i] !== undefined ? from.pcts[i] : 0;
-        if (f !== cur.pcts[i]) anim(el, [{ transform: 'translateX(' + (f - 100) + '%)' }, { transform: 'translateX(' + (cur.pcts[i] - 100) + '%)' }], { duration: 800, easing: EASE.out });
-      });
-    },
-  };
-  /* ---------- Ernährung: Eintrag hinzufügen ---------- */
-
-  async function chooseAddMethod(meal) {
-    const c = await actionSheet('Zu ' + MEAL_LABEL[meal] + ' hinzufügen', [
-      { label: 'Barcode scannen', value: 'scan', icon: ICON.scan },
-      { label: 'Aus meinen Lebensmitteln', value: 'search', icon: ICON.search },
-      { label: 'Schnelleingabe (nur kcal)', value: 'quick', icon: ICON.pencil },
-      { label: 'Lebensmittel manuell anlegen', value: 'manual', icon: ICON.plus },
-    ]);
-    if (c === 'scan') openScanner((code) => onScanned(code, meal));
-    else if (c === 'search') openFoodSearch(meal);
-    else if (c === 'quick') openQuick(meal);
-    else if (c === 'manual') openFoodForm({}, meal);
-  }
-
-  async function openQuick(meal) {
-    const raw = await openDialog({
-      title: 'Schnelleingabe', message: 'Name optional, danach die Kalorien.',
-      input: { placeholder: 'z. B. Restaurant-Essen' },
-      buttons: [{ label: 'Abbrechen', style: 'ghost' }, { label: 'Weiter', style: 'primary', submit: true }],
-    });
-    if (raw === null) return; // abgebrochen
-    const name = String(raw).trim();
-    const kcalStr = await promptText('Kalorien', { placeholder: 'kcal', inputmode: 'numeric', okLabel: 'Speichern' });
-    if (kcalStr === null) return;
-    const kcal = parseNum(kcalStr);
-    if (kcal === null) { toast('Bitte Kalorien eingeben.'); return; }
-    Core.addNutrition(db, { date: ui.foodDate, meal, name: name || 'Eintrag', kcal });
-    save(); render();
-    toast('Eingetragen');
-  }
-
-  /* ---------- Barcode-Scanner ---------- */
-
-  function manualBarcodeDefault(onCode) {
-    promptText('Barcode eingeben', { placeholder: 'z. B. 4000417025005', inputmode: 'numeric', okLabel: 'Suchen' })
-      .then((v) => { if (v) onCode(v.replace(/\D/g, '')); });
-  }
-
-  /** Kamera-Scanner (Barcodes und QR-Codes). opts: { title, hint, manual(onCode), manualLabel } */
+  /** Kamera-Scanner (QR-Codes). opts: { title, hint, manual(onCode), manualLabel } – `manual` ist die Eingabe von Hand, falls keine Kamera geht. */
   async function openScanner(onCode, opts) {
     const o = opts || {};
-    const manualBarcode = o.manual || manualBarcodeDefault;
+    const manualBarcode = o.manual || (() => {});
     if (!window.ZXing || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       toast('Kamera hier nicht verfügbar – bitte von Hand eingeben.');
       manualBarcode(onCode);
@@ -5940,7 +5511,7 @@
     const m = customModal(
       '<div class="scanner"><video id="scan-video" playsinline muted autoplay></video>' +
         '<div class="scan-frame" id="scan-frame"><i></i><i></i><i></i><i></i></div>' +
-        '<div class="scan-top"><h2 class="scan-title">' + esc(o.title || 'Barcode scannen') + '</h2>' +
+        '<div class="scan-top"><h2 class="scan-title">' + esc(o.title || 'Code scannen') + '</h2>' +
         '<p class="scan-hint" id="scan-hint">' + esc(o.hint || 'Halte den Strichcode in den Rahmen.') + '</p></div>' +
       '</div>' +
       '<div class="scan-bar">' +
@@ -5980,7 +5551,7 @@
         const v = await openDialog({
           title: 'Kamerazugriff nötig',
           message: 'Bitte erlaube den Zugriff auf die Kamera. Auf dem iPhone: Einstellungen → Apps bzw. Safari → Kamera → „Erlauben“. Du kannst den Code auch von Hand eingeben.',
-          buttons: [{ label: o.manualLabel || 'Barcode eingeben', style: 'primary', value: 'm' }, { label: 'Abbrechen', style: 'ghost' }],
+          buttons: [{ label: o.manualLabel || 'Von Hand eingeben', style: 'primary', value: 'm' }, { label: 'Abbrechen', style: 'ghost' }],
         });
         if (v === 'm') manualBarcode(onCode);
       } else {
@@ -5988,170 +5559,6 @@
         manualBarcode(onCode);
       }
     }
-  }
-
-  // Open Food Facts (global) – die größte freie Lebensmittel-Barcode-Datenbank.
-  function fetchOFF(barcode) {
-    const code = encodeURIComponent(String(barcode).trim());
-    const base = 'https://world.openfoodfacts.org/api/';
-    const fields = 'code,product_name,product_name_de,product_name_en,generic_name,brands,serving_size,serving_quantity,nutriments';
-    return fetch(base + 'v2/product/' + code + '.json?fields=' + fields)
-      .then((r) => r.json())
-      .then((json) => {
-        const food = Core.parseOFF(json);
-        if (food && food.name) return food;
-        // Fallback auf die ältere API-Version (findet gelegentlich weitere Produkte)
-        return fetch(base + 'v0/product/' + code + '.json')
-          .then((r) => r.json()).then((j) => Core.parseOFF(j) || food).catch(() => food);
-      });
-  }
-
-  function onScanned(barcode, meal) {
-    if (!barcode) return;
-    const local = Core.findFoodByBarcode(db, barcode);
-    if (local) { openPortion(local, meal); return; }
-    loadingSheet('Suche Produkt …');
-    fetchOFF(barcode).then((food) => {
-      if (food && food.name) {
-        const saved = Core.saveFood(db, { ...food, barcode });
-        save();
-        openPortion(saved, meal, true);
-      } else {
-        toast('Produkt nicht gefunden – bitte anlegen.');
-        openFoodForm({ barcode }, meal);
-      }
-    }).catch(() => {
-      toast('Keine Verbindung – bitte manuell anlegen.');
-      openFoodForm({ barcode }, meal);
-    });
-  }
-
-  /* ---------- Meine Lebensmittel: suchen ---------- */
-
-  function foodListHTML(q) {
-    const list = Core.searchFoods(db, q);
-    if (!list.length) return '<p class="hint center">' + (q ? 'Nichts gefunden.' : 'Noch keine Lebensmittel. Scanne einen Barcode oder lege eines an.') + '</p>';
-    return list.map((f) => '' +
-      '<div class="list-item" data-pick="' + esc(f.id) + '" role="button" tabindex="0">' +
-        '<button class="fav-btn ' + (f.favorite ? 'on' : '') + '" data-fav="' + esc(f.id) + '" aria-label="Favorit">' + ICON.star + '</button>' +
-        '<div class="li-main"><div class="li-title">' + esc(f.name) + (f.custom ? ' <span class="badge">eigen</span>' : '') + '</div>' +
-        '<div class="li-sub">' + (f.brand ? esc(f.brand) + ' · ' : '') + (f.kcal !== null ? fmtInt(f.kcal) + ' kcal/100 g' : 'ohne kcal') + '</div></div>' +
-        ICON.chevron +
-      '</div>').join('');
-  }
-
-  function openFoodSearch(meal) {
-    const m = customModal(
-      '<h2 class="modal-title">Meine Lebensmittel</h2>' +
-      '<label class="search">' + ICON.search + '<input class="in" id="food-q" type="search" placeholder="Suchen" autocomplete="off" autocapitalize="off"></label>' +
-      '<div class="list scroll-list" id="food-list">' + foodListHTML('') + '</div>' +
-      '<div class="modal-actions"><button class="btn ghost" data-close>Schließen</button></div>');
-    const q = m.card.querySelector('#food-q');
-    const listEl = m.card.querySelector('#food-list');
-    q.addEventListener('input', () => { listEl.innerHTML = foodListHTML(q.value); });
-    m.card.addEventListener('click', (e) => {
-      const fav = e.target.closest('[data-fav]');
-      if (fav) {
-        e.stopPropagation();
-        const id = fav.dataset.fav;
-        Core.toggleFoodFavorite(db, id); save(); Haptics.tap();
-        listEl.innerHTML = foodListHTML(q.value);
-        popStar([...listEl.querySelectorAll('[data-fav]')].find((b) => b.dataset.fav === id));
-        return;
-      }
-      const pick = e.target.closest('[data-pick]');
-      if (pick) { const f = Core.foodById(db, pick.dataset.pick); m.close(); if (f) openPortion(f, meal); }
-    });
-  }
-
-  /* ---------- Portion wählen & eintragen ---------- */
-
-  function openPortion(food, meal, isNew) {
-    const hasServing = food.serving && food.serving > 0;
-    const startAmount = hasServing ? 1 : (food.serving || 100);
-    const state = { unit: hasServing ? 'portion' : 'g', amount: hasServing ? 1 : 100, meal: meal || 'snack' };
-    const nutRow = (k, label) => '<div class="pn"><span>' + label + '</span><strong id="pn-' + k + '">–</strong></div>';
-    const m = customModal(
-      '<h2 class="modal-title">' + esc(food.name) + '</h2>' +
-      (food.brand ? '<p class="modal-msg">' + esc(food.brand) + '</p>' : '') +
-      (isNew ? '<div class="notice ok">Produkt gefunden und gespeichert.</div>' : '') +
-      '<div class="portion">' +
-        '<label class="lbl">Menge<input class="in" id="p-amount" type="text" inputmode="decimal" value="' + fmtNum(startAmount) + '"></label>' +
-        (hasServing ? '<div class="segmented small" id="p-unit"><button data-unit="portion" aria-selected="true">Portion (' + fmtNum(food.serving) + ' g)</button><button data-unit="g" aria-selected="false">Gramm</button></div>' : '<span class="unit-fixed">Gramm</span>') +
-      '</div>' +
-      '<div class="pn-grid">' + nutRow('kcal', 'kcal') + nutRow('protein', 'Protein') + nutRow('carbs', 'KH') + nutRow('fat', 'Fett') + '</div>' +
-      '<label class="lbl">Mahlzeit<select class="in" id="p-meal">' + MEALS.map((x) => '<option value="' + x + '"' + (x === state.meal ? ' selected' : '') + '>' + MEAL_LABEL[x] + '</option>').join('') + '</select></label>' +
-      '<div class="modal-actions"><button class="btn ghost" data-close>Abbrechen</button><button class="btn primary" data-save>Speichern</button></div>' +
-      '<button class="btn ghost block sm" data-edit>Nährwerte des Produkts bearbeiten</button>');
-    const amountEl = m.card.querySelector('#p-amount');
-    const mealEl = m.card.querySelector('#p-meal');
-    const grams = () => {
-      const a = parseNum(amountEl.value) || 0;
-      return state.unit === 'portion' && hasServing ? a * food.serving : a;
-    };
-    const refresh = () => {
-      const sc = Core.scaleFood(food, grams());
-      for (const k of ['kcal', 'protein', 'carbs', 'fat']) {
-        m.card.querySelector('#pn-' + k).textContent = sc[k] === null ? '–' : fmtNum(sc[k]) + (k === 'kcal' ? '' : ' g');
-      }
-    };
-    amountEl.addEventListener('input', refresh);
-    const unitSeg = m.card.querySelector('#p-unit');
-    if (unitSeg) unitSeg.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-unit]'); if (!b) return;
-      state.unit = b.dataset.unit;
-      [...unitSeg.children].forEach((c) => c.setAttribute('aria-selected', c === b));
-      if (state.unit === 'portion') amountEl.value = '1'; else amountEl.value = fmtNum(food.serving || 100);
-      refresh();
-    });
-    m.card.querySelector('[data-edit]').addEventListener('click', () => { m.close(); openFoodForm(food, mealEl.value); });
-    m.card.querySelector('[data-save]').addEventListener('click', () => {
-      const g = grams();
-      if (!g) { toast('Bitte eine Menge eingeben.'); return; }
-      const sc = Core.scaleFood(food, g);
-      Core.addNutrition(db, { date: ui.foodDate, meal: mealEl.value, name: food.name, kcal: sc.kcal, protein: sc.protein, carbs: sc.carbs, fat: sc.fat, grams: g, foodId: food.id });
-      Core.markFoodUsed(db, food.id, Date.now());
-      save(); m.close(); render();
-      toast('Eingetragen');
-    });
-    refresh();
-  }
-
-  /* ---------- Lebensmittel manuell anlegen / bearbeiten ---------- */
-
-  function openFoodForm(prefill, meal) {
-    const f = prefill || {};
-    const num = (v) => (v === null || v === undefined ? '' : fmtNum(v));
-    const m = customModal(
-      '<h2 class="modal-title">' + (f.id ? 'Lebensmittel bearbeiten' : 'Neues Lebensmittel') + '</h2>' +
-      '<p class="modal-msg">Nährwerte pro 100 g. Leer lassen, wenn unbekannt.</p>' +
-      '<form id="ff" class="ff">' +
-        (f.barcode ? '<p class="kv"><span>Barcode</span><span class="break">' + esc(f.barcode) + '</span></p>' : '') +
-        '<label class="lbl">Name<input class="in" name="name" value="' + esc(f.name || '') + '" required></label>' +
-        '<label class="lbl">Marke (optional)<input class="in" name="brand" value="' + esc(f.brand || '') + '"></label>' +
-        '<div class="form-grid">' +
-          '<label class="lbl">kcal<input class="in" name="kcal" inputmode="decimal" value="' + num(f.kcal) + '"></label>' +
-          '<label class="lbl">Protein (g)<input class="in" name="protein" inputmode="decimal" value="' + num(f.protein) + '"></label>' +
-          '<label class="lbl">Kohlenhydrate (g)<input class="in" name="carbs" inputmode="decimal" value="' + num(f.carbs) + '"></label>' +
-          '<label class="lbl">Fett (g)<input class="in" name="fat" inputmode="decimal" value="' + num(f.fat) + '"></label>' +
-        '</div>' +
-        '<label class="lbl">Portionsgröße in g (optional)<input class="in" name="serving" inputmode="decimal" value="' + num(f.serving) + '"></label>' +
-        '<div class="modal-actions"><button type="button" class="btn ghost" data-close>Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>' +
-      '</form>');
-    m.card.querySelector('#ff').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const el = e.target.elements;
-      if (!el.name.value.trim()) { toast('Bitte einen Namen eingeben.'); return; }
-      const saved = Core.saveFood(db, {
-        id: f.id, barcode: f.barcode || null, custom: true,
-        name: el.name.value, brand: el.brand.value,
-        kcal: el.kcal.value, protein: el.protein.value, carbs: el.carbs.value, fat: el.fat.value, serving: el.serving.value,
-      });
-      save();
-      m.close();
-      if (meal) openPortion(saved, meal);
-      else { toast('Gespeichert'); render(); }
-    });
   }
 
   /* ---------- Ansicht: Übungsbibliothek ---------- */
@@ -6354,41 +5761,6 @@
     anim(btn.querySelector('svg'), [{ transform: 'scale(0.6)' }, { transform: 'none' }], { duration: 480, easing: EASE.spring });
   }
 
-  function editNutrition(id) {
-    const n = db.nutrition.find((x) => x.id === id);
-    if (!n) return;
-    const num = (v) => (v === null ? '' : fmtNum(v));
-    const m = customModal(
-      '<h2 class="modal-title">Eintrag bearbeiten</h2>' +
-      '<form id="ne" class="ff">' +
-        '<label class="lbl">Name<input class="in" name="name" value="' + esc(n.name) + '"></label>' +
-        '<label class="lbl">Mahlzeit<select class="in" name="meal">' + MEALS.map((x) => '<option value="' + x + '"' + (x === n.meal ? ' selected' : '') + '>' + MEAL_LABEL[x] + '</option>').join('') + '</select></label>' +
-        '<div class="form-grid">' +
-          '<label class="lbl">kcal<input class="in" name="kcal" inputmode="decimal" value="' + num(n.kcal) + '"></label>' +
-          '<label class="lbl">Protein (g)<input class="in" name="protein" inputmode="decimal" value="' + num(n.protein) + '"></label>' +
-          '<label class="lbl">KH (g)<input class="in" name="carbs" inputmode="decimal" value="' + num(n.carbs) + '"></label>' +
-          '<label class="lbl">Fett (g)<input class="in" name="fat" inputmode="decimal" value="' + num(n.fat) + '"></label>' +
-        '</div>' +
-        '<div class="modal-actions"><button type="button" class="btn ghost" data-close>Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>' +
-      '</form>');
-    m.card.querySelector('#ne').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const el = e.target.elements;
-      Core.updateNutrition(db, id, { name: el.name.value, meal: el.meal.value, kcal: el.kcal.value, protein: el.protein.value, carbs: el.carbs.value, fat: el.fat.value });
-      save(); m.close(); render(); toast('Gespeichert');
-    });
-  }
-
-  async function editGoal(key) {
-    const meta = { calorieGoal: ['Kalorienziel', 'kcal'], proteinGoal: ['Protein-Ziel', 'g'], carbGoal: ['Kohlenhydrat-Ziel', 'g'], fatGoal: ['Fett-Ziel', 'g'] }[key];
-    const v = await promptText(meta[0], { value: db.settings[key] == null ? '' : String(db.settings[key]), inputmode: 'numeric', placeholder: meta[1], okLabel: 'Speichern' });
-    if (v === null) return;
-    const n = parseNum(v);
-    if (n === null || n <= 0) { toast('Bitte eine Zahl eingeben.'); return; }
-    db.settings[key] = Math.round(n);
-    save(); render();
-  }
-
   /* ---------- Theme ---------- */
 
   const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -6572,13 +5944,6 @@
     /** Führt das Löschen aus und liefert eine Funktion zum Wiederherstellen (oder null). */
     remove(spec) {
       const [type, a, b] = spec.split(':');
-      if (type === 'food') {
-        const i = db.nutrition.findIndex((n) => n.id === a);
-        if (i < 0) return null;
-        const entry = db.nutrition[i];
-        Core.deleteNutrition(db, a);
-        return { label: 'Eintrag gelöscht', undo: () => { if (!db.nutrition.some((n) => n.id === entry.id)) db.nutrition.splice(Math.min(i, db.nutrition.length), 0, entry); } };
-      }
       if (type === 'ex') {
         const dayId = parseRoute().id;
         const day = Core.findDay(db, dayId);
@@ -7036,19 +6401,6 @@
       actions['admin-reload']();
       go('#/admin');
     },
-    'food-add': (el) => chooseAddMethod(el.dataset.meal),
-    'food-prev': () => { ui.foodDate = shiftDayKey(ui.foodDate || Core.dayKey(Date.now()), -1); render(); },
-    'food-next': () => { const today = Core.dayKey(Date.now()); if ((ui.foodDate || today) < today) { ui.foodDate = shiftDayKey(ui.foodDate, 1); render(); } },
-    'food-today': () => { ui.foodDate = Core.dayKey(Date.now()); render(); },
-    'food-edit': (el) => editNutrition(el.dataset.id),
-    'food-del': async (el) => {
-      const n = db.nutrition.find((x) => x.id === el.dataset.id);
-      if (!n) return;
-      const ok = await confirmAction('Eintrag löschen?', (n.name || 'Eintrag') + (n.kcal !== null ? ' · ' + Math.round(n.kcal) + ' kcal' : ''), 'Löschen');
-      if (!ok) return;
-      Core.deleteNutrition(db, el.dataset.id); save(); render();
-    },
-    'edit-goal': (el) => editGoal(el.dataset.key),
     'lib-fav': () => { ui.lib.fav = !ui.lib.fav; render(); },
     'lib-custom': () => { ui.lib.custom = !ui.lib.custom; render(); },
     'lib-muscle': (el) => { toggleSet(ui.lib.muscle, el.dataset.value); render(); },
@@ -7169,7 +6521,6 @@
       save(); render();
     },
     'effort': (el) => { db.settings.effort = el.dataset.value; save(); render(); },
-    'food-date': (el) => { ui.foodDate = el.dataset.key; render(); },
     'w-add-ex': () => addExercise(db.activeSession.dayId),
     'wk-menu': async () => {
       const s = db.activeSession;
@@ -7314,8 +6665,6 @@
     'intro-done': () => finishIntro(),
     'setup-goal': (el) => { ui.setup.goal = Number(el.dataset.value); Haptics.tap(); render(); },
     'setup-start': (el) => { ui.setup.start = el.dataset.value; Haptics.tap(); render(); },
-    'setup-kcal': (el) => { ui.setup.kcal = Math.max(1200, Math.min(4000, ui.setup.kcal + Number(el.dataset.delta))); render(); },
-    'setup-kcal-set': (el) => { ui.setup.kcal = Number(el.dataset.value); Haptics.tap(); render(); },
     'setup-back': () => setupStep(-1),
     'setup-next': () => { if (ui.setup.step >= SETUP_STEPS - 1) finishSetup(false); else setupStep(1); },
     'setup-skip': () => finishSetup(true),
@@ -8013,7 +7362,7 @@
         <p class="privacy-h">Bleibt privat</p>
         <ul class="privacy-list private">
           <li>Einzelne Sätze, Gewichte pro Satz, Notizen und Trainingspläne</li>
-          <li>Ernährung, Mealplan, Körpergewicht und Körpermaße</li>
+          <li>Mealplan, Körpergewicht und Körpermaße</li>
           <li>Deine E-Mail-Adresse</li>
         </ul>
         <p class="hint">Deine vollständigen Trainingsdaten sichert die App wie bisher nur für dich in deinem Konto (für deine Geräte) – Freunde haben darauf keinen Zugriff. Profil, Freundschaften und alle Cloud-Daten löschst du jederzeit unter Einstellungen → Konto.</p>
@@ -8048,7 +7397,7 @@
         <span class="social-cta-ic" aria-hidden="true">${ICON.users}</span>
         <h2>${esc(title || 'Mit Freunden vergleichen')}</h2>
         <p>${esc(text || 'Mit einem Konto kannst du Freunde über ihren Benutzernamen hinzufügen und Trainings, Serien und Rekorde vergleichen.')}</p>
-        <p class="muted">Training, Daily, Timer, Kalorien-Tagebuch, Bibliothek und Verlauf funktionieren weiterhin komplett ohne Konto und offline.</p>
+        <p class="muted">Training, Daily, Timer, Bibliothek und Verlauf funktionieren weiterhin komplett ohne Konto und offline.</p>
         ${cloudConfigured
           ? '<button class="btn primary block" data-action="open-login">Anmelden oder Konto erstellen</button>'
           : '<div class="notice">Konten sind noch nicht eingerichtet (Firebase-Daten in <code>firebase-config.js</code> eintragen, siehe README.md).</div>'}
@@ -8106,13 +7455,12 @@
       <section class="card flush">
         ${menuRow('#/history', svgI('<path d="M3.5 20h17M6 15.5l4-4.5 3.5 3L19 7.5"/>'), 'Verlauf', db.sessions.length ? db.sessions.length + (db.sessions.length === 1 ? ' Einheit' : ' Einheiten') : '', 'Einheiten, Kalender, Übungen, Körper')}
         ${menuRow('#/library', svgI('<path d="M12 6.5C10.4 5 8 4.5 4 4.5v14c4 0 6.4.5 8 2 1.6-1.5 4-2 8-2v-14c-4 0-6.4.5-8 2zM12 6.5v14"/>'), 'Bibliothek', '', '200+ Übungen mit Anleitung')}
-        ${menuRow('#/food', svgI('<path d="M12 7.3c-1.6-1.3-5.2-1.6-6.5 1.4-1.4 3 .1 7.8 2.5 10.3 1.2 1.3 2.4 1.4 4 .6 1.6.8 2.8.7 4-.6 2.4-2.5 3.9-7.3 2.5-10.3-1.3-3-4.9-2.7-6.5-1.4zM12 7.3c0-1.9.9-3.3 2.6-4.1"/>'), 'Kalorien-Tagebuch', '', 'Lebensmittel scannen, Kalorien und Makros')}
       </section>`;
     const settingsCard = `
       <section class="card flush">
         ${isUser() && Social.ready() ? menuRow('#/profile/edit', ICON.edit, 'Profil bearbeiten', '', 'Foto, Benutzername, Rekorde teilen') : ''}
         ${isUser() ? `<button class="row menu-row" data-action="privacy-info"><span class="row-ic" aria-hidden="true">${ICON.shield}</span><span class="row-text"><span>Datenschutz</span><small>Was Freunde sehen – und was privat bleibt</small></span><span class="row-value">${ICON.chevron}</span></button>` : ''}
-        ${menuRow('#/settings', ICON.gear, 'Einstellungen', '', 'Training, Ernährung, Konto, Datensicherung')}
+        ${menuRow('#/settings', ICON.gear, 'Einstellungen', '', 'Training, Konto, Datensicherung')}
       </section>`;
 
     if (!isUser()) {
@@ -8589,7 +7937,7 @@
         <h2 class="card-title">Rekorde bei gemeinsamen Übungen</h2>
         ${recs}
       </section>
-      <p class="hint center">Wochenziel: du ${me.goal}×, ${esc(who)} ${fr.goal}× pro Woche. Einzelne Sätze, Gewichte pro Satz, Ernährung und Mealplan bleiben privat.</p>
+      <p class="hint center">Wochenziel: du ${me.goal}×, ${esc(who)} ${fr.goal}× pro Woche. Einzelne Sätze, Gewichte pro Satz und Mealplan bleiben privat.</p>
       ${offlineNote()}`;
   }
 
@@ -8908,7 +8256,9 @@
     const code = (e && e.code) || '';
     if (!navigator.onLine || code === 'unavailable') return 'Keine Verbindung – nicht gesendet';
     if (code === 'permission-denied') {
-      return kind === 'gym' ? 'Nicht erlaubt – nur eine Gym-Karte pro Minute' : 'Nicht gesendet – bitte kurz warten und erneut senden';
+      // Die App wartet selbst zwischen Nachrichten (2 s) und Gym-Karten (1 min) – eine Ablehnung heißt fast immer: Die Regeln in Firebase passen nicht
+      return Chat.rulesMissing ? 'Chat noch nicht freigeschaltet – die Regeln in Firebase fehlen'
+        : 'Nicht gesendet – keine Berechtigung (Regeln in Firebase prüfen)';
     }
     if (code === 'timeout') return 'Keine Verbindung – Senden dauert zu lange';
     return 'Senden fehlgeschlagen';
@@ -8924,6 +8274,7 @@
     done: false,          // keine älteren Nachrichten mehr
     loadingOlder: false,
     error: null,
+    rulesMissing: false,  // Lesen wird abgelehnt: die Firestore-Regeln lassen den Chat nicht zu (veraltet/nicht veröffentlicht)
     unsub: null,
     unsubPlans: null,
     planDay: '',
@@ -8978,6 +8329,7 @@
         this.unsub = this.api().watch(CHAT_ROOM, CHAT_PAGE, (list, meta) => { if (uid === this.uid) this.onLive(list, meta); }, (err) => {
           if (uid !== this.uid) return;
           this.error = err;
+          this.rulesMissing = !!(err && err.code === 'permission-denied');
           this.stop();
           clearTimeout(this.timers.retry);
           this.timers.retry = setTimeout(() => this.sync(), 15000);
@@ -9027,7 +8379,7 @@
     onLive(list, meta) {
       this.absorb(list);
       this.fromCache = meta.fromCache;
-      if (!meta.fromCache) { this.ready = true; this.error = null; }
+      if (!meta.fromCache) { this.ready = true; this.error = null; this.rulesMissing = false; }
       // Hinweise auf neue Gym-Karten anderer – nicht auf den ersten Stand und nicht auf Zwischenspeicher
       if (this.known === null) {
         if (!meta.fromCache) this.known = new Set(list.map((m) => m.id));
@@ -9091,7 +8443,7 @@
       if (ChatView.el) ChatView.update(opts);
     },
 
-    onOnline() { this.error = null; this.sync(); this.changed(); },
+    onOnline() { this.error = null; this.rulesMissing = false; this.sync(); this.changed(); },
     onOffline() { this.changed(); },
 
     /* ----- Senden ----- */
@@ -9139,6 +8491,11 @@
       } catch (e) {
         if (await api.exists(CHAT_ROOM, entry.id)) { this.outbox.delete(entry.id); this.changed(); return; }
         entry.status = 'failed';
+        entry.code = (e && e.code) || '';
+        if (entry.code === 'permission-denied' && typeof api.probe === 'function') {
+          const pr = await api.probe(CHAT_ROOM);
+          if (!pr.read) { this.rulesMissing = true; this.error = this.error || { code: pr.code || 'permission-denied' }; }
+        }
         entry.error = chatErrorText(e, entry.kind);
       }
       this.changed();
@@ -9256,7 +8613,7 @@
           ${m.failed ? `<span class="bubble">${esc(m.text)}</span>`
             : `<button type="button" class="bubble" data-action="chat-menu" data-id="${esc(m.id)}">${esc(m.text)}</button>`}
           <span class="msg-meta">${esc(meta.join(' · '))}${state ? ' ' : ''}${state}</span>
-          ${m.failed ? `<span class="msg-retry"><button type="button" class="btn soft sm" data-action="chat-retry" data-id="${esc(m.id)}">${ICON.reload} Erneut senden</button><button type="button" class="btn ghost sm" data-action="chat-discard" data-id="${esc(m.id)}">Verwerfen</button></span>` : ''}
+          ${m.failed ? `<span class="msg-retry"><button type="button" class="btn soft sm" data-action="chat-retry" data-id="${esc(m.id)}">${ICON.reload} Erneut senden</button>${m.code === 'permission-denied' ? '<button type="button" class="btn soft sm" data-action="chat-rules-help">Was tun?</button>' : ''}<button type="button" class="btn ghost sm" data-action="chat-discard" data-id="${esc(m.id)}">Verwerfen</button></span>` : ''}
         </div>
       </div>`;
   }
@@ -9286,7 +8643,7 @@
           ${people}
           ${action}
           ${state ? `<div class="plan-state">${state}</div>` : ''}
-          ${m.failed ? `<span class="msg-retry"><button type="button" class="btn soft sm" data-action="chat-retry" data-id="${esc(m.id)}">${ICON.reload} Erneut senden</button><button type="button" class="btn ghost sm" data-action="chat-discard" data-id="${esc(m.id)}">Verwerfen</button></span>` : ''}
+          ${m.failed ? `<span class="msg-retry"><button type="button" class="btn soft sm" data-action="chat-retry" data-id="${esc(m.id)}">${ICON.reload} Erneut senden</button>${m.code === 'permission-denied' ? '<button type="button" class="btn soft sm" data-action="chat-rules-help">Was tun?</button>' : ''}<button type="button" class="btn ghost sm" data-action="chat-discard" data-id="${esc(m.id)}">Verwerfen</button></span>` : ''}
         </article>
         <span class="msg-meta">${Core.fmtViennaTime(m.createdAt)}${m.editedAt ? ' · bearbeitet' : ''}</span>
       </div>`;
@@ -9349,12 +8706,15 @@
       offline: 'Offline – Senden geht erst wieder mit Verbindung.',
       update: 'Die App wurde aktualisiert – bitte einmal neu laden.',
       loading: 'Verbindung zur Cloud wird aufgebaut …',
-      error: 'Keine Verbindung zum Chat' + (Chat.error && Chat.error.code ? ' (' + Chat.error.code + ')' : ''),
+      error: Chat.rulesMissing ? 'Der Chat ist noch nicht freigeschaltet (permission-denied).'
+        : 'Keine Verbindung zum Chat' + (Chat.error && Chat.error.code ? ' (' + Chat.error.code + ')' : ''),
       unstable: 'Verbindung gestört – neue Nachrichten kommen, sobald sie wieder steht.',
     }[why];
+    const help = why === 'error' && Chat.rulesMissing
+      ? `<button type="button" class="btn primary sm" data-action="chat-rules-help">So schaltest du ihn frei</button>` : '';
     const retry = why === 'update' || why === 'error'
       ? `<button type="button" class="btn soft sm" data-action="chat-retry-connect">${ICON.reload} ${why === 'update' ? 'Neu laden' : 'Erneut versuchen'}</button>` : '';
-    return `<div class="chat-note" role="status">${ICON.cloudOff}<span>${esc(text)}</span>${retry}</div>`;
+    return `<div class="chat-note" role="status">${ICON.cloudOff}<span>${esc(text)}</span>${help || retry ? `<span class="chat-note-actions">${help}${retry}</span>` : ''}</div>`;
   }
 
   function renderChat(view) {
@@ -9484,6 +8844,72 @@
     },
   };
 
+  /* ---------- Chat freischalten: Firestore-Regeln kopieren & Firebase öffnen ---------- */
+
+  const ADMIN_PLACEHOLDER = "'ADMIN-NUTZER-ID-HIER-EINTRAGEN'";
+
+  /** Text der firestore.rules dieser App – mit der eigenen Nutzer-ID als Administrator, falls noch der Platzhalter drinsteht. */
+  async function loadRulesText() {
+    const res = await fetch('firestore.rules', { cache: 'no-store' });
+    if (!res.ok) throw new Error('rules ' + res.status);
+    let text = await res.text();
+    if (!/service cloud\.firestore/.test(text)) throw new Error('rules invalid');
+    if (account && account.uid && text.includes(ADMIN_PLACEHOLDER)) text = text.replace(ADMIN_PLACEHOLDER, "'" + account.uid + "'");
+    return text;
+  }
+
+  function openChatRulesHelp() {
+    const cfg = window.GYM_FIREBASE_CONFIG || {};
+    const link = cfg.projectId
+      ? 'https://console.firebase.google.com/project/' + encodeURIComponent(cfg.projectId) + '/firestore/databases/-default-/rules'
+      : 'https://console.firebase.google.com/';
+    const m = customModal(
+      '<h2 class="modal-title">Chat freischalten</h2>' +
+      '<p class="modal-msg">Firebase lässt den Chat noch nicht zu („permission-denied“): Die Sicherheitsregeln in deinem Firebase-Projekt sind älter als diese App oder fehlen. Das behebst du einmal, in zwei Minuten – am besten am Computer:</p>' +
+      '<ol class="help-steps">' +
+        '<li><b>Regeln kopieren</b> – gleich unten tippen.</li>' +
+        '<li><b>Firebase-Regeln öffnen</b>, den ganzen Text dort ersetzen (alles markieren, einfügen) und auf <em>Veröffentlichen</em> tippen.</li>' +
+        '<li>Zurück in die App, im Chat auf <em>Erneut versuchen</em> tippen.</li>' +
+      '</ol>' +
+      (account && account.uid ? '<p class="hint">Deine Nutzer-ID steht in den kopierten Regeln schon als Administrator – du musst nichts eintragen.</p>' : '') +
+      '<textarea class="in rules-box" id="rules-box" readonly hidden aria-label="Firestore-Regeln" rows="6"></textarea>' +
+      '<div class="modal-actions stack">' +
+        '<button type="button" class="btn primary" data-copy>Regeln kopieren</button>' +
+        '<a class="btn soft" href="' + esc(link) + '" target="_blank" rel="noopener">Firebase-Regeln öffnen</a>' +
+        '<button type="button" class="btn ghost" data-close>Schließen</button>' +
+      '</div>' +
+      '<p class="hint">Veröffentlichen kann nur, wer das Firebase-Projekt besitzt.</p>');
+    const btn = m.card.querySelector('[data-copy]');
+    const box = m.card.querySelector('#rules-box');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const pending = loadRulesText();
+        // Safari erlaubt Kopieren nur direkt nach dem Tippen – darum liefert die Zwischenablage den Text erst nach dem Laden nach
+        if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+          await navigator.clipboard.write([new ClipboardItem({ 'text/plain': pending.then((t) => new Blob([t], { type: 'text/plain' })) })]);
+        } else {
+          await navigator.clipboard.writeText(await pending);
+        }
+        btn.textContent = 'Kopiert ✓';
+        Haptics.tap();
+        setTimeout(() => { btn.textContent = 'Regeln kopieren'; }, 2500);
+      } catch (e) {
+        // Zwischenablage gesperrt oder Datei nicht ladbar → Text zum Selbstkopieren zeigen
+        try {
+          box.value = await loadRulesText();
+          box.hidden = false;
+          box.focus();
+          box.select();
+          toast('Text markiert – jetzt „Kopieren“ wählen.');
+        } catch (e2) {
+          toast('Die Regeln konnten nicht geladen werden. Nimm die Datei firestore.rules aus dem Projekt.');
+        }
+      }
+      btn.disabled = false;
+    });
+  }
+
   /* ---------- Formular „Ich gehe ins Gym“ ---------- */
 
   function openPlanForm(edit) {
@@ -9579,7 +9005,8 @@
     'chat-discard': (el) => Chat.discard(el.dataset.id),
     'chat-jump': () => { ChatView.stick = true; ChatView.paint({ toBottom: true }); },
     'chat-today-open': (el) => openPlanInfo(el.dataset.id),
-    'chat-retry-connect': () => { if (window.GymCloud && !window.GymCloud.chat) { reloadForUpdate(); return; } Chat.error = null; Chat.stop(); Chat.sync(); Chat.changed(); },
+    'chat-retry-connect': () => { if (window.GymCloud && !window.GymCloud.chat) { reloadForUpdate(); return; } Chat.error = null; Chat.rulesMissing = false; Chat.stop(); Chat.sync(); Chat.changed(); },
+    'chat-rules-help': () => openChatRulesHelp(),
     'chat-menu': async (el) => {
       const m = Chat.store.get(el.dataset.id);
       if (!m) return;

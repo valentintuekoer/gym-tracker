@@ -6,7 +6,7 @@
 'use strict';
 
 // Bei jeder Änderung an den App-Dateien hochzählen, damit Nutzer die neue Version bekommen.
-const CACHE = 'gym-tracker-v22';
+const CACHE = 'gym-tracker-v23';
 const SDK_CACHE = 'gym-tracker-firebase-sdk';   // Firebase-Bibliothek (versionierte, unveränderliche URLs)
 const SDK_PREFIX = 'https://www.gstatic.com/firebasejs/';
 const AVATAR_CACHE = 'gym-tracker-avatars';     // Profilfotos von Freunden (für die Offline-Ansicht)
@@ -56,6 +56,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
+
+  // Die Sicherheitsregeln (firestore.rules) werden zum Kopieren geladen: immer frisch vom Server, nie aus dem Cache
+  if (new URL(req.url).pathname.endsWith('.rules')) return;
 
   // Die Liquid-Glass-Demo ist eine eigene Seite: nicht mit der App-Shell (index.html) beantworten, sondern normal laden
   if (new URL(req.url).pathname.includes('/liquid-glass/')) return;

@@ -55,7 +55,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read, write: if canUse(uid);
 
-      // alle Unter-Sammlungen des Kontos (sessions, body, nutrition, food, friends …)
+      // alle Unter-Sammlungen des Kontos (sessions, body, friends … und die alten nutrition/food)
       match /{collection}/{docId} {
         allow read, write: if canUse(uid);
       }

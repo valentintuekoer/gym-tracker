@@ -2232,8 +2232,6 @@
     edit: svgI('<path d="M4.5 19.5h4l10.5-10.5-4-4L4.5 15.5zM13.5 6.5l4 4"/>'),
     play: svgI('<path class="fill" d="M8 5.5v13l10-6.5z"/>'),
     chevron: svgI('<path d="M9 5l7 7-7 7"/>'),
-    sun: svgI('<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>'),
-    moon: svgI('<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>'),
     flame: svgI('<path d="M12 21c3.6 0 6-2.4 6-5.8 0-3.7-2.8-5.6-3.6-8.7-.3 1.6-1 2.8-2.2 3.6C12.5 7.3 11 4.7 8.6 3c.4 3.3-2.6 5.8-2.6 10.2C6 18.6 8.4 21 12 21z"/>'),
     bulb: svgI('<path d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>'),
     warn: svgI('<path d="M12 4 2.8 19.5h18.4zM12 10v4.5M12 17.2h.01"/>'),
@@ -2973,13 +2971,13 @@
     else location.hash = hash;
   }
 
-  function setHeader({ title, back, actions, large, hidden, eyebrow, brand }) {
+  function setHeader({ title, back, actions, large, hidden, eyebrow }) {
     const h = $('#header');
     h.hidden = !!hidden;
     h.className = 'app-header' + (large ? ' large' : '');
     h.innerHTML = `
       <div class="hdr-bg" aria-hidden="true"></div>
-      <div class="hdr-side">${back ? `<a class="hdr-btn" href="${back}" aria-label="Zurück">${ICON.back}<span>Zurück</span></a>` : brand ? '<span class="hdr-brand"><i class="brand-dot" aria-hidden="true"></i>Gym Tracker</span>' : ''}</div>
+      <div class="hdr-side">${back ? `<a class="hdr-btn" href="${back}" aria-label="Zurück">${ICON.back}<span>Zurück</span></a>` : ''}</div>
       <h1 class="hdr-title">${esc(title)}</h1>
       <div class="hdr-side right">${actions || ''}</div>`;
     ui.hdr = { title, back: back || null, large: !!large, eyebrow: eyebrow || '', set: true };
@@ -3435,12 +3433,7 @@
       return;
     }
     const now = Date.now();
-    const dark = document.documentElement.dataset.theme === 'dark';
-    setHeader({
-      title: 'Training', large: true, brand: true,
-      eyebrow: new Date(now).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }),
-      actions: `<button class="hdr-btn" data-action="theme-toggle" aria-label="${dark ? 'Zum hellen Design wechseln' : 'Zum dunklen Design wechseln'}">${dark ? ICON.moon : ICON.sun}</button>`,
-    });
+    setHeader({ title: 'Training', large: true, eyebrow: new Date(now).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }) });
     const s = db.activeSession;
     const active = s ? `
       <a class="active-banner" href="#/workout">
@@ -3454,25 +3447,21 @@
       const last = Core.lastTrained(db, d.id);
       const isActive = s && s.dayId === d.id;
       const exNames = d.exercises.map((e) => e.name).join(' · ');
-      const mins = d.exercises.length ? Core.estimateMinutes(d) : 0;
       return `
         <div class="day-card ${isActive ? 'is-active' : ''}" data-flip="day-${esc(d.id)}" data-action="preview-day" data-id="${esc(d.id)}" role="button" tabindex="0">
           <div class="day-main">
-            ${isActive ? '<span class="live-badge"><i class="live-dot" aria-hidden="true"></i>Läuft gerade</span>' : ''}
             <div class="day-name">${esc(d.name)}</div>
             <div class="day-meta">${d.exercises.length} ${d.exercises.length === 1 ? 'Übung' : 'Übungen'} ·
-              ${last ? '<time datetime="' + new Date(last).toISOString() + '" title="' + fmtDate(last) + '">' + (fmtRelative(last, now) === fmtDate(last) ? 'zuletzt am ' : 'zuletzt ') + fmtRelative(last, now) + '</time>' : 'noch nicht trainiert'}</div>
+              ${isActive ? '<span class="accent">läuft gerade</span>' : last ? '<time datetime="' + new Date(last).toISOString() + '" title="' + fmtDate(last) + '">' + (fmtRelative(last, now) === fmtDate(last) ? 'zuletzt am ' : 'zuletzt ') + fmtRelative(last, now) + '</time>' : 'noch nicht trainiert'}</div>
             ${exNames ? `<div class="day-ex">${esc(exNames)}</div>` : ''}
           </div>
-          ${mins ? `<div class="day-side" aria-label="ca. ${mins} Minuten"><b>${mins}</b><small>Min</small></div>` : ''}
           <button class="icon-btn" data-action="day-menu" data-id="${esc(d.id)}" aria-label="Optionen für ${esc(d.name)}">${ICON.more}</button>
         </div>`;
     }).join('');
 
     view.innerHTML = `
       ${active}
-      ${db.sessions.length ? weekCard() + kpiCards(now) : ''}
-      ${db.days.length && !s ? nextCard(now) : ''}
+      ${db.sessions.length ? weekCard() : ''}
       ${db.days.length ? gymCard() : ''}
       ${db.days.length ? `
         <div class="day-list">${cards}</div>
@@ -3559,67 +3548,16 @@
       </div>`;
   }
 
-  /** Große Karte „3 / 4“ mit Fortschrittsring: Einheiten diese Woche (Tipp öffnet den Kalender) */
+  /** Kleine Karte „Diese Woche 2 von 3 · 🔥 4 Wochen in Folge“ */
   function weekCard() {
     const w = Core.weekStats(db, Date.now(), db.settings.weeklyGoal);
-    const C = 314.16; // Umfang des Rings (r = 50)
-    const offset = (C * (1 - Math.min(1, w.thisWeek / Math.max(1, w.goal)))).toFixed(2);
-    const left = w.goal - w.thisWeek;
-    const text = left <= 0 ? 'Wochenziel erreicht – stark!' : 'Einheiten diese Woche. ' + (left === 1 ? 'Noch eine' : 'Noch ' + left) + ' bis zum Wochenziel.';
+    const dots = Array.from({ length: w.goal }, (_, i) => `<i class="${i < w.thisWeek ? 'on' : ''}"></i>`).join('');
     return `
-      <button class="hero-card" data-action="open-calendar" aria-label="Diese Woche: ${w.thisWeek} von ${w.goal} Einheiten. Kalender öffnen">
-        <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
-          <circle class="ring-bg" cx="60" cy="60" r="50"/>
-          <circle class="ring-fg" cx="60" cy="60" r="50" transform="rotate(-90 60 60)" stroke-dasharray="${C}" stroke-dashoffset="${offset}" style="--ring-from:${C}"/>
-        </svg>
-        <span class="hero-text">
-          <span class="hero-big"><b>${w.thisWeek}</b><small> / ${w.goal}</small></span>
-          <span class="hero-sub">${text}</span>
-        </span>
-      </button>`;
-  }
-
-  /** Zwei Kennzahlen: Volumen der letzten 7 Tage (im Vergleich zur Vorwoche) und Wochen-Serie */
-  function kpiCards(now) {
-    const DAY = 86400000;
-    const vol = (from, to) => db.sessions.reduce((n, x) => (x.finishedAt >= from && x.finishedAt < to ? n + Core.sessionStats(x).volume : n), 0);
-    const v7 = vol(now - 7 * DAY, now + 1);
-    const prev = vol(now - 14 * DAY, now - 7 * DAY);
-    const pct = prev ? Math.round((v7 - prev) / prev * 100) : null;
-    const w = Core.weekStats(db, now, db.settings.weeklyGoal);
-    return `
-      <div class="kpi-pair">
-        <div class="kpi-card">
-          <span class="kpi-label">Volumen</span>
-          <span class="kpi-val">${v7 ? fmtInt(v7) + ' kg' : '–'}</span>
-          <span class="kpi-sub">${pct !== null && v7 ? (pct > 0 ? '+' : '') + pct + ' % zur Vorwoche' : 'Letzte 7 Tage'}</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">Serie</span>
-          <span class="kpi-val">${w.streak} ${w.streak === 1 ? 'Woche' : 'Wochen'}</span>
-          <span class="kpi-sub">${w.streak ? 'Ziel jede Woche erreicht' : 'Wochenziel: ' + w.goal + '×'}</span>
-        </div>
-      </div>`;
-  }
-
-  /** „Als Nächstes“: der Trainingstag, der am längsten nicht dran war */
-  function nextCard(now) {
-    const days = db.days.filter((d) => d.exercises.length);
-    if (!days.length) return '';
-    let pick = null, pickAt = Infinity;
-    for (const d of days) {
-      const t = Core.lastTrained(db, d.id) || 0; // nie trainiert = zuerst
-      if (t < pickAt) { pick = d; pickAt = t; }
-    }
-    const mins = Core.estimateMinutes(pick);
-    return `
-      <button class="next-card" data-action="preview-day" data-id="${esc(pick.id)}">
-        <span class="next-main">
-          <span class="kpi-label">Als Nächstes</span>
-          <span class="next-name">${esc(pick.name)}</span>
-          <span class="kpi-sub">${pick.exercises.length} ${pick.exercises.length === 1 ? 'Übung' : 'Übungen'}${mins ? ' · ca. ' + mins + ' min' : ''}</span>
-        </span>
-        <span class="chip-o">${pickAt ? 'zuletzt ' + fmtRelative(pickAt, now) : 'neu'}</span>
+      <button class="week-card" data-action="open-calendar">
+        <span class="week-dots" aria-hidden="true">${dots}</span>
+        <span class="week-text"><strong>Diese Woche: ${w.thisWeek} von ${w.goal}</strong>
+          <small>${w.streak ? ICON.flame + w.streak + (w.streak === 1 ? ' Woche' : ' Wochen') + ' in Folge geschafft' : 'Wochenziel: ' + w.goal + '× trainieren'}</small></span>
+        ${ICON.cal}
       </button>`;
   }
 
@@ -6940,7 +6878,6 @@
       const ok = await Notify.show('Gym Tracker', 'So sieht die Pausen-Benachrichtigung aus.');
       if (!ok) toast('Benachrichtigung konnte nicht angezeigt werden.');
     },
-    'theme-toggle': () => actions.theme({ dataset: { value: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' } }),
     'theme': (el) => {
       db.settings.theme = el.dataset.value;
       save();

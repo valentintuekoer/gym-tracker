@@ -3397,7 +3397,7 @@ input, textarea { caret-color: var(--lg-text-active); }
 
 /* Schichten 1, 2, 5: Unschärfe + getönte Fläche + gestaffelte Schatten.
    Leisten und Knöpfe (.lg-surface in der Demo) */
-.tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented {
+.tabbar, .timer-bar, .toast, .hdr-btn, .segmented {
   background: var(--lg-fill);
   -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
@@ -3413,7 +3413,7 @@ input, textarea { caret-color: var(--lg-text-active); }
     0 14px 28px var(--lg-shadow-c);
 }
 /* Flächen mit Fließtext (.lg-card): deckender */
-.card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div {
+.card, .profile-card, .day-card, .week-card, .gym-card:not(.gym-empty), .stats div {
   background: var(--lg-card-fill);
   -webkit-backdrop-filter: blur(32px) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
   backdrop-filter: blur(32px) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
@@ -3441,14 +3441,14 @@ input, textarea { caret-color: var(--lg-text-active); }
 }
 .steps li { background: var(--lg-card-fill); border: 0; box-shadow: inset 0 1px 0 var(--lg-rim-top), 0 0 0 0.5px var(--lg-hairline); }
 
-.card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div,
-.list-item, .ex-row, .body-tile, .hdr-btn, .hdr-brand { position: relative; }
-.card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div,
-.list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented { isolation: isolate; }
+.card, .profile-card, .day-card, .week-card, .gym-card:not(.gym-empty), .stats div,
+.list-item, .ex-row, .body-tile, .hdr-btn { position: relative; }
+.card, .profile-card, .day-card, .week-card, .gym-card:not(.gym-empty), .stats div,
+.list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .segmented { isolation: isolate; }
 
 /* Schicht 3 – Glanz: Kuppel oben, Glanzpunkt oben links. Liegt hinter dem Inhalt (z-index −1 im eigenen Stapel). */
-:is(.card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div,
-    .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented)::before {
+:is(.card, .profile-card, .day-card, .week-card, .gym-card:not(.gym-empty), .stats div,
+    .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .segmented)::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -3461,8 +3461,8 @@ input, textarea { caret-color: var(--lg-text-active); }
     linear-gradient(180deg, var(--lg-spec-sheen) 0%, transparent 42%);
 }
 /* Schicht 4 – Lichtkante: 1-px-Verlaufsrahmen (nur der Rand wird gezeichnet) */
-:is(.card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div,
-    .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented)::after {
+:is(.card, .profile-card, .day-card, .week-card, .gym-card:not(.gym-empty), .stats div,
+    .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .segmented)::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -3480,12 +3480,10 @@ input, textarea { caret-color: var(--lg-text-active); }
   mask-clip: content-box, border-box;
   mask-composite: exclude;
 }
-.timer-bar.done::before, .timer-bar.done::after, .btn .hdr-btn::before { display: none; }
+.timer-bar.done::before, .timer-bar.done::after { display: none; }
 
 /* Gedrückt: etwas hellere Fläche (die älteren Regeln setzen eine durchsichtige Farbe) */
-.day-card:active, .week-card:active, .list-item:active, .hero-card:active, .next-card:active { background: var(--lg-fill-press); }
-.hero-card, .next-card { text-align: left; cursor: pointer; transition: transform var(--d-base) var(--spring), background-color var(--d-fast) var(--ease-out); }
-.hero-card:active, .next-card:active { transform: scale(0.98); transition-duration: var(--d-tap); }
+.day-card:active, .week-card:active, .list-item:active { background: var(--lg-fill-press); }
 .day-card.is-active {
   border-color: transparent;
   box-shadow:
@@ -3568,74 +3566,6 @@ input, textarea { caret-color: var(--lg-text-active); }
 }
 .tag.accent { background: var(--inv); color: var(--on-inv); border-color: var(--inv); }
 
-/* Umriss-Pille („in 2 Tagen“) */
-.chip-o { padding: 6px 12px; border-radius: var(--r-pill); font-size: 13px; font-weight: 600; box-shadow: inset 0 0 0 1.5px var(--text-2); white-space: nowrap; }
-
-/* „Läuft gerade“ */
-.live-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: var(--s-2);
-  padding: 4px 12px 4px 10px;
-  border-radius: var(--r-pill);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1.5px var(--text-2);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.live-dot { position: relative; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text); flex: none; }
-.live-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--text); animation: pulse-ring 2s var(--ease-out) infinite; }
-
-/* ---------- Kopfzeile: Marke links, Glas-Knöpfe rechts ---------- */
-
-.hdr-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 18px 0 14px;
-  border-radius: var(--r-pill);
-  font-size: 16px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  opacity: calc(1 - var(--hdr-title, 0));
-}
-.brand-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--lg-text); box-shadow: 0 0 0 3px var(--lg-fill-solid), 0 0 0 4px var(--lg-text); flex: none; }
-
-/* ---------- Startseite: Ring, Kennzahlen, „Als Nächstes“ ---------- */
-
-.hero-card { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 20px; width: 100%; padding: 18px 20px; margin-bottom: 14px; border-radius: var(--r-card); }
-.ring { width: 112px; height: 112px; }
-.ring circle { fill: none; stroke-width: 10; }
-.ring-bg { stroke: var(--ring-track); }
-.ring-fg { stroke: var(--lg-text-active); stroke-linecap: round; animation: ring-in 800ms var(--lg-ease-spring) both; }
-@keyframes ring-in { from { stroke-dashoffset: var(--ring-from, 314.16); } }
-.hero-text { display: grid; gap: 6px; min-width: 0; }
-.hero-big { display: flex; align-items: baseline; gap: 4px; }
-.hero-big b { font-size: 52px; line-height: 1; font-weight: 750; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
-.hero-big small { font-size: 22px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
-.hero-sub { font-size: 14px; line-height: 1.45; color: var(--text-2); text-wrap: pretty; }
-
-.kpi-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 14px; }
-.kpi-card { display: grid; gap: 8px; align-content: start; min-width: 0; padding: 18px 20px; border-radius: var(--r-card); }
-.kpi-label { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); }
-.kpi-val { font-size: 24px; line-height: 1.15; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.kpi-sub { font-size: 14px; line-height: 1.45; color: var(--text-2); }
-.next-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; padding: 18px 20px; margin-bottom: 14px; border-radius: var(--r-card); }
-.next-main { display: grid; gap: 8px; min-width: 0; }
-.next-name { font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
-
-.day-card { align-items: center; }
-.day-card .icon-btn { margin-top: 0; }
-.day-side { flex: none; display: flex; flex-direction: column; align-items: flex-end; padding-right: var(--s-1); text-align: right; }
-.day-side b { font: 750 clamp(30px, 9vw, 40px)/1 var(--font-display); letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
-.day-side small { margin-top: 4px; color: var(--text-2); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
-.week-dots i.on { background: var(--inv); border-color: var(--inv); }
-
 /* ---------- Segment & Eingaben ---------- */
 
 .segmented button[aria-selected="true"] { background: var(--lg-pill-fill); color: var(--lg-text-active); }
@@ -3696,33 +3626,33 @@ body.kb-open.tabs-compact .tabbar { height: var(--tabbar-h); }
 /* ---------- Fallbacks (wie in der Demo) ---------- */
 
 @media (prefers-reduced-transparency: reduce) {
-  .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented, .modal-card,
-  .card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div {
+  .tabbar, .timer-bar, .toast, .hdr-btn, .segmented, .modal-card,
+  .card, .profile-card, .day-card, .week-card, .gym-card:not(.gym-empty), .stats div {
     background: var(--lg-card-fill-solid);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented, .modal-card,
-  .card, .profile-card, .day-card, .week-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div { background: var(--lg-card-fill-solid); }
+  .tabbar, .timer-bar, .toast, .hdr-btn, .segmented, .modal-card,
+  .card, .profile-card, .day-card, .week-card, .gym-card:not(.gym-empty), .stats div { background: var(--lg-card-fill-solid); }
 }
 @media (prefers-contrast: more) {
-  :is(.card, .profile-card, .day-card, .hero-card, .kpi-card, .next-card, .gym-card:not(.gym-empty), .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented)::after {
+  :is(.card, .profile-card, .day-card, .gym-card:not(.gym-empty), .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .segmented)::after {
     padding: 2px;
     background: linear-gradient(var(--text), var(--text));
   }
 }
 @media (forced-colors: active) {
-  .card, .profile-card, .day-card, .hero-card, .kpi-card, .next-card, .gym-card, .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented, .modal-card {
+  .card, .profile-card, .day-card, .gym-card, .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .segmented, .modal-card {
     background: Canvas;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     box-shadow: none;
     border: 1px solid CanvasText;
   }
-  :is(.card, .profile-card, .day-card, .hero-card, .kpi-card, .next-card, .gym-card, .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented)::before,
-  :is(.card, .profile-card, .day-card, .hero-card, .kpi-card, .next-card, .gym-card, .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .hdr-brand, .segmented)::after { display: none; }
+  :is(.card, .profile-card, .day-card, .gym-card, .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .segmented)::before,
+  :is(.card, .profile-card, .day-card, .gym-card, .stats div, .list-item, .ex-row, .body-tile, .tabbar, .timer-bar, .toast, .hdr-btn, .segmented)::after { display: none; }
   .ring-fg { stroke: Highlight; }
   .ring-bg { stroke: GrayText; }
 }

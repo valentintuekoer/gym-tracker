@@ -9845,7 +9845,6 @@
 
   function chatGroupErrorText(e) {
     const code = (e && e.code) || '';
-    console.error('GRPERR', code, e && e.message, e && e.stack);
     if (code === 'permission-denied') return 'Nicht erlaubt – hat die Firestore-Regel für Gruppen gefehlt? Unter Chat → „So schaltest du sie frei“ veröffentlichst du sie.';
     if (code === 'update') return 'Die App wurde aktualisiert – bitte einmal neu laden.';
     if (code === 'timeout') return 'Keine Verbindung – bitte später erneut versuchen.';

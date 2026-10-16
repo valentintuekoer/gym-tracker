@@ -894,7 +894,9 @@ test('Chats: Gruppe erstellen, Kontakte (Freunde) mit Direktnachricht, Mitgliede
   await B.page.locator('a.chat-row[href="#/chat/dm/' + uidA + '"]').click();
   await B.page.locator('#chat-input').waitFor();
   assert.equal((await B.page.locator('.app-header .hdr-title').innerText()).trim(), '@grpanna');
-  await B.page.locator('.chat-empty').waitFor();
+  await B.page.locator('.chat-empty').waitFor().catch(async (e) => {
+    throw new Error(e.message + ' | ' + JSON.stringify(await B.page.evaluate(() => { const c = window.GymApp.Chat; return { room: c.room, ready: c.ready, dmPending: c.dmPending, missing: c.missing, groupsReady: c.groupsReady, groupsError: c.groupsError && c.groupsError.code, unsub: !!c.unsub, feeds: [...c.feeds.keys()], list: document.querySelector('#chat-list') && document.querySelector('#chat-list').innerHTML.slice(0, 200), hash: location.hash }; })));
+  });
   assert.equal(await B.page.locator('.app-header [data-action="chat-info"]').count(), 0);     // kein Gruppen-Info im Direktchat
   await sleepMs(2300);
   await send(B.page, 'Direkt gefragt');

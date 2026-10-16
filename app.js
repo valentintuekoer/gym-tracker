@@ -9003,7 +9003,9 @@
           if (uid !== this.uid) return;
           feed.error = err;
           feed.rulesMissing = !!(err && err.code === 'permission-denied');
-          this.stopFeed(feed);
+          // Der Listener ist durch den Fehler schon beendet – nicht noch einmal abmelden (das Firestore-SDK verträgt es nicht
+          // immer: „INTERNAL ASSERTION FAILED … b815“); die Karten-Abfrage meldet ihren Fehler selbst.
+          feed.unsub = null;
           clearTimeout(feed.retry);
           feed.retry = setTimeout(() => this.sync(), 15000);
           this.changed();
@@ -9144,7 +9146,7 @@
       const [from, to] = Core.viennaDayRange(now);
       feed.planDay = Core.viennaDayKey(now);
       const uid = this.uid;
-      feed.unsubPlans = this.api().watchPlans(feed.room, from, to, (list) => { if (uid === this.uid) { feed.plans = list; if (feed.room === this.room) this.changed(); } }, () => {});
+      feed.unsubPlans = this.api().watchPlans(feed.room, from, to, (list) => { if (uid === this.uid) { feed.plans = list; if (feed.room === this.room) this.changed(); } }, () => { feed.unsubPlans = null; });
       clearTimeout(feed.dayTimer);
       feed.dayTimer = setTimeout(() => this.checkDay(), Math.min(to - now + 1000, 2147483000));
     },
@@ -9949,12 +9951,14 @@
           const ok = await confirmAction('Gruppe „' + g.name + '“ löschen?', 'Alle Nachrichten verschwinden für alle Mitglieder. Das lässt sich nicht rückgängig machen.', 'Löschen', true);
           if (!ok) return;
           toast('Gruppe wird gelöscht …');
+          Chat.stopFeed(Chat.feedFor(g.room));
           await Chat.deleteGroup(g.id);
           go('#/chat');
           toast('Gruppe gelöscht');
         } else if (act.dataset.act === 'leave') {
           const ok = await confirmAction('Gruppe „' + g.name + '“ verlassen?', 'Du siehst die Nachrichten danach nicht mehr. Der Besitzer kann dich wieder einladen.', 'Verlassen', true);
           if (!ok) return;
+          Chat.stopFeed(Chat.feedFor(g.room)); // erst aufhören zuzuhören, dann austreten (sonst lehnt der Server die offene Abfrage ab)
           await Chat.removeMember(g.id, Chat.uid);
           go('#/chat');
           toast('Gruppe verlassen');

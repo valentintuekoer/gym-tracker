@@ -135,3 +135,49 @@ test('Das helle Glas hat wie vorgegeben 55 % Weiß; die Kontrastwerte sind mit R
   const worst = Math.min(...checkTokens((v) => light[v]).map((r) => r.ratio / r.min));
   assert.ok(worst >= 1.04, 'Reserve: ' + worst.toFixed(2));
 });
+
+/* ---------- App-Stylesheet (style.css): iOS-27-Material und Regler „Klar ↔ Getönt“ ---------- */
+
+const appCss = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../style.css'), 'utf8');
+
+/** Füllung bei gegebenem Reglerwert: rgba(r, g, b, calc(a + b * var(--lg-tint))) auswerten */
+function fillAt(block, name, tint) {
+  const m = block.match(new RegExp(name + ':\\s*rgba\\(([^,]+),([^,]+),([^,]+),\\s*calc\\(([\\d.]+)\\s*\\+\\s*([\\d.]+)\\s*\\*\\s*var\\(--lg-tint\\)\\)\\)'));
+  assert.ok(m, name + ' hängt nicht am Regler (--lg-tint)');
+  return Number(m[4]) + Number(m[5]) * tint;
+}
+const darkBlock = appCss.slice(appCss.indexOf(':root,'), appCss.indexOf(':root[data-theme="light"] {'));
+const lightBlock = appCss.slice(appCss.indexOf(':root[data-theme="light"] {'), appCss.indexOf(':root[data-theme="light"] {') + 6000);
+
+test('Regler: Füllung wird mit dem Regler deckender, bleibt im sinnvollen Bereich und der Mittelwert entspricht dem bisherigen Look', () => {
+  for (const [block, name, mid] of [[darkBlock, '--lg-fill', 0.73], [darkBlock, '--lg-card-fill', 0.8], [lightBlock, '--lg-fill', 0.55], [lightBlock, '--lg-card-fill', 0.72]]) {
+    const lo = fillAt(block, name, 0), m = fillAt(block, name, 0.5), hi = fillAt(block, name, 1);
+    assert.ok(lo < m && m < hi, name + ' wächst nicht mit dem Regler');
+    assert.ok(lo >= 0.38 && hi <= 0.96, `${name}: ${lo}…${hi} außerhalb 0,38…0,96`);
+    assert.ok(Math.abs(m - mid) < 0.011, `${name} Mitte ${m} ≠ ${mid}`);
+  }
+  assert.match(appCss, /--lg-tint:\s*0\.5;/);
+});
+
+test('Material iOS 27: dunkle Kante und hellere Glanzlichter sind in beiden Designs definiert', () => {
+  for (const block of [darkBlock, lightBlock]) {
+    assert.match(block, /--lg-edge-dark:/);
+    assert.match(block, /--gt-a1:/);
+  }
+  assert.ok(Number(darkBlock.match(/--lg-spec-spot:\s*rgba\(255, 255, 255, ([\d.]+)\)/)[1]) >= 0.2, 'Glanzpunkt dunkel zu schwach');
+  assert.match(appCss, /inset 0 0 14px -3px var\(--lg-edge-dark\)/, 'Kantenabdunklung fehlt im Material');
+  assert.match(appCss, /at var\(--spec-x, 11%\) 6%/, 'Glanzpunkt reagiert nicht auf --spec-x');
+});
+
+test('Formen: Kapsel, großer Sheet-Radius und konzentrischer Innenradius sind als Werte festgelegt', () => {
+  assert.match(appCss, /--r-capsule:\s*999px/);
+  assert.match(appCss, /--r-sheet:\s*40px/);
+  assert.match(appCss, /\.modal-card \{ --r-input: max\(12px, calc\(var\(--r-sheet\) - var\(--s-5\)\)\); \}/);
+  assert.match(appCss, /\.modal-card\.scrolls,\s*\n\.modal-card\.stretched \{[^}]*border-bottom-left-radius: 0/);
+});
+
+test('Berührung: Lichtfläche, Reduzierte Bewegung und erzwungene Farben sind abgedeckt', () => {
+  assert.match(appCss, /\.gt-lit \{[^}]*mix-blend-mode: var\(--gt-blend, plus-lighter\)/);
+  assert.match(appCss, /@media \(forced-colors: active\) \{\s*\.gt-lit \{ display: none; \}/);
+  assert.match(appCss, /html\.gt :is\(/);
+});

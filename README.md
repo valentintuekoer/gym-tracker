@@ -171,7 +171,10 @@ Speicherorte: `usernames/{name}`, `publicProfiles/{uid}`, `users/{uid}/friends/{
 Die App sieht aus wie die [Liquid-Glass-Demo](#liquid-glass-demo): blauer Verlauf mit drei Farbflecken, darauf Glas aus
 fünf Schichten (Unschärfe, getönte Fläche, Glanz, Lichtkante, Schatten), einfarbig – weiß im dunklen, tiefblau im hellen
 Design. Es ist nur das Aussehen – Inhalte und Aufbau der Bildschirme sind unverändert. Die schwebende Tab-Leiste
-schrumpft beim Herunterscrollen auf reine Icons. Farben, Radien und Regeln
+schrumpft beim Herunterscrollen auf reine Icons und lässt sich mit dem Finger über die Reiter ziehen. Wie in iOS 27 reagiert Glas auf
+Berührung (es hebt sich, federt, leuchtet unter dem Finger auf und breitet das Licht auf nahes Glas aus), Sheets und Dialoge wachsen aus
+dem gedrückten Knopf, und unter Einstellungen → Darstellung gibt es den Regler „Klar ↔ Getönt“ (Quellen und Näherungen:
+[`DESIGN.md`](DESIGN.md#liquid-glass-wie-in-ios-27)). Farben, Radien und Regeln
 stehen in [`DESIGN.md`](DESIGN.md); alle Werte sind Tokens am Anfang von `style.css` (Dunkel und Hell getrennt, Textkontrast
 ≥ 4,5:1 per Pixel gegen die Farbflecken geprüft). Neue Bildschirme prüfst du mit `node scripts/screenshots.mjs` (Bilder, hell + dunkel)
 und `node scripts/contrast-pixels.mjs` (Textkontrast jedes sichtbaren Textes gegen den echten Hintergrund).
@@ -287,7 +290,9 @@ Daten gespeichert und nie mit Freunden geteilt.
 
 - Logik (ohne Browser, ohne Firebase): `node --test tests/*.test.js`
 - Liquid-Glass-Demo (eigenständig, siehe [`liquid-glass/`](liquid-glass/README.md)): `node --test tests/liquid-glass.test.mjs`
-  (Logik) und `node --test tests/liquid-glass.ui.mjs` (Chromium)
+  (Logik, auch Regler-Tokens der App) und `node --test tests/liquid-glass.ui.mjs` (Chromium)
+- Liquid Glass der App wie in iOS 27 (Berührung, Tab-Linse, Wischen, Sheet-Morph, Regler; Chromium, ohne Emulator):
+  `node --test tests/glass-touch.ui.mjs`
 - Mit dem Firebase-Emulator (Java nötig): `cd tests/emulator && npm install`, dann
   `npm test` (Sicherheitsregeln + Freunde- und Chat-Funktionen mit mehreren Nutzern) und
   `npm run test:ui` (die echte App in Chromium: ohne Konto, Registrierung, Profilfoto, Anfragen, Vergleich,

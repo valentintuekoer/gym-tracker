@@ -61,6 +61,8 @@ Nie mischen. Wer beides baut, trennt Layout, Komponenten und Tokens-Überschreib
 4. Alles Gefundene in **einer** Runde beheben, höchstens **eine** Kontrollrunde, dann aufhören.
 5. Neue Muster in `DESIGN.md` dokumentieren.
 
+**Glas, Berührung, Bewegung (iOS 27):** Neue Bedienflächen bekommen die Berührungsreaktion automatisch, wenn sie in den Listen `CTRL`/`SURF` von `GlassTouch` (app.js) stehen – kein eigenes `:active { transform }` schreiben (es wird dort abgeschaltet). Federn statt fester Kurven, bei „Bewegung verringern“ nur Aufhellen. Formen: Kapsel für Leisten/Knöpfe, innerer Radius = äußerer − Abstand. Nach jeder Änderung am Material `node --test tests/glass-touch.ui.mjs` und `GLASS=0 node scripts/contrast-pixels.mjs` (und `GLASS=100`) laufen lassen. Apple nennt keine Zahlen – Werte sind Näherungen, Quellen in DESIGN.md.
+
 ## 6. Welcher Skill wofür
 
 | Aufgabe | Skill |

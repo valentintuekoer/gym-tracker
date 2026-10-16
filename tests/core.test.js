@@ -1083,3 +1083,17 @@ test('Das Kalorien-Tagebuch gibt es nicht mehr: alte Felder in Backups werden ig
   assert.equal(old.settings.weeklyGoal, 4);
   assert.deepEqual(Object.keys(Core.emptyData()).sort(), ['activeSession', 'body', 'customExercises', 'days', 'libMeta', 'sessions', 'settings', 'version']);
 });
+
+test('Liquid-Glass-Regler: 0…100, ganze Zahl, Vorgabe 50; kaputte Werte fallen auf die Vorgabe zurück', () => {
+  assert.equal(util.clampGlass(0), 0);
+  assert.equal(util.clampGlass(100), 100);
+  assert.equal(util.clampGlass(37.6), 38);
+  assert.equal(util.clampGlass(-20), 0);
+  assert.equal(util.clampGlass(250), 100);
+  for (const bad of [undefined, null, '', 'abc', NaN]) assert.equal(util.clampGlass(bad), 50, String(bad));
+  const db = Core.normalize({ days: [], settings: { glass: 999 } });
+  assert.equal(db.settings.glass, 100);
+  assert.equal(Core.normalize({ days: [], settings: {} }).settings.glass, 50);
+  assert.equal(Core.normalize({ days: [], settings: { glass: 'x' } }).settings.glass, 50);
+  assert.equal(Core.emptyData().settings.glass, 50);
+});

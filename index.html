@@ -33,6 +33,8 @@
         var t = m ? m[1] : 'dark';
         var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         d.setAttribute('data-theme', dark ? 'dark' : 'light');
+        var g = (localStorage.getItem(key) || '').match(/"glass":(\d+)/);
+        if (g) d.style.setProperty('--lg-tint', (Math.min(100, +g[1]) / 100).toFixed(2));
         document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#081120' : '#f1f4fb');
         document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').setAttribute('content', dark ? 'black-translucent' : 'default');
         if (navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) d.classList.add('standalone');

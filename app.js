@@ -8846,6 +8846,7 @@
   const isGroupRoomKey = (room) => typeof room === 'string' && room.charAt(0) === '@';
   const dmIdOf = (a, b) => (a < b ? 'dm_' + a + '_' + b : 'dm_' + b + '_' + a);
   const CHAT_PAGE = 30;
+  const CHAT_RELISTEN_GAP = 3000;               // so lange nach dem Abmelden wird dieselbe Abfrage nicht neu angemeldet (ms)
   const CHAT_LINGER = 15000;                    // so lange bleibt ein verlassener Raum verbunden (ms)
   const CHAT_SEEN = 'gymtracker.chatseen.v1.';  // + uid → Zeitstempel der zuletzt gesehenen Nachricht
   const CHAT_GROUP_MS = 5 * 60000;              // Nachrichten derselben Person innerhalb 5 min werden gruppiert
@@ -8997,6 +8998,10 @@
 
     connectFeed(feed) {
       if (feed.unsub || this.holdForGroup(feed)) return;
+      // Dieselbe Abfrage nicht unmittelbar nach dem Abmelden wieder anmelden: Das Firestore-SDK kommt dabei gelegentlich
+      // durcheinander („INTERNAL ASSERTION FAILED … b815“). Bis dahin zeigt die Ansicht den Zwischenspeicher.
+      const wait = CHAT_RELISTEN_GAP - (Date.now() - (feed.stoppedAt || 0));
+      if (wait > 0) { clearTimeout(feed.waitTimer); feed.waitTimer = setTimeout(() => this.sync(), wait + 50); return; }
       const uid = this.uid;
       try {
         feed.unsub = this.api().watch(feed.room, CHAT_PAGE, (list, meta) => { if (uid === this.uid) this.onLive(feed, list, meta); }, (err) => {
@@ -9041,6 +9046,7 @@
       clearTimeout(f.timer);
       f.timer = 0;
       clearTimeout(f.dayTimer);
+      f.stoppedAt = Date.now();
       f.known = null; // nach einem Neuaufbau nicht alles als „neu“ melden
     },
 
@@ -9048,7 +9054,7 @@
     stop() { for (const f of this.feeds.values()) this.stopFeed(f); },
 
     stopGroups() {
-      if (this.unsubGroups) { this.unsubGroups(); this.unsubGroups = null; }
+      if (this.unsubGroups) { this.unsubGroups(); this.unsubGroups = null; this.groupsStoppedAt = Date.now(); }
       clearTimeout(this.timers.groupsRetry);
     },
 
@@ -9072,6 +9078,8 @@
       if (this.unsubGroups || !this.api() || !this.api().groups || !account || !this.uid) return;
       const cur = window.GymCloud.currentUser && window.GymCloud.currentUser();
       if (!cur || cur.uid !== account.uid || this.uid !== cur.uid) return;
+      const wait = CHAT_RELISTEN_GAP - (Date.now() - (this.groupsStoppedAt || 0));
+      if (wait > 0) { clearTimeout(this.timers.groupsWait); this.timers.groupsWait = setTimeout(() => this.sync(), wait + 50); return; }
       const uid = this.uid;
       try {
         this.unsubGroups = this.api().groups.watch((list, meta) => { if (uid === this.uid) this.onGroups(list, meta); }, (err) => {
@@ -9300,7 +9308,7 @@
           this.dmCreated.add(room);
           const f = this.feedFor(room);
           f.dmPending = false;
-          this.stopFeed(f);
+          f.stoppedAt = 0; // der Raum lief nie – sofort zuhören
           this.connectFeed(f);
         }
         // Beim erneuten Senden zuerst prüfen, ob die Nachricht doch schon angekommen ist (verlorene Bestätigung)

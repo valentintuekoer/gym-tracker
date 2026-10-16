@@ -3,6 +3,7 @@
 // nicht nur gegen eine Annahme). Text unter der Tab-Leiste (samt Ausblendzone), dem Timer oder hinter einem Sheet zählt nicht.
 //
 //   node scripts/contrast-pixels.mjs [#/,#/history,…] [Breite]      (Standard: Startseite, Daily, Verlauf, … bei 390 px)
+//   GLASS=0 node scripts/contrast-pixels.mjs      Regler „Klar ↔ Getönt“ (0 … 100, Standard 50) – beide Enden müssen bestehen
 //
 // Gibt „Unter Schwelle: 0“ aus, wenn alles ≥ 4,5:1 (große Schrift ≥ 3:1) ist.
 import http from 'node:http';
@@ -25,6 +26,7 @@ const base = 'http://127.0.0.1:' + server.address().port;
 const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { executablePath: '/opt/pw-browsers/chromium' });
 const ROUTES = (process.argv[2] || '#/,#/daily,#/daily/plan,#/history,#/library,#/profile,#/settings,#/settings/training,#/workout').split(',');
 const WIDTH = Number(process.argv[3] || 390);
+const GLASS = Number(process.env.GLASS ?? 50);
 let worst = [];
 for (const scheme of ['dark', 'light']) {
   const ctx = await browser.newContext({ viewport: { width: WIDTH, height: 844 }, deviceScaleFactor: 1, colorScheme: scheme, serviceWorkers: 'block', locale: 'de-DE', reducedMotion: 'reduce' });
@@ -34,9 +36,10 @@ for (const scheme of ['dark', 'light']) {
   await page.locator('[data-action="intro-done"]').click();
   await page.locator('[data-action="auth-guest"]').click();
   for (let i = 0; i < 3; i++) { await page.locator('[data-action="setup-next"]').click(); await page.waitForTimeout(300); }
-  await page.evaluate((theme) => {
+  await page.evaluate(([theme, glass]) => {
     const { Core, db } = window.GymApp;
     db.settings.theme = theme;
+    db.settings.glass = glass;
     const s0 = Core.startSession(db, db.days[0].id, Date.now() - 86400000 * 2);
     s0.exercises.forEach((se) => se.sets.forEach((st) => { Core.updateSet(db, se.id, st.id, 'weight', 50); Core.updateSet(db, se.id, st.id, 'reps', 8); Core.toggleSet(db, se.id, st.id, Date.now()); }));
     Core.finishSession(db, Date.now() - 86400000 * 2 + 3600000);
@@ -46,7 +49,7 @@ for (const scheme of ['dark', 'light']) {
     [['Frühstück', '08:00', 'Haferflocken, Skyr, Beeren', 520], ['Mittagessen', '12:30', 'Reis, Hähnchen, Brokkoli', 740], ['Snack', '16:00', 'Proteinshake', 180]].forEach(([name, time, note, kcal]) => Core.addMeal(db, { name, time, note, kcal }));
     Core.toggleMeal(db, Core.dayKey(Date.now()), db.settings.mealPlan[0].id);
     window.GymApp.save();
-  }, scheme);
+  }, [scheme, GLASS]);
   await page.reload();
   await page.waitForTimeout(600);
   const scenarios = ROUTES.map((r) => ({ name: r, run: async () => { await page.evaluate((h) => { location.hash = h; }, r); await page.waitForTimeout(500); } }));

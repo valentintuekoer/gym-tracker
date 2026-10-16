@@ -11,7 +11,7 @@
  *   sessions:      [{ id, dayId, dayName, startedAt, finishedAt,
  *                     exercises: [{ exId, name, sets: [{ weight, reps, note, done }] }] }]
  *   activeSession: laufende Einheit (wie session, aber mit Satz-IDs und ohne finishedAt) oder null
- *   settings:      { defaultRest, sound, vibrate, loudMode, theme, lastBackup }
+ *   settings:      { defaultRest, sound, vibrate, loudMode, theme, glass, lastBackup }
  *
  * Übungen werden im Verlauf über ihren (normalisierten) Namen zugeordnet. So teilen sich
  * z. B. "Bankdrücken" in "Push A" und "Push B" denselben Verlauf.
@@ -35,6 +35,7 @@
     vibrate: true,     // Vibration am Pausenende (wo unterstützt)
     loudMode: false,   // iOS: Ton auch bei Lautlos-Schalter
     theme: 'dark',     // 'dark' | 'light' | 'system'
+    glass: 50,         // Liquid Glass: 0 = ganz klar … 100 = voll getönt (wie der Regler in iOS 27)
     lastBackup: null,  // Zeitstempel des letzten Exports
     increment: 2.5,    // Gewichtsschritt (kg) für Steigerungsvorschläge und +/−-Buttons
     weeklyGoal: 3,     // Trainings pro Woche (für Wochenziel & Serie)
@@ -163,6 +164,12 @@
     return n + (n === 1 ? ' Satz' : ' Sätze');
   }
 
+  /** Regler „Klar ↔ Getönt“: ganze Zahl 0…100 (Vorgabe 50). */
+  function clampGlass(v) {
+    if (v === null || v === undefined || v === '') return DEFAULT_SETTINGS.glass;
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : DEFAULT_SETTINGS.glass;
+  }
   function clampIncrement(v) {
     const n = parseNum(v);
     return n === null || n <= 0 ? DEFAULT_SETTINGS.increment : Math.min(50, Math.round(n * 100) / 100);
@@ -312,6 +319,7 @@
     db.settings = { ...DEFAULT_SETTINGS, ...(raw.settings && typeof raw.settings === 'object' ? raw.settings : {}) };
     db.settings.defaultRest = clampRest(db.settings.defaultRest);
     db.settings.increment = clampIncrement(db.settings.increment);
+    db.settings.glass = clampGlass(db.settings.glass);
     db.settings.weeklyGoal = Math.min(7, Math.max(1, Math.round(Number(db.settings.weeklyGoal)) || DEFAULT_SETTINGS.weeklyGoal));
     if (!['off', 'rir', 'rpe'].includes(db.settings.effort)) db.settings.effort = 'off';
     db.settings.shareRecords = db.settings.shareRecords !== false;
@@ -2142,7 +2150,7 @@
   /* ---------- Export für Tests (Node) ---------- */
   if (typeof document === 'undefined') {
     if (typeof module !== 'undefined') {
-      module.exports = { Core, TimerCore, Sync, createSyncEngine, util: { fmtDate, parseNum, fmtNum, fmtClock, fmtRelative, fmtSet, fmtRest, fmtSets, fmtRepTarget, parseRepTarget, normName, e1rm, esc, clampRest, clampSets } };
+      module.exports = { Core, TimerCore, Sync, createSyncEngine, util: { fmtDate, parseNum, fmtNum, fmtClock, fmtRelative, fmtSet, fmtRest, fmtSets, fmtRepTarget, parseRepTarget, normName, e1rm, esc, clampRest, clampSets, clampGlass } };
     }
     return;
   }
@@ -2572,6 +2580,371 @@
     },
   };
 
+  /* ---------- Feder (Masse–Feder–Dämpfer) ---------- */
+
+  /**
+   * Gedämpfte Feder, numerisch integriert (gleiche Idee wie liquid-glass/src/spring.js, dort als Modul).
+   * Ändert sich das Ziel mitten in der Bewegung, läuft sie mit der aktuellen Geschwindigkeit weiter – nichts springt.
+   * k = Steifigkeit, c = Dämpfung (Masse 1). Dämpfungsgrad ζ = c / (2·√k): < 1 federt nach.
+   */
+  class Spring {
+    constructor(value, cfg) {
+      this.value = value;
+      this.target = value;
+      this.velocity = 0;
+      this.k = 300;
+      this.c = 25;
+      this.rest = 0.0004;   // Abstand, ab dem die Feder als angekommen gilt
+      this.restV = 0.004;
+      if (cfg) this.cfg(cfg);
+    }
+    cfg(c) { this.k = c.k; this.c = c.c; return this; }
+    snap(v) { this.value = this.target = v === undefined ? this.target : v; this.velocity = 0; return this; }
+    get settled() { return Math.abs(this.target - this.value) < this.rest && Math.abs(this.velocity) < this.restV; }
+    step(dt) {
+      let left = Math.min(Math.max(dt, 0), 0.05);   // nach Hintergrund-Pausen nicht „aufholen“
+      while (left > 1e-9) {
+        const h = Math.min(1 / 240, left);
+        this.velocity += (-this.k * (this.value - this.target) - this.c * this.velocity) * h;
+        this.value += this.velocity * h;
+        left -= h;
+      }
+      if (this.settled) this.snap();
+      return this.value;
+    }
+  }
+
+  /* ---------- Berührung: „interaktives“ Liquid Glass ---------- */
+
+  /**
+   * So reagiert Glas bei Apple auf eine Berührung (WWDC25 „Meet Liquid Glass“, „Build a SwiftUI app with the new design“,
+   * HIG „Materials“): Es hebt sich sofort, gibt dem Finger federnd nach, und es leuchtet von innen auf – beginnend genau
+   * unter der Fingerspitze, dann breitet sich das Licht über die ganze Fläche und auf nahes Glas aus. Beim Loslassen
+   * federt es mit einem kleinen Nachschwingen zurück. „Bewegung verringern“: kein Skalieren/Nachfedern, nur Aufhellen.
+   *
+   * Umsetzung: Federn (Skalierung, Verschiebung, Leuchtstärke, Leuchtradius) laufen in einer gemeinsamen rAF-Schleife und
+   * schreiben nur `scale`/`translate` (eigene CSS-Eigenschaften, kollidieren nicht mit `transform`) und den Lichtschein
+   * in ein schwebendes <i class="gt-lit">, das die Fläche nachzeichnet. So braucht keine Komponente eigenes CSS.
+   */
+  const GlassTouch = (() => {
+    const CTRL = '.hdr-btn, .btn:not(.ghost), .icon-btn, .chip, .tbtn, .timer-x, .step, .dstrip-day, .toast-btn, .send-btn, ' +
+      '.avatar-btn, .theme-pick, .setup-opt, .goal-tile, .fav-btn, .tab, .segmented button, .body-tile';
+    const SURF = '.day-card, .week-card, .list-item, .profile-card';
+    const ALL = CTRL + ', ' + SURF;
+    const TAPPABLE = 'a[href], button, [data-action], [role="button"], [role="tab"]';
+    const NEAR = '.hdr-btn, .tabbar, .segmented, .chip, .btn:not(.ghost), .dstrip-day, .day-card, .week-card, .list-item, .card, .toast, .timer-bar';
+    const NEAR_RADIUS = 150;     // Glas in dieser Nähe leuchtet mit
+    const MIN_HOLD = 150;        // ms – auch ein kurzes Antippen soll sichtbar „einrasten“
+    const SLIDE_OFF = 30;        // px – wer weiter vom Rand wegzieht, bricht ab (wie bei iOS)
+
+    // Federn: hineindrücken straff, loslassen mit deutlichem Nachschwingen („Gel“), Licht langsam ausklingend
+    const SPR = {
+      in: { k: 720, c: 40 }, out: { k: 340, c: 17 },
+      gaIn: { k: 420, c: 36 }, gaOut: { k: 90, c: 18 },
+      grIn: { k: 120, c: 21 }, grOut: { k: 60, c: 16 },
+      move: { k: 520, c: 31 },
+      calm: { k: 260, c: 32 },   // „Bewegung verringern“: kein Überschwingen
+    };
+
+    const states = new Map();     // Fläche → Zustand
+    const presses = new Map();    // pointerId → Zustand der gedrückten Fläche
+    let pool = [];
+    let raf = 0, lastT = 0, hover = null;
+    let source = null;            // zuletzt gedrückte Bedienfläche (Quelle für „Sheet entsteht aus dem Knopf“)
+
+    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    const growth = (size, px, max) => 1 + Math.min(max, px / Math.max(24, size));
+
+    function overlay() {
+      const o = pool.pop() || document.body.appendChild(Object.assign(document.createElement('i'), { className: 'gt-lit' }));
+      o.setAttribute('aria-hidden', 'true');
+      if (!o.parentNode) document.body.appendChild(o);
+      return o;
+    }
+
+    /** Schwebende Lichtfläche auf die Fläche legen (Maße, Ecken, Position). */
+    function place(st) {
+      const r = st.rect = st.host.getBoundingClientRect();
+      const ov = st.ov;
+      ov.style.width = r.width + 'px';
+      ov.style.height = r.height + 'px';
+      ov.style.left = r.left + 'px';
+      ov.style.top = r.top + 'px';
+      ov.style.borderRadius = getComputedStyle(st.host).borderRadius;
+    }
+
+    function make(host, scaleEls, kind) {
+      let st = states.get(host);
+      if (st) {
+        for (const el of st.scaleEls) if (!scaleEls.includes(el)) { el.style.scale = ''; el.style.translate = ''; el.classList.remove('gt-down'); }
+        st.scaleEls = scaleEls; st.kind = kind; st.mirror = scaleEls.includes(host);
+        return st;
+      }
+      const r = host.getBoundingClientRect();
+      const ov = overlay();
+      st = {
+        host, kind, ov, rect: r, scaleEls,
+        sx: new Spring(1), sy: new Spring(1), tx: new Spring(0), ty: new Spring(0),
+        ga: new Spring(0), gr: new Spring(0), gx: r.width / 2, gy: r.height / 2,
+        down: false, t0: 0, releaseTimer: 0, mirror: scaleEls.includes(host),
+        level: 1,
+      };
+      st.ga.rest = 0.003; st.gr.rest = 0.5; st.gr.restV = 1;
+      states.set(host, st);
+      place(st);
+      return st;
+    }
+
+    function farthest(st) {
+      const w = st.rect.width, h = st.rect.height;
+      return Math.hypot(Math.max(st.gx, w - st.gx), Math.max(st.gy, h - st.gy)) * 1.08 + 12;
+    }
+
+    function wake() {
+      if (raf) return;
+      lastT = performance.now();
+      raf = requestAnimationFrame(frame);
+    }
+
+    function release(st) {
+      clearTimeout(st.releaseTimer);
+      st.down = false;
+      st.hover = false;
+      const calm = reduced();
+      st.sx.cfg(calm ? SPR.calm : SPR.out).target = 1;
+      st.sy.cfg(calm ? SPR.calm : SPR.out).target = 1;
+      st.tx.cfg(SPR.out).target = 0;
+      st.ty.cfg(SPR.out).target = 0;
+      st.ga.cfg(SPR.gaOut).target = 0;
+      st.gr.cfg(SPR.grOut);
+      wake();
+    }
+
+    function drop(st) {
+      clearTimeout(st.releaseTimer);
+      for (const el of st.scaleEls) { el.style.scale = ''; el.style.translate = ''; el.classList.remove('gt-down'); }
+      st.ov.style.cssText = '';
+      st.ov.remove();
+      pool.push(st.ov);
+      states.delete(st.host);
+      if (hover === st) hover = null;
+    }
+
+    function apply(st) {
+      const calm = reduced();
+      const sx = calm ? 1 : st.sx.value, sy = calm ? 1 : st.sy.value;
+      const tx = calm ? 0 : st.tx.value, ty = calm ? 0 : st.ty.value;
+      const flat = Math.abs(sx - 1) < 0.0004 && Math.abs(sy - 1) < 0.0004;
+      const still = Math.abs(tx) < 0.02 && Math.abs(ty) < 0.02;
+      for (const el of st.scaleEls) {
+        el.style.scale = flat ? '' : sx.toFixed(4) + ' ' + sy.toFixed(4);
+        el.style.translate = still ? '' : tx.toFixed(2) + 'px ' + ty.toFixed(2) + 'px';
+      }
+      const ov = st.ov;
+      ov.style.transform = st.mirror ? 'translate(' + tx.toFixed(2) + 'px,' + ty.toFixed(2) + 'px) scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')' : '';
+      ov.style.setProperty('--gx', st.gx.toFixed(1) + 'px');
+      ov.style.setProperty('--gy', st.gy.toFixed(1) + 'px');
+      ov.style.setProperty('--ga', (Math.max(0, st.ga.value) * st.level).toFixed(3));
+      ov.style.setProperty('--gr', Math.max(0, st.gr.value).toFixed(1) + 'px');
+    }
+
+    function frame(now) {
+      raf = 0;
+      const dt = (now - lastT) / 1000;
+      lastT = now;
+      let busy = false;
+      for (const st of [...states.values()]) {
+        if (!st.host.isConnected) { drop(st); continue; }
+        st.sx.step(dt); st.sy.step(dt); st.tx.step(dt); st.ty.step(dt); st.ga.step(dt); st.gr.step(dt);
+        apply(st);
+        // Der Leuchtradius zählt nicht mehr, sobald das Licht aus ist
+        const live = st.down || st.hover || !(st.sx.settled && st.sy.settled && st.tx.settled && st.ty.settled && st.ga.settled);
+        if (live) busy = true; else drop(st);
+      }
+      if (busy) raf = requestAnimationFrame(frame);
+    }
+
+    /** Fläche + Begleiter für ein Ziel bestimmen (Reiter: Leiste leuchtet, Linse hebt sich). */
+    function plan(el) {
+      if (el.matches('.tab')) {
+        const bar = el.closest('.tabbar');
+        const lens = bar && bar.querySelector('.tab-lens');
+        return { host: bar, scale: [el, lens].filter(Boolean), kind: 'ctrl', anchor: el, fence: bar };
+      }
+      if (el.matches('.segmented button')) {
+        const seg = el.closest('.segmented');
+        const thumb = seg && seg.querySelector('.seg-thumb');
+        return { host: seg, scale: thumb && el.getAttribute('aria-selected') === 'true' ? [thumb] : [], kind: 'ctrl', anchor: el, fence: seg };
+      }
+      const surf = el.matches(SURF);
+      return { host: el, scale: [el], kind: surf ? 'surf' : 'ctrl', anchor: el, fence: el };
+    }
+
+    function setTargets(st, e, anchor) {
+      const r = st.rect;
+      st.gx = e.clientX - r.left;
+      st.gy = e.clientY - r.top;
+      const ar = anchor.getBoundingClientRect();
+      const cx = ar.left + ar.width / 2, cy = ar.top + ar.height / 2;
+      const surf = st.kind === 'surf';
+      const lim = surf ? 3 : Math.min(7, Math.max(3, ar.width * 0.12));
+      st.tx.target = clamp((e.clientX - cx) * (surf ? 0.03 : 0.14), -lim, lim);
+      st.ty.target = clamp((e.clientY - cy) * (surf ? 0.03 : 0.14), -lim * 0.8, lim * 0.8);
+      st.gr.target = farthest(st);
+    }
+
+    function lightNeighbours(e, skip) {
+      const found = [];
+      for (const el of document.querySelectorAll(NEAR)) {
+        if (skip.has(el) || el.hidden || el.closest('[hidden]')) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8 || r.bottom < 0 || r.top > innerHeight) continue;
+        if (r.width * r.height > 140000) continue;               // große Flächen leuchten nicht mit
+        const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right);
+        const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom);
+        const d = Math.hypot(dx, dy);
+        if (d > NEAR_RADIUS) continue;
+        found.push({ el, r, d });
+      }
+      found.sort((a, b) => a.d - b.d);
+      return found.slice(0, 4);
+    }
+
+    function press(el, e) {
+      const p = plan(el);
+      if (!p.host) return;
+      const old = presses.get(e.pointerId);
+      if (old) { release(old.st); presses.delete(e.pointerId); }
+      const st = make(p.host, p.scale, p.kind);
+      clearTimeout(st.releaseTimer);
+      const calm = reduced();
+      st.down = true;
+      st.hover = false;
+      st.level = p.fence !== p.anchor ? 0.5 : 1;   // Leiste/Segmentleiste: Licht über die große Fläche dezenter
+      st.t0 = performance.now();
+      place(st);
+      const ar = p.anchor.getBoundingClientRect();
+      const surf = p.kind === 'surf';
+      const gw = growth(ar.width, surf ? 7 : 9, surf ? 0.022 : 0.075);
+      const gh = growth(ar.height, surf ? 7 : 9, surf ? 0.022 : 0.075);
+      for (const s of [st.sx, st.sy, st.tx, st.ty]) s.cfg(calm ? SPR.calm : SPR.in);
+      st.sx.target = gw; st.sy.target = gh;
+      st.ga.cfg(SPR.gaIn).target = calm ? 0.65 : 1;
+      st.gr.cfg(SPR.grIn);
+      for (const x of p.scale) x.classList.add('gt-down');
+      setTargets(st, e, p.anchor);
+      // Das Licht beginnt unter dem Finger (Radius 0) und wächst
+      if (!st.gr.value) st.gr.value = 6;
+      const entry = { st, anchor: p.anchor, fence: p.fence, id: e.pointerId, near: [] };
+      presses.set(e.pointerId, entry);
+      // nahes Glas leuchtet schwächer mit
+      const skip = new Set([p.host, p.anchor]);
+      for (const n of lightNeighbours(e, skip)) {
+        const ns = make(n.el, [], 'near');
+        place(ns);
+        ns.down = true;
+        ns.level = clamp(0.62 * (1 - n.d / NEAR_RADIUS), 0.08, 0.6);
+        ns.gx = e.clientX - ns.rect.left;
+        ns.gy = e.clientY - ns.rect.top;
+        ns.ga.cfg(SPR.gaIn).target = 1;
+        ns.gr.cfg(SPR.grIn).target = farthest(ns);
+        entry.near.push(ns);
+      }
+      wake();
+    }
+
+    function move(e) {
+      const entry = presses.get(e.pointerId);
+      if (!entry) return false;
+      const st = entry.st;
+      const a = entry.fence.getBoundingClientRect();
+      const out = Math.max(a.left - e.clientX, 0, e.clientX - a.right, a.top - e.clientY, 0, e.clientY - a.bottom);
+      if (out > SLIDE_OFF) { end(e); return true; }
+      setTargets(st, e, entry.anchor);
+      for (const n of entry.near) { n.gx = e.clientX - n.rect.left; n.gy = e.clientY - n.rect.top; }
+      wake();
+      return true;
+    }
+
+    function end(e) {
+      const entry = presses.get(e.pointerId);
+      if (!entry) return;
+      presses.delete(e.pointerId);
+      const wait = Math.max(0, MIN_HOLD - (performance.now() - entry.st.t0));
+      const all = [entry.st, ...entry.near];
+      const done = () => all.forEach((s) => { if (states.get(s.host) === s) release(s); });
+      if (wait) all.forEach((s) => { s.releaseTimer = setTimeout(done, wait); }); else done();
+    }
+
+    /** Maus: sanftes Aufleuchten unter dem Zeiger (Apple: Glas reagiert auch auf den Mauszeiger). */
+    function onHover(e) {
+      if (e.pointerType !== 'mouse' || e.buttons) return;
+      const el = e.target.closest && e.target.closest(ALL);
+      const ok = el && el.matches(TAPPABLE) && !el.disabled;
+      if (!ok) { if (hover && !hover.down) { release(hover); hover = null; } return; }
+      const p = plan(el);
+      if (!p.host) return;
+      let st = states.get(p.host);
+      if (st && st.down) return;
+      if (hover && hover !== st) { release(hover); hover = null; }
+      if (!st) {
+        st = make(p.host, [], p.kind);
+        st.ga.cfg(SPR.gaIn); st.gr.cfg(SPR.grIn);
+      }
+      clearTimeout(st.releaseTimer);
+      st.hover = true;
+      st.level = 0.38;
+      place(st);
+      st.gx = e.clientX - st.rect.left;
+      st.gy = e.clientY - st.rect.top;
+      st.ga.target = 1;
+      st.gr.target = Math.max(80, farthest(st) * 0.7);
+      hover = st;
+      wake();
+    }
+
+    function onDown(e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      const t = e.target;
+      if (!t || !t.closest) return;
+      const tap = t.closest(TAPPABLE);
+      if (tap && !tap.disabled) source = { el: tap, t: performance.now() };
+      const el = t.closest(ALL);
+      if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
+      if (!el.matches(TAPPABLE) && !el.closest(TAPPABLE)) return;
+      if (hover) { const h = hover; hover = null; h.hover = false; }
+      press(el, e);
+    }
+
+    function cancelAll() {
+      for (const [id, entry] of [...presses]) { presses.delete(id); [entry.st, ...entry.near].forEach(release); }
+      if (hover) { release(hover); hover = null; }
+    }
+
+    function init() {
+      document.documentElement.classList.add('gt');
+      document.addEventListener('pointerdown', onDown, { capture: true, passive: true });
+      document.addEventListener('pointermove', (e) => { if (!move(e)) onHover(e); }, { passive: true });
+      document.addEventListener('pointerup', end, { capture: true, passive: true });
+      document.addEventListener('pointercancel', end, { capture: true, passive: true });
+      document.addEventListener('mouseout', (e) => { if (!e.relatedTarget && hover) { release(hover); hover = null; } }, { passive: true });
+      window.addEventListener('blur', cancelAll);
+      document.addEventListener('visibilitychange', () => { if (document.hidden) cancelAll(); });
+      window.addEventListener('scroll', () => { if (presses.size || hover) cancelAll(); }, { passive: true });
+    }
+
+    return {
+      init,
+      /** Zuletzt gedrückte Bedienfläche (höchstens ~1,2 s alt) – daraus entstehen Sheets & Dialoge. */
+      source() {
+        if (!source || performance.now() - source.t > 1200 || !source.el.isConnected) return null;
+        const r = source.el.getBoundingClientRect();
+        return r.width && r.height ? { el: source.el, rect: r } : null;
+      },
+      get active() { return states.size; },
+    };
+  })();
+
   /* ---------- Toast (optional mit Aktion, z. B. „Rückgängig“) ---------- */
 
   let toastTimer = null;
@@ -2613,6 +2986,36 @@
   const rubber = (x, dim) => (1 - 1 / (x * 0.55 / dim + 1)) * dim;
 
   /**
+   * Sheet bzw. Dialog „entsteht“ aus dem gedrückten Knopf (Apple: Dialoge und Sheets morphen aus der Schaltfläche,
+   * Glas materialisiert statt einzublenden). Die Karte wächst gleichmäßig aus dem Knopf, schärft sich nach und
+   * schwingt leicht über. Null, wenn die Quelle zu groß/unbekannt ist (dann bleibt es beim normalen Hereingleiten).
+   */
+  function sourceMorph(card, src) {
+    if (!src || reduced()) return null;
+    const c = card.getBoundingClientRect(), r = src.rect;
+    if (!c.width || !c.height || r.width > c.width * 0.7 || r.height > c.height * 0.7) return null;
+    if (c.height > innerHeight * 0.55) return null;   // hohe Formulare gleiten wie bei iOS von unten herein; nur Aktionsblätter/Dialoge wachsen aus dem Knopf
+    if (r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) return null;
+    const s = Math.max(0.1, r.width / c.width);
+    const dx = r.left + r.width / 2 - (c.left + c.width / 2);
+    const dy = r.top + r.height / 2 - (c.top + c.height / 2);
+    const from = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px) scale(' + s.toFixed(4) + ')';
+    const rad = getComputedStyle(card).borderTopLeftRadius;
+    return {
+      enter: [
+        { transform: from, opacity: 0, filter: 'blur(10px)', borderRadius: (Math.min(r.width, r.height) / 2 / s).toFixed(1) + 'px' },
+        { opacity: 1, filter: 'blur(2px)', offset: 0.32 },
+        { transform: 'none', opacity: 1, filter: 'blur(0px)', borderRadius: rad },
+      ],
+      leave: [
+        { transform: 'none', opacity: 1, filter: 'blur(0px)', borderRadius: rad },
+        { opacity: 0.9, filter: 'blur(2px)', offset: 0.6 },
+        { transform: from, opacity: 0, filter: 'blur(10px)', borderRadius: (Math.min(r.width, r.height) / 2 / s).toFixed(1) + 'px' },
+      ],
+    };
+  }
+
+  /**
    * Macht aus einem .modal ein interaktives Sheet.
    * onDismiss: wird beim Wegwischen aufgerufen (der Aufrufer schließt dann wie gewohnt).
    * Rückgabe: { hide(done) } – animiert von der aktuellen Position aus nach unten.
@@ -2642,16 +3045,22 @@
     const setY = (v) => {
       y = v;
       card.style.transform = v ? 'translateY(' + v + 'px)' : '';
+      card.classList.toggle('stretched', v < -2);   // nach oben ziehen: Glas wird deckender (Apple)
       if (backdrop) backdrop.style.opacity = String(Math.max(0, Math.min(1, 1 - v / Math.max(1, card.offsetHeight))));
     };
 
     // Einblenden (Einblenden etwas langsamer als Ausblenden)
+    const src = !o.handoff && !o.fullscreen ? GlassTouch.source() : null;
+    const morph = sourceMorph(card, src);
     if (o.handoff) {
       running.push(anim(card, [{ opacity: 0.5 }, { opacity: 1 }], { duration: 220, easing: EASE.out }));
     } else if (reduced()) {
       running.push(anim(wrap, [{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'linear' }));
     } else if (o.fullscreen) {
       running.push(anim(card, [{ opacity: 0, transform: 'scale(1.04)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: EASE.out }));
+    } else if (morph) {
+      running.push(anim(card, morph.enter, { duration: 560, easing: EASE.spring }));
+      if (backdrop) running.push(anim(backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: EASE.out }));
     } else if (desktop) {
       running.push(anim(card, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], { duration: 340, easing: EASE.spring }));
       if (backdrop) running.push(anim(backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: EASE.out }));
@@ -2733,11 +3142,13 @@
         stopRunning();
         wrap.style.pointerEvents = 'none';
         const finish = () => { if (done) done(); };
-        let a;
+        let a, back;
         if (reduced()) {
           a = anim(wrap, [{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'linear', fill: 'forwards' });
         } else if (o.fullscreen) {
           a = anim(card, [{ opacity: 1 }, { opacity: 0, transform: 'scale(1.03)' }], { duration: 220, easing: EASE.in, fill: 'forwards' });
+        } else if (src && !y && !sheet.velocity && src.el.isConnected && (back = sourceMorph(card, { el: src.el, rect: src.el.getBoundingClientRect() }))) {
+          a = anim(card, back.leave, { duration: 300, easing: EASE.in, fill: 'forwards' });
         } else if (desktop) {
           a = anim(card, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.97)' }], { duration: 180, easing: EASE.in, fill: 'forwards' });
         } else {
@@ -2977,7 +3388,19 @@
     },
     onScroll() {
       if (HeaderFx.raf) return;
-      HeaderFx.raf = requestAnimationFrame(() => { HeaderFx.raf = 0; HeaderFx.update(); HeaderFx.tabs(window.scrollY); });
+      HeaderFx.raf = requestAnimationFrame(() => { HeaderFx.raf = 0; HeaderFx.update(); HeaderFx.tabs(window.scrollY); HeaderFx.spec(window.scrollY); });
+    },
+    /**
+     * Glanzpunkt wandert beim Scrollen (iOS 27: Glanzlichter reagieren auf die Bewegung). Nur bei den festen Leisten –
+     * die vielen Karten im Inhalt behalten ihren Glanz (sonst müsste bei jedem Scroll-Schritt alles neu gerechnet werden).
+     */
+    specLast: -1,
+    spec(y) {
+      if (reduced()) return;
+      const x = Math.round((50 + 40 * Math.sin(y / 260)) * 2) / 2;
+      if (x === this.specLast) return;
+      this.specLast = x;
+      for (const el of [$('#header'), $('#tabbar'), $('#timer-bar')]) if (el) el.style.setProperty('--spec-x', x + '%');
     },
     /**
      * Tab-Leiste: beim Herunterscrollen schrumpft sie auf reine Icons, beim Hochscrollen
@@ -3003,26 +3426,135 @@
     },
   };
 
-  /* ---------- Tab-Leiste: Glas-Linse gleitet zum aktiven Reiter (mit „flüssigem“ Dehnen) ---------- */
+  /* ---------- Tab-Leiste: Glas-Linse gleitet zum aktiven Reiter (Federphysik, „flüssiges“ Dehnen, Wischen) ---------- */
 
+  /**
+   * Die Linse besteht aus zwei Kanten mit je einer Feder. Die vordere Kante ist straffer und eilt voraus, die hintere
+   * hinkt nach: die Linse dehnt sich in Laufrichtung und zieht sich am Ziel federnd zusammen (wie das Glas der
+   * iOS-26-Tab-Leiste). Ein neues Ziel mitten in der Bewegung setzt die Federn nur um – Position und Tempo bleiben.
+   * Wie bei Apple lässt sich die Linse auch mit dem Finger über die Reiter ziehen; gewechselt wird beim Loslassen.
+   */
   const TabLens = {
-    last: null,
+    LEAD: { k: 560, c: 33 },
+    TRAIL: { k: 360, c: 29 },
+    left: null, right: null, raf: 0, lastT: 0, last: null,
+    scrub: null, swallow: 0,
+    ensure() {
+      if (this.left) return;
+      this.left = new Spring(0); this.right = new Spring(0);
+      for (const s of [this.left, this.right]) { s.rest = 0.05; s.restV = 0.5; }
+    },
     update(noAnim) {
       const lens = $('#tab-lens');
       const tab = $('.tab.active');
       if (!lens || !tab || document.body.classList.contains('no-tabbar')) return;
+      this.ensure();
       const x = tab.offsetLeft, w = tab.offsetWidth;
       const prev = this.last;
       this.last = { x, w };
-      lens.style.width = w + 'px';
-      lens.style.transform = 'translateX(' + x + 'px)';
-      if (noAnim || !prev || prev.x === x || reduced()) return;
-      const mid = (prev.x + x) / 2;
-      anim(lens, [
-        { transform: 'translateX(' + prev.x + 'px)' },
-        { transform: 'translateX(' + mid + 'px) scale(1.28, 0.86)', offset: 0.45 },
-        { transform: 'translateX(' + x + 'px)' },
-      ], { duration: 560, easing: EASE.out });
+      if (noAnim || !prev || reduced() || (prev.x === x && prev.w === w && !this.raf)) {
+        if (!this.scrub) { this.left.snap(x); this.right.snap(x + w); this.paint(); }
+        return;
+      }
+      const dir = Math.sign(x + w / 2 - (this.left.value + this.right.value) / 2);
+      (dir >= 0 ? this.right : this.left).cfg(this.LEAD);
+      (dir >= 0 ? this.left : this.right).cfg(this.TRAIL);
+      this.left.target = x;
+      this.right.target = x + w;
+      this.run();
+    },
+    paint() {
+      const lens = $('#tab-lens');
+      if (!lens) return;
+      const l = this.left.value, w = Math.max(8, this.right.value - l);
+      const base = (this.last && this.last.w) || w;
+      const stretch = Math.max(0, Math.min(1, (w / base - 1) / 0.5));
+      lens.style.width = w.toFixed(2) + 'px';
+      lens.style.transform = 'translateX(' + l.toFixed(2) + 'px)' + (stretch > 0.01 ? ' scaleY(' + (1 - 0.07 * stretch).toFixed(4) + ')' : '');
+    },
+    run() {
+      if (this.raf) return;
+      const lens = $('#tab-lens');
+      if (lens) lens.style.willChange = 'transform, width';   // nur während der Bewegung
+      this.lastT = performance.now();
+      this.raf = requestAnimationFrame((t) => this.tick(t));
+    },
+    tick(t) {
+      this.raf = 0;
+      const dt = (t - this.lastT) / 1000;
+      this.lastT = t;
+      this.left.step(dt); this.right.step(dt);
+      this.paint();
+      if (this.left.settled && this.right.settled && !this.scrub) {
+        const lens = $('#tab-lens');
+        if (lens) lens.style.willChange = '';
+        return;
+      }
+      this.raf = requestAnimationFrame((n) => this.tick(n));
+    },
+    /** Linse folgt dem Finger (Mitte der Linse unter dem Finger, zwischen erstem und letztem Reiter). */
+    follow(clientX) {
+      const bar = $('#tabbar');
+      const tabs = $$('.tab');
+      if (!bar || tabs.length < 2) return;
+      this.ensure();
+      const r = bar.getBoundingClientRect();
+      const first = tabs[0], last = tabs[tabs.length - 1];
+      const w = (this.last && this.last.w) || first.offsetWidth;
+      const x = Math.min(last.offsetLeft, Math.max(first.offsetLeft, clientX - r.left - w / 2));
+      const dir = Math.sign(x - this.left.target) || 1;
+      (dir >= 0 ? this.right : this.left).cfg(this.LEAD);
+      (dir >= 0 ? this.left : this.right).cfg(this.TRAIL);
+      this.left.target = x;
+      this.right.target = x + w;
+      const over = tabs.reduce((best, t) => (Math.abs(t.offsetLeft + t.offsetWidth / 2 - (x + w / 2)) < Math.abs(best.offsetLeft + best.offsetWidth / 2 - (x + w / 2)) ? t : best), tabs[0]);
+      tabs.forEach((t) => t.classList.toggle('over', t === over));
+      this.over = over;
+      this.run();
+    },
+    bind() {
+      const bar = $('#tabbar');
+      if (!bar || bar.__lens) return;
+      bar.__lens = true;
+      bar.addEventListener('pointerdown', (e) => {
+        if ((e.button !== undefined && e.button > 0) || !e.isPrimary || !e.target.closest('.tab')) return;
+        this.scrub = { id: e.pointerId, x0: e.clientX, on: false };
+      });
+      bar.addEventListener('pointermove', (e) => {
+        const s = this.scrub;
+        if (!s || e.pointerId !== s.id) return;
+        if (!s.on) {
+          if (Math.abs(e.clientX - s.x0) < 8) return;
+          s.on = true;
+          try { bar.setPointerCapture(e.pointerId); } catch (err) { /* */ }
+          bar.classList.add('scrubbing');
+        }
+        this.follow(e.clientX);
+      });
+      const finish = (e) => {
+        const s = this.scrub;
+        if (!s || e.pointerId !== s.id) return;
+        this.scrub = null;
+        bar.classList.remove('scrubbing');
+        if (!s.on) return;
+        this.swallow = performance.now() + 450;   // der Klick nach dem Ziehen soll nichts auslösen
+        const target = e.type === 'pointercancel' ? null : this.over;
+        $$('.tab').forEach((t) => t.classList.remove('over'));
+        this.over = null;
+        if (target && !target.classList.contains('active')) {
+          Haptics.tap();
+          location.hash = target.getAttribute('href');
+        } else {
+          // zurück zum aktiven Reiter (die Federn laufen vom Finger-Stand aus weiter)
+          const tab = $('.tab.active');
+          if (tab) { this.left.target = tab.offsetLeft; this.right.target = tab.offsetLeft + tab.offsetWidth; this.run(); }
+        }
+      };
+      bar.addEventListener('pointerup', finish);
+      bar.addEventListener('pointercancel', finish);
+      bar.addEventListener('click', (e) => {
+        if (performance.now() < this.swallow) { e.preventDefault(); e.stopPropagation(); }
+      }, true);
     },
   };
 
@@ -5356,6 +5888,16 @@
               </button>`).join('')}
           </div>
           <p class="hint">„System“ folgt automatisch der Einstellung deines iPhones (Hell/Dunkel).</p>
+        </section>
+        <p class="section-label">Liquid Glass</p>
+        <section class="card glass-card">
+          <div class="glass-demo" aria-hidden="true"><span class="gd-orb a"></span><span class="gd-orb b"></span><span class="gd-orb c"></span><div class="gd-pane"><b>Aa</b><span>Glas</span></div></div>
+          <label class="glass-slider" for="glass-range">
+            <span>Klar</span>
+            <input type="range" id="glass-range" class="lg-range" min="0" max="100" step="1" value="${clampGlass(st.glass)}" style="--v:${clampGlass(st.glass)}%" aria-label="Liquid Glass: von klar bis getönt">
+            <span>Getönt</span>
+          </label>
+          <p class="hint">Wie in iOS 27: Links lässt das Glas mehr vom Hintergrund durch, rechts ist es stärker getönt und ruhiger. Die Schrift bleibt in jeder Stellung gut lesbar.</p>
         </section>`;
     } else if (sub === 'backup') {
       html = `
@@ -5765,7 +6307,13 @@
 
   const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
+  /** Regler „Klar ↔ Getönt“ → CSS-Variable --lg-tint (0 … 1); alle Glasflächen richten sich danach. */
+  function applyGlass() {
+    document.documentElement.style.setProperty('--lg-tint', (clampGlass(db.settings.glass) / 100).toFixed(2));
+  }
+
   function applyTheme() {
+    applyGlass();
     const t = db.settings.theme;
     const dark = t === 'dark' || (t === 'system' && darkQuery.matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -8210,6 +8758,13 @@
       if (list) list.innerHTML = adminListHTML();
       return;
     }
+    if (e.target.id === 'glass-range') {
+      db.settings.glass = clampGlass(e.target.value);
+      e.target.style.setProperty('--v', db.settings.glass + '%');
+      applyGlass();
+      saveSoon();
+      return;
+    }
     if (e.target.id === 'pedit-username') { onUsernameInput(e.target); return; }
     if (e.target.id === 'friend-q') { onFriendSearch(e.target); return; }
     const f = e.target.dataset && e.target.dataset.field;
@@ -9133,6 +9688,8 @@
     window.addEventListener('scroll', HeaderFx.onScroll, { passive: true });
     window.addEventListener('resize', HeaderFx.onScroll, { passive: true });
     window.addEventListener('resize', () => TabLens.update(true), { passive: true });
+    GlassTouch.init();
+    TabLens.bind();
     SwipeDelete.init();
     StepRepeat.init();
     EdgeBack.init();

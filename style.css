@@ -45,29 +45,37 @@
   --ring-track: rgba(255, 255, 255, 0.2);
 
   /* Material */
-  --lg-blur: 40px;
-  --lg-saturate: 1.8;
+  --lg-blur: 44px;
+  --lg-tint: 0.5;
+  --lg-saturate: 1.7;
   --lg-brightness: 1.04;
-  --lg-fill: rgba(28, 28, 32, 0.74);
-  --lg-card-fill: rgba(28, 28, 32, 0.8);
-  --lg-fill-press: rgba(48, 48, 56, 0.84);
-  --lg-pill-fill: rgba(255, 255, 255, 0.08);
+  /* Regler „Klar ↔ Getönt“ (Einstellungen → Darstellung, wie in iOS 27): --lg-tint 0 … 1, Vorgabe 0,5 */
+  --lg-fill: rgba(28, 28, 32, calc(0.58 + 0.3 * var(--lg-tint)));
+  --lg-card-fill: rgba(28, 28, 32, calc(0.66 + 0.28 * var(--lg-tint)));
+  --lg-fill-press: rgba(48, 48, 56, calc(0.7 + 0.28 * var(--lg-tint)));
+  --lg-pill-fill: rgba(255, 255, 255, calc(0.05 + 0.06 * var(--lg-tint)));
   --lg-pill-spec: rgba(255, 255, 255, 0.03);
   --lg-fill-solid: rgb(34, 34, 38);
   --lg-card-fill-solid: rgb(30, 30, 34);
   --lg-text: #ffffff;
   --lg-text-active: #ffffff;
-  --lg-edge-top: rgba(255, 255, 255, 0.42);
-  --lg-edge-mid: rgba(255, 255, 255, 0.1);
-  --lg-edge-bottom: rgba(0, 0, 0, 0.55);
-  --lg-edge-corner: rgba(255, 255, 255, 0.28);
+  --lg-edge-top: rgba(255, 255, 255, 0.52);
+  --lg-edge-mid: rgba(255, 255, 255, 0.12);
+  --lg-edge-bottom: rgba(0, 0, 0, 0.6);
+  --lg-edge-corner: rgba(255, 255, 255, 0.34);
+  --lg-edge-dark: rgba(0, 0, 0, 0.34);
   --lg-rim-top: rgba(255, 255, 255, 0.28);
   --lg-rim-bottom: rgba(0, 0, 0, 0.5);
   --lg-glow: rgba(255, 255, 255, 0.05);
   --lg-hairline: rgba(255, 255, 255, 0.08);
-  --lg-spec-dome: rgba(255, 255, 255, 0.14);
-  --lg-spec-spot: rgba(255, 255, 255, 0.12);
+  --lg-spec-dome: rgba(255, 255, 255, 0.17);
+  --lg-spec-spot: rgba(255, 255, 255, 0.2);
   --lg-spec-sheen: rgba(255, 255, 255, 0.05);
+  /* Berührung: Licht unter dem Finger (Weiß, additiv) */
+  --gt-a1: 0.3;
+  --gt-a2: 0.1;
+  --gt-edge: 0.5;
+  --gt-blend: plus-lighter;
   --lg-shadow-a: rgba(0, 0, 0, 0.18);
   --lg-shadow-b: rgba(0, 0, 0, 0.2);
   --lg-shadow-c: rgba(0, 0, 0, 0.28);
@@ -118,26 +126,31 @@
   --sk-hi: rgba(255, 255, 255, 0.7);
   --ring-track: rgba(29, 29, 31, 0.14);
 
-  --lg-fill: rgba(255, 255, 255, 0.55);
-  --lg-card-fill: rgba(255, 255, 255, 0.72);
-  --lg-fill-press: rgba(255, 255, 255, 0.86);
-  --lg-pill-fill: rgba(255, 255, 255, 0.88);
+  --lg-fill: rgba(255, 255, 255, calc(0.4 + 0.3 * var(--lg-tint)));
+  --lg-card-fill: rgba(255, 255, 255, calc(0.58 + 0.28 * var(--lg-tint)));
+  --lg-fill-press: rgba(255, 255, 255, calc(0.74 + 0.24 * var(--lg-tint)));
+  --lg-pill-fill: rgba(255, 255, 255, calc(0.78 + 0.2 * var(--lg-tint)));
   --lg-pill-spec: rgba(255, 255, 255, 0.55);
   --lg-fill-solid: rgb(244, 244, 247);
   --lg-card-fill-solid: rgb(250, 250, 252);
   --lg-text: #1d1d1f;
   --lg-text-active: #0832a8;
-  --lg-edge-top: rgba(255, 255, 255, 0.9);
-  --lg-edge-mid: rgba(255, 255, 255, 0.22);
-  --lg-edge-bottom: rgba(0, 0, 0, 0.2);
-  --lg-edge-corner: rgba(255, 255, 255, 0.6);
+  --lg-edge-top: rgba(255, 255, 255, 0.95);
+  --lg-edge-mid: rgba(255, 255, 255, 0.26);
+  --lg-edge-bottom: rgba(0, 0, 0, 0.26);
+  --lg-edge-corner: rgba(255, 255, 255, 0.7);
+  --lg-edge-dark: rgba(20, 28, 48, 0.16);
   --lg-rim-top: rgba(255, 255, 255, 0.75);
   --lg-rim-bottom: rgba(0, 0, 0, 0.07);
   --lg-glow: rgba(255, 255, 255, 0.2);
   --lg-hairline: rgba(0, 0, 0, 0.07);
-  --lg-spec-dome: rgba(255, 255, 255, 0.55);
-  --lg-spec-spot: rgba(255, 255, 255, 0.4);
+  --lg-spec-dome: rgba(255, 255, 255, 0.62);
+  --lg-spec-spot: rgba(255, 255, 255, 0.55);
   --lg-spec-sheen: rgba(255, 255, 255, 0.18);
+  --gt-a1: 0.55;   /* hell: Weiß liegt über dem Text – daher zurückhaltend, damit die Schrift lesbar bleibt */
+  --gt-a2: 0.2;
+  --gt-edge: 0.9;
+  --gt-blend: normal;
   --lg-shadow-a: rgba(20, 28, 48, 0.06);
   --lg-shadow-b: rgba(20, 28, 48, 0.07);
   --lg-shadow-c: rgba(20, 28, 48, 0.09);
@@ -3269,6 +3282,7 @@ input, textarea { caret-color: var(--lg-text-active); }
     inset 0 1px 0 var(--lg-rim-top),
     inset 0 -1px 0 var(--lg-rim-bottom),
     inset 0 0 22px var(--lg-glow),
+    inset 0 0 14px -3px var(--lg-edge-dark),
     0 0 0 0.5px var(--lg-hairline),
     0 1px 2px var(--lg-shadow-a),
     0 4px 10px var(--lg-shadow-b),
@@ -3285,6 +3299,7 @@ input, textarea { caret-color: var(--lg-text-active); }
     inset 0 1px 0 var(--lg-rim-top),
     inset 0 -1px 0 var(--lg-rim-bottom),
     inset 0 0 18px var(--lg-glow),
+    inset 0 0 14px -3px var(--lg-edge-dark),
     0 0 0 0.5px var(--lg-hairline),
     0 1px 2px var(--lg-shadow-a),
     0 6px 16px var(--lg-shadow-b),
@@ -3297,6 +3312,7 @@ input, textarea { caret-color: var(--lg-text-active); }
   box-shadow:
     inset 0 1px 0 var(--lg-rim-top),
     inset 0 -1px 0 var(--lg-rim-bottom),
+    inset 0 0 12px -3px var(--lg-edge-dark),
     0 0 0 0.5px var(--lg-hairline),
     0 1px 2px var(--lg-shadow-a),
     0 6px 14px var(--lg-shadow-b);
@@ -3319,7 +3335,7 @@ input, textarea { caret-color: var(--lg-text-active); }
   pointer-events: none;
   background:
     radial-gradient(120% 70% at 50% -22%, var(--lg-spec-dome) 0%, transparent 62%),
-    radial-gradient(46% 62% at 11% 6%, var(--lg-spec-spot) 0%, transparent 72%),
+    radial-gradient(46% 62% at var(--spec-x, 11%) 6%, var(--lg-spec-spot) 0%, transparent 72%),
     linear-gradient(180deg, var(--lg-spec-sheen) 0%, transparent 42%);
 }
 /* Schicht 4 – Lichtkante: 1-px-Verlaufsrahmen (nur der Rand wird gezeichnet) */
@@ -3366,6 +3382,7 @@ input, textarea { caret-color: var(--lg-text-active); }
   box-shadow:
     inset 0 1px 0 var(--lg-rim-top),
     inset 0 0 22px var(--lg-glow),
+    inset 0 0 14px -3px var(--lg-edge-dark),
     0 0 0 0.5px var(--lg-hairline),
     0 4px 10px var(--lg-shadow-b),
     0 14px 28px var(--lg-shadow-c),
@@ -3621,3 +3638,236 @@ body.kb-open.tabs-compact .tabbar { height: var(--tabbar-h); }
 .help-steps li::marker { font-weight: 700; color: var(--text-2); }
 .rules-box { min-height: 140px; margin-bottom: var(--s-3); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; }
 .chat-note-actions { display: flex; flex-wrap: wrap; flex: 1 1 100%; gap: var(--s-2); }
+
+/* =========================================================
+ *  Liquid Glass wie in iOS 27 – Formen, Berührung, Bewegung
+ *  Grundlage: Apples Entwickler-Dokumentation (WWDC25 „Meet Liquid Glass“, „Get to know the new design system“,
+ *  „Build a SwiftUI app with the new design“, HIG „Materials“, WWDC26 „What’s new in design / SwiftUI“).
+ *  Apple nennt dort Prinzipien, aber keine Zahlen – alle Werte unten sind eigene, auf Apples Beschreibung
+ *  abgestimmte Näherungen (siehe DESIGN.md → „Liquid Glass wie in iOS 27“).
+ * ========================================================= */
+
+/* ---------- Formen: fest · Kapsel · konzentrisch ---------- */
+
+:root {
+  --r-card: 26px;             /* Abschnitte/Karten: größerer Radius als vorher (Apple: „increased corner radius“) */
+  --r-card-sm: 22px;
+  --r-sheet: 40px;            /* Halb-Sheet: Ecke des Displays minus 8 pt Abstand – schmiegt sich an die runden Ecken */
+  --r-dialog: 30px;           /* Dialoge auf großen Bildschirmen */
+  --r-capsule: 999px;         /* Kapsel: Radius = halbe Höhe (Leisten, Knöpfe, Chips, Segmente) */
+  --sheet-gap: 8px;           /* Abstand des schwebenden Sheets zum Bildschirmrand */
+}
+/* Konzentrisch: Radius innen = Radius außen − Abstand zum Rand. Im Sheet (Rand 20 px) ergibt das 20 px. */
+.modal-card { --r-input: max(12px, calc(var(--r-sheet) - var(--s-5))); }
+.card, .profile-card { --r-input: max(12px, calc(var(--r-card) - var(--s-4))); }
+.tabbar, .segmented, .toast, .chip, .tbtn, .step, .dstrip-day { border-radius: var(--r-capsule); }
+.tabbar .tab, .tab-lens, .segmented button, .seg-thumb { border-radius: var(--r-capsule); }
+
+/* Halb-Sheet: schwebt mit Abstand, ragt unten in den Home-Indikator-Bereich. Wird es höchstmöglich (scrollt der
+   Inhalt), verankert es sich unten am Rand und wird deckender – Apple: „bottom edges pull in … opaque at full height“. */
+.modal-card {
+  margin: 0 var(--sheet-gap) var(--sheet-gap);
+  padding-bottom: calc(var(--s-5) + max(0px, var(--safe-bottom) - var(--sheet-gap)));
+  border-radius: var(--r-sheet);
+  transition: border-radius var(--d-base) var(--ease-sheet), margin var(--d-base) var(--ease-sheet), background-color var(--d-base) var(--ease-out);
+}
+.modal-card.scrolls,
+.modal-card.stretched {
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background: color-mix(in srgb, var(--lg-card-fill-solid) 94%, transparent);
+}
+@media (min-width: 700px) {
+  .modal-card { margin: 0; border-radius: var(--r-dialog); border-bottom: 0; padding-bottom: var(--s-5); }
+  .modal-card.scrolls { margin-bottom: 0; border-bottom-left-radius: var(--r-dialog); border-bottom-right-radius: var(--r-dialog); }
+}
+.modal-scanner .modal-card { margin: 0; border-radius: 0; }
+
+/* ---------- Material (iOS 27): dunklere Kante, hellere Glanzlichter, mehr Diffusion ---------- */
+
+/* Der Glanzpunkt von Kopfzeile, Tab-Leiste und Timer wandert beim Scrollen (--spec-x, vom Skript gesetzt) */
+
+/* ---------- Berührung: Licht unter dem Finger ---------- */
+
+.gt-lit {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 500;
+  pointer-events: none;
+  overflow: hidden;
+  contain: layout paint style;
+  transform-origin: 50% 50%;
+  mix-blend-mode: var(--gt-blend, plus-lighter);
+  background: radial-gradient(circle var(--gr, 0px) at var(--gx, 50%) var(--gy, 50%),
+    rgb(255 255 255 / calc(var(--ga, 0) * var(--gt-a1, 0.3))) 0%,
+    rgb(255 255 255 / calc(var(--ga, 0) * var(--gt-a2, 0.1))) 46%,
+    rgb(255 255 255 / 0) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / calc(var(--ga, 0) * var(--gt-edge, 0.5))),
+    inset 0 0 18px rgb(255 255 255 / calc(var(--ga, 0) * 0.14));
+}
+
+/* Skalieren/Verschieben übernimmt das Skript (Federn) – die alten :active-Verkleinerungen entfallen dort */
+html.gt :is(.hdr-btn, .btn, .icon-btn, .chip, .tbtn, .timer-x, .step:not(.repeating), .dstrip-day, .toast-btn, .send-btn,
+    .avatar-btn, .theme-pick, .setup-opt, .goal-tile, .fav-btn, .tab, .segmented button, .body-tile,
+    .day-card, .week-card, .list-item, .profile-card):active { transform: none; }
+.gt-down:is(.day-card, .week-card, .list-item, .profile-card) { z-index: 2; }
+
+/* Tab-Leiste: Wischen über die Reiter (Linse folgt dem Finger, gewechselt wird beim Loslassen) */
+.tabbar { touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.tab { -webkit-user-drag: none; }
+.tab.over { color: var(--lg-text-active); }
+.tab-lens { transform-origin: 50% 50%; }
+
+/* Schalter: der Knopf wird beim Berühren zu durchsichtigem Glas und streckt sich (Apple: Knopf „transforms into Liquid Glass“) */
+.switch::after { transition: transform var(--d-slow) var(--spring), background-color var(--d-base) var(--ease-out), box-shadow var(--d-base) var(--ease-out); }
+.switch-row:active .switch::after {
+  transform: scale(1.36, 1.16);
+  transform-origin: left center;
+  background: color-mix(in srgb, var(--text) 64%, transparent);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.7), inset 0 -2px 4px rgb(0 0 0 / 0.16), 0 4px 10px rgb(0 0 0 / 0.28);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+.switch-row[aria-checked="true"]:active .switch::after {
+  transform: translateX(20px) scale(1.36, 1.16);
+  transform-origin: right center;
+  background: color-mix(in srgb, var(--on-inv) 60%, transparent);
+}
+
+/* ---------- Regler „Klar ↔ Getönt“ ---------- */
+
+.glass-demo {
+  position: relative;
+  height: 116px;
+  margin-bottom: var(--s-4);
+  border-radius: var(--r-input);
+  overflow: hidden;
+  isolation: isolate;
+  background: linear-gradient(165deg, var(--bg-a), var(--bg-b));
+}
+.gd-orb { position: absolute; border-radius: 50%; }
+.gd-orb.a { width: 120px; height: 120px; left: -28px; top: -38px; background: var(--orb-1); }
+.gd-orb.b { width: 150px; height: 150px; right: -18px; bottom: -64px; background: var(--orb-2); }
+.gd-orb.c { width: 110px; height: 110px; left: 46%; bottom: -58px; background: var(--orb-3); }
+.gd-pane {
+  position: absolute;
+  inset: 20px 22px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-5);
+  border-radius: 22px;
+  color: var(--text);
+  background: var(--lg-card-fill);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    inset 0 0 14px -3px var(--lg-edge-dark),
+    0 0 0 0.5px var(--lg-hairline),
+    0 8px 20px var(--lg-shadow-c);
+}
+.gd-pane b { font-size: 26px; font-weight: 750; letter-spacing: -0.03em; }
+.gd-pane span { font-size: 15px; font-weight: 600; }
+.glass-slider { display: flex; align-items: center; gap: var(--s-3); font-size: 13px; font-weight: 650; letter-spacing: 0.02em; color: var(--text-2); }
+.lg-range {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.lg-range::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: var(--r-capsule);
+  background: linear-gradient(90deg, var(--inv) 0 var(--v, 50%), var(--ring-track) var(--v, 50%) 100%);
+  box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.24), 0 0 0 0.5px var(--lg-hairline);
+}
+.lg-range::-moz-range-track { height: 8px; border-radius: var(--r-capsule); background: var(--ring-track); box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.24); }
+.lg-range::-moz-range-progress { height: 8px; border-radius: var(--r-capsule); background: var(--inv); }
+.lg-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 30px;
+  height: 30px;
+  margin-top: -11px;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.36), 0 0 0 0.5px rgb(0 0 0 / 0.14);
+  transition: transform var(--d-slow) var(--spring), background var(--d-base) var(--ease-out), box-shadow var(--d-base) var(--ease-out);
+}
+.lg-range::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.36), 0 0 0 0.5px rgb(0 0 0 / 0.14);
+  transition: transform var(--d-slow) var(--spring), background var(--d-base) var(--ease-out);
+}
+/* Berührt: der Knopf wird größer und zu durchsichtigem Glas (Linse) */
+.lg-range:active::-webkit-slider-thumb {
+  transform: scale(1.46, 1.26);
+  background: radial-gradient(75% 75% at 34% 24%, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.5) 58%, rgb(255 255 255 / 0.3));
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.75), inset 0 -3px 5px rgb(0 0 0 / 0.14), 0 8px 18px rgb(0 0 0 / 0.32);
+}
+.lg-range:active::-moz-range-thumb {
+  transform: scale(1.46, 1.26);
+  background: radial-gradient(75% 75% at 34% 24%, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.5) 58%, rgb(255 255 255 / 0.3));
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.75), 0 8px 18px rgb(0 0 0 / 0.32);
+}
+.lg-range:focus-visible { outline: 0; }
+.lg-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--accent-line), 0 2px 6px rgb(0 0 0 / 0.36); }
+
+/* ---------- Materialisierung: Glas „entsteht“, statt nur einzublenden ---------- */
+
+.toast {
+  transform: translate(-50%, 14px) scale(0.84);
+  -webkit-backdrop-filter: blur(0px) saturate(1);
+  backdrop-filter: blur(0px) saturate(1);
+  transition:
+    transform var(--d-out) var(--ease-in),
+    opacity var(--d-out) var(--ease-in),
+    backdrop-filter var(--d-out) var(--ease-in),
+    -webkit-backdrop-filter var(--d-out) var(--ease-in);
+}
+.toast.show {
+  transform: translate(-50%, 0);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  transition:
+    transform var(--d-slow) var(--spring),
+    opacity var(--d-base) var(--ease-out),
+    backdrop-filter 520ms var(--ease-out),
+    -webkit-backdrop-filter 520ms var(--ease-out);
+}
+body.modal-open .toast,
+body.kb-open .toast { transform: translate(-50%, -14px) scale(0.84); }
+body.modal-open .toast.show,
+body.kb-open .toast.show { transform: translate(-50%, 0); }
+
+/* „Transparenz reduzieren“: auch das hochgezogene Sheet bleibt voll deckend */
+@media (prefers-reduced-transparency: reduce) {
+  .modal-card.scrolls, .modal-card.stretched { background: var(--lg-card-fill-solid); }
+}
+
+/* „Bewegung verringern“: nichts federt, nichts wächst – nur Aufhellen und Ausblenden */
+@media (prefers-reduced-motion: reduce) {
+  .toast, .toast.show, .modal-card { transition-duration: 1ms !important; }
+  .toast { transform: translate(-50%, 0); }
+  body.modal-open .toast, body.kb-open .toast { transform: translate(-50%, 0); }
+  .switch-row:active .switch::after, .switch-row[aria-checked="true"]:active .switch::after { transform: none; }
+  .switch-row[aria-checked="true"]:active .switch::after { transform: translateX(20px); }
+  .lg-range:active::-webkit-slider-thumb, .lg-range:active::-moz-range-thumb { transform: none; }
+}
+@media (forced-colors: active) {
+  .gt-lit { display: none; }
+}

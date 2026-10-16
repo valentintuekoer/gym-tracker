@@ -205,7 +205,15 @@ Daten, die du früher dort eingetragen hast, werden nicht mehr angezeigt und nic
 
 ## Mitglieder-Chat
 
-Neuer Reiter **Chat** (nur mit Konto und Profil): ein gemeinsamer Raum für alle Mitglieder, um sich fürs Training zu verabreden.
+Der Reiter **Chat** (nur mit Konto und Profil) ist eine Liste: oben der **Gym-Chat** (ein gemeinsamer Raum für alle Mitglieder, um sich
+fürs Training zu verabreden), darunter deine **Gruppen** und deine **Kontakte** (= bestätigte Freunde).
+
+- **Gruppen:** oben rechts **+** („Neue Gruppe“): Name (bis 40 Zeichen) und Freunde auswählen. Es lassen sich nur Freunde einladen
+  (die Regeln prüfen es); bis zu 30 Mitglieder. Die Gruppe hat dieselben Funktionen wie der Gym-Chat – Nachrichten, „Ich gehe ins Gym“-Karten,
+  „Heute im Gym“ der Gruppe. Über das Personen-Symbol in der Kopfzeile: Mitglieder ansehen, als Besitzer **hinzufügen / entfernen /
+  umbenennen / löschen**, als Mitglied **verlassen**. In der Liste zeigen ein Punkt und fette Schrift Ungelesenes, darunter die letzte Nachricht.
+- **Kontakte:** jeder Freund steht in der Liste – antippen öffnet eine **Direktnachricht** (entsteht beim ersten Senden).
+- **Profilbilder ohne Foto:** der **große Anfangsbuchstabe** auf einem Farbhintergrund (die Farbe ergibt sich aus dem Namen, immer dieselbe pro Person).
 
 - **Nachrichten** in Echtzeit; eigene rechts, fremde links mit Name und Foto, Uhrzeit in **Wiener Zeit, 24 h**.
 - **„Ich gehe ins Gym“**: Datum, Uhrzeit, optional Push / Pull / Legs / Oberkörper / Unterkörper / Ganzkörper / Cardio / Sonstiges
@@ -220,8 +228,9 @@ Neuer Reiter **Chat** (nur mit Konto und Profil): ein gemeinsamer Raum für alle
   noch läuft und Benachrichtigungen erlaubt sind, als Mitteilung. **Echte Push-Nachrichten bei geschlossener App gibt es nicht** –
   dafür braucht es einen Server-Dienst (Firebase Cloud Messaging mit Cloud Functions, kostenpflichtiger Blaze-Tarif).
 
-**Einrichtung:** nur die neuen [`firestore.rules`](firestore.rules) veröffentlichen (siehe 1d). Keine Umgebungsvariablen,
-keine Migration, keine zusätzlichen Indizes.
+**Einrichtung:** nur die neuen [`firestore.rules`](firestore.rules) veröffentlichen (siehe 1d) – **für Gruppen und Direktnachrichten erneut**
+(neue Regeln für `groups`). Bis dahin zeigt die Chat-Liste bei den Gruppen „noch nicht freigeschaltet“ mit dem Knopf „So schaltest du sie frei“.
+Keine Umgebungsvariablen, keine Migration, keine zusätzlichen Indizes.
 
 **Zeigt der Chat „permission-denied“** (oder „Nicht gesendet – keine Berechtigung“)? Dann kennt Firebase die Chat-Regeln noch nicht.
 Die App erklärt es selbst: Im Chat auf **„So schaltest du ihn frei“** (bzw. bei einer fehlgeschlagenen Nachricht auf **„Was tun?“**)
@@ -236,9 +245,15 @@ Mitkommen trägt nur den eigenen Namen ein. Gesperrte Konten (Nutzerverwaltung) 
 **Moderation:** Meldungen landen in Firestore unter `reports` (nur Administratoren lesbar): Firebase-Konsole → Firestore → `reports`.
 Dort steht, wer was gemeldet hat; die Nachricht löschst du unter `rooms/gym/messages/<id>`, den Nutzer sperrst du in der Nutzerverwaltung.
 
+**Datenmodell Gruppen:** `groups/{id}` mit `kind` (`group` | `dm`), `name`, `owner`, `memberIds`, `memberNames`, `lastAt/lastText/lastName/lastUid`
+und `groups/{id}/messages/{id}` (gleiches Format wie `rooms/gym/messages`). Ein Direktchat hat die feste ID `dm_<kleinere uid>_<größere uid>`.
+Die Regeln erzwingen: Mitglieder lesen/schreiben; nur der Besitzer lädt ein (je einen Freund, der ihn selbst als Freund hat, mit dem echten
+Benutzernamen); Mitglieder dürfen gehen, der Besitzer nicht (er löscht die Gruppe); „letzte Nachricht“ lässt sich nicht fälschen.
+Das Rate Limit (2 s / Karte 1 min) gilt über alle Räume zusammen.
+
 **Weitere Räume (z. B. pro Standort):** Der Raum `gym` gibt es immer. Für einen weiteren in der Firebase-Konsole unter `rooms`
 ein Dokument mit dem Raumnamen als ID anlegen (a–z, 0–9, Bindestrich, z. B. `wien-mitte`) – die Regeln und Datenstruktur
-(`rooms/{raum}/messages`) sind darauf vorbereitet. Die Oberfläche zeigt bisher nur den Raum `gym` (`CHAT_ROOM` in `app.js`).
+(`rooms/{raum}/messages`) sind darauf vorbereitet. Die Oberfläche zeigt diese Admin-Räume bisher nicht (nur `gym`, Gruppen und Direktchats).
 
 **Datenschutz:** Nachrichten und Karten sehen alle Mitglieder mit Profil (Benutzername und Foto, keine E-Mail, keine Trainingsdaten).
 Beim Löschen des Kontos werden eigene Nachrichten, Karten und Teilnahmen entfernt.
@@ -294,8 +309,8 @@ Daten gespeichert und nie mit Freunden geteilt.
 - Liquid Glass der App wie in iOS 27 (Berührung, Tab-Linse, Wischen, Sheet-Morph, Regler; Chromium, ohne Emulator):
   `node --test tests/glass-touch.ui.mjs`
 - Mit dem Firebase-Emulator (Java nötig): `cd tests/emulator && npm install`, dann
-  `npm test` (Sicherheitsregeln + Freunde- und Chat-Funktionen mit mehreren Nutzern) und
+  `npm test` (Sicherheitsregeln + Freunde-, Chat- und Gruppen-Funktionen mit mehreren Nutzern) und
   `npm run test:ui` (die echte App in Chromium: ohne Konto, Registrierung, Profilfoto, Anfragen, Vergleich,
-  Rangliste, offline, Freund entfernen, Abmelden, Konto löschen sowie der Chat mit zwei Geräten: Echtzeit,
+  Rangliste, offline, Freund entfernen, Abmelden, Konto löschen sowie der Chat und die Gruppen/Direktnachrichten mit zwei Geräten: Echtzeit,
   Gym-Karte, mitkommen, Fehler mit Erneut-Senden, melden/blockieren, Nachladen, Wiener Zeit).
   Screenshots des Chats: `CHAT_SHOTS=/pfad npm run test:ui`. Einmalig vorher `npx playwright install chromium`.

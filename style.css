@@ -3871,3 +3871,67 @@ body.kb-open .toast.show { transform: translate(-50%, 0); }
 @media (forced-colors: active) {
   .gt-lit { display: none; }
 }
+
+/* =========================================================
+ *  Avatare ohne Foto: großer Anfangsbuchstabe auf Farbhintergrund
+ *  Die Farbe ergibt sich aus dem Namen (avatarIndex in app.js: immer dieselbe pro Person).
+ *  Alle zehn Farben tragen weiße Schrift mit ≥ 4,5:1 (geprüft in tests/liquid-glass.test.mjs).
+ * ========================================================= */
+
+.avatar { --av: 42px; }
+.avatar.xs { --av: 24px; }
+.avatar.sm { --av: 32px; }
+.avatar.md { --av: 52px; }
+.avatar.pc { --av: 58px; width: 58px; height: 58px; }
+.avatar.lg { --av: 72px; }
+.avatar.xl { --av: 104px; }
+.avatar-initial {
+  color: #ffffff;
+  background: hsl(var(--ac, 215 40% 36%));
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.3);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.avatar-initial > span {
+  font: 700 calc(var(--av) * 0.46) / 1 var(--font-display);
+  letter-spacing: -0.02em;
+  padding-bottom: calc(var(--av) * 0.02);
+}
+.ac0 { --ac: 2 56% 40%; }
+.ac1 { --ac: 24 56% 38%; }
+.ac2 { --ac: 45 56% 31%; }
+.ac3 { --ac: 98 56% 29%; }
+.ac4 { --ac: 150 56% 30%; }
+.ac5 { --ac: 176 56% 29%; }
+.ac6 { --ac: 204 56% 38%; }
+.ac7 { --ac: 232 56% 44%; }
+.ac8 { --ac: 272 56% 42%; }
+.ac9 { --ac: 320 56% 40%; }
+@media (forced-colors: active) {
+  .avatar-initial { forced-color-adjust: none; }
+}
+
+/* =========================================================
+ *  Chats: Liste (Gym-Chat, Gruppen, Kontakte), Gruppeninfo
+ * ========================================================= */
+
+.chat-home { display: flex; flex-direction: column; gap: var(--s-2); }
+.chat-home .list { margin-bottom: var(--s-2); }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); margin: var(--s-5) 0 var(--s-2); }
+.section-head .section-label { margin: 0 var(--s-1); }
+.section-head .btn { min-height: 32px; padding: 0 var(--s-2); }
+.chat-row { display: flex; align-items: center; gap: var(--s-3); min-height: 68px; }
+.chat-row .li-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-row .li-main { min-width: 0; }
+.chat-row.unread .li-title { font-weight: 750; }
+.chat-row.unread .li-sub { color: var(--text); }
+.chat-row-meta { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 40px; color: var(--muted); }
+.chat-row-meta small { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.unread-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--lg-text-active); box-shadow: 0 0 0 2px var(--lg-fill-solid); }
+.avatar.avatar-room { background: var(--inv); color: var(--on-inv); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4); }
+.chat-empty-small { display: grid; justify-items: start; gap: var(--s-3); padding: var(--s-2) 0 var(--s-4); }
+.chat-empty-small p { margin: 0; }
+.grp-member { min-height: 56px; }
+.pick-row .avatar { flex: none; }
+.pick-row .pick-main { min-width: 0; }
+.modal-card .section-label { margin-top: var(--s-4); }

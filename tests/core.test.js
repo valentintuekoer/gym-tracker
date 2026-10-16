@@ -1097,3 +1097,21 @@ test('Liquid-Glass-Regler: 0…100, ganze Zahl, Vorgabe 50; kaputte Werte fallen
   assert.equal(Core.normalize({ days: [], settings: { glass: 'x' } }).settings.glass, 50);
   assert.equal(Core.emptyData().settings.glass, 50);
 });
+
+test('Buchstaben-Avatare: Anfangsbuchstabe groß, Farbe stabil pro Name und breit gestreut', () => {
+  const { avatarInitial, avatarIndex, AVATAR_COLORS } = util;
+  assert.equal(avatarInitial('anna'), 'A');
+  assert.equal(avatarInitial('  @ben '), 'B');
+  assert.equal(avatarInitial('émile'), 'É');
+  assert.equal(avatarInitial('ßeta'), 'S');       // ß wird zu „SS“ – nur ein Buchstabe
+  assert.equal(avatarInitial('😀x'), '😀');        // Emoji bleibt ganz (kein halbes Zeichen)
+  assert.equal(avatarInitial(''), '?');
+  assert.equal(avatarInitial(null), '?');
+  assert.equal(avatarIndex('Anna'), avatarIndex('anna'));       // Groß-/Kleinschreibung egal
+  assert.equal(avatarIndex('@anna'), avatarIndex('anna'));
+  assert.equal(avatarIndex('anna'), avatarIndex('anna'));       // stabil
+  const names = ['anna', 'ben', 'cleo', 'dora', 'emil', 'finn', 'gina', 'hugo', 'ida', 'jonas', 'kira', 'leon', 'mia', 'noah', 'olga', 'paul', 'quinn', 'rosa', 'sam', 'tina'];
+  const idx = names.map(avatarIndex);
+  for (const i of idx) assert.ok(i >= 0 && i < AVATAR_COLORS);
+  assert.ok(new Set(idx).size >= 6, 'Farben zu wenig gestreut: ' + [...new Set(idx)]);
+});

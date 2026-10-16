@@ -12,6 +12,9 @@ rules_version = '2';
 //   publicProfiles/{uid}         → Benutzername, Foto, geteilte Kennzahlen (nur bestätigte Freunde)
 //   requests/{from}_{to}         → Freundschaftsanfragen (nur Absender und Empfänger)
 //   rooms/{raum}/messages/{id}   → Chat: Nachrichten und Gym-Karten (alle Mitglieder mit Profil)
+//   groups/{id}                  → Gruppe (kind 'group') bzw. Direktchat zweier Freunde (kind 'dm', id dm_<uidA>_<uidB>):
+//                                  Name, Besitzer, Mitglieder (memberIds – nur Freunde des Besitzers, die ihn selbst als Freund haben)
+//   groups/{id}/messages/{id}    → Nachrichten und Gym-Karten der Gruppe (nur Mitglieder)
 //   chatState/{uid}              → Zeitpunkt der letzten Chat-Nachricht (Rate Limit gegen Spam)
 //   reports/{id}                 → Meldungen aus dem Chat (nur Administratoren dürfen lesen)
 //
@@ -166,6 +169,56 @@ service cloud.firestore {
         && d.note is string && d.note.size() <= 120;
     }
 
+    // Neue Nachricht: eigener Name aus dem Profil, Serverzeit, Rate Limit (Nachricht + chatState im selben Batch)
+    function validNew() {
+      let d = request.resource.data;
+      let st = /databases/$(database)/documents/chatState/$(request.auth.uid);
+      let isCard = d.kind == 'gym';
+      return d.uid == request.auth.uid
+        && d.name == profileName(request.auth.uid)
+        && d.createdAt == request.time
+        && (
+          (d.kind == 'text'
+            && d.keys().hasOnly(['uid', 'name', 'kind', 'text', 'createdAt'])
+            && chatTextOk(d.text))
+          || (isCard
+            && d.keys().hasOnly(['uid', 'name', 'kind', 'createdAt', 'when', 'workout', 'note', 'joined'])
+            && cardFieldsOk(d)
+            && d.joined is map && d.joined.size() == 0)
+        )
+        // höchstens eine Nachricht alle 2 Sekunden, eine Gym-Karte pro Minute
+        && getAfter(st).data.lastPostAt == request.time
+        && (!exists(st) || get(st).data.get('lastPostAt', null) == null
+            || get(st).data.lastPostAt < request.time - duration.value(2, 's'))
+        && (!isCard || (getAfter(st).data.lastCardAt == request.time
+            && (!exists(st) || get(st).data.get('lastCardAt', null) == null
+                || get(st).data.lastCardAt < request.time - duration.value(60, 's'))));
+    }
+
+    // Der Autor ändert Text bzw. Zeit/Art/Notiz seiner Karte
+    function validOwnerEdit() {
+      let n = request.resource.data;
+      let o = resource.data;
+      let changed = n.diff(o).affectedKeys();
+      return o.uid == request.auth.uid
+        && n.editedAt == request.time
+        && (
+          (o.kind == 'text' && changed.hasOnly(['text', 'editedAt']) && chatTextOk(n.text))
+          || (o.kind == 'gym' && changed.hasOnly(['when', 'workout', 'note', 'editedAt']) && cardFieldsOk(n))
+        );
+    }
+
+    // Jeder Mitglied darf sich selbst in die Teilnehmerliste einer Karte eintragen bzw. austragen – nur sich selbst
+    function validJoin() {
+      let n = request.resource.data;
+      let o = resource.data;
+      return o.kind == 'gym'
+        && n.diff(o).affectedKeys().hasOnly(['joined'])
+        && n.joined.diff(o.joined).affectedKeys().hasOnly([request.auth.uid])
+        && n.joined.size() <= 40
+        && (!(request.auth.uid in n.joined) || n.joined[request.auth.uid] == profileName(request.auth.uid));
+    }
+
     match /rooms/{room} {
       function knownRoom() {
         return room == 'gym' || exists(/databases/$(database)/documents/rooms/$(room));
@@ -174,61 +227,118 @@ service cloud.firestore {
       allow write: if isAdmin();
 
       match /messages/{id} {
-        // Neue Nachricht: eigener Name aus dem Profil, Serverzeit, Rate Limit (Nachricht + chatState im selben Batch)
-        function validNew() {
-          let d = request.resource.data;
-          let st = /databases/$(database)/documents/chatState/$(request.auth.uid);
-          let isCard = d.kind == 'gym';
-          return d.uid == request.auth.uid
-            && d.name == profileName(request.auth.uid)
-            && d.createdAt == request.time
-            && (
-              (d.kind == 'text'
-                && d.keys().hasOnly(['uid', 'name', 'kind', 'text', 'createdAt'])
-                && chatTextOk(d.text))
-              || (isCard
-                && d.keys().hasOnly(['uid', 'name', 'kind', 'createdAt', 'when', 'workout', 'note', 'joined'])
-                && cardFieldsOk(d)
-                && d.joined is map && d.joined.size() == 0)
-            )
-            // höchstens eine Nachricht alle 2 Sekunden, eine Gym-Karte pro Minute
-            && getAfter(st).data.lastPostAt == request.time
-            && (!exists(st) || get(st).data.get('lastPostAt', null) == null
-                || get(st).data.lastPostAt < request.time - duration.value(2, 's'))
-            && (!isCard || (getAfter(st).data.lastCardAt == request.time
-                && (!exists(st) || get(st).data.get('lastCardAt', null) == null
-                    || get(st).data.lastCardAt < request.time - duration.value(60, 's'))));
-        }
-
-        // Der Autor ändert Text bzw. Zeit/Art/Notiz seiner Karte
-        function validOwnerEdit() {
-          let n = request.resource.data;
-          let o = resource.data;
-          let changed = n.diff(o).affectedKeys();
-          return o.uid == request.auth.uid
-            && n.editedAt == request.time
-            && (
-              (o.kind == 'text' && changed.hasOnly(['text', 'editedAt']) && chatTextOk(n.text))
-              || (o.kind == 'gym' && changed.hasOnly(['when', 'workout', 'note', 'editedAt']) && cardFieldsOk(n))
-            );
-        }
-
-        // Jeder Mitglied darf sich selbst in die Teilnehmerliste einer Karte eintragen bzw. austragen – nur sich selbst
-        function validJoin() {
-          let n = request.resource.data;
-          let o = resource.data;
-          return o.kind == 'gym'
-            && n.diff(o).affectedKeys().hasOnly(['joined'])
-            && n.joined.diff(o.joined).affectedKeys().hasOnly([request.auth.uid])
-            && n.joined.size() <= 40
-            && (!(request.auth.uid in n.joined) || n.joined[request.auth.uid] == profileName(request.auth.uid));
-        }
-
         allow get: if isAdmin() || (chatMember() && knownRoom());
         allow list: if (isAdmin() || chatMember()) && knownRoom() && request.query.limit <= 50;
         allow create: if chatMember() && knownRoom() && validNew();
         allow update: if chatMember() && knownRoom() && (validOwnerEdit() || validJoin());
         allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      }
+    }
+
+    // ---------- Gruppen & Direktchats ----------
+    //
+    // groups/{id}: { kind, name, owner, memberIds, memberNames, createdAt, lastAt?, lastText?, lastName?, lastUid? }
+    //   kind 'group'  – Besitzer legt Name fest und lädt Freunde ein (einzeln, jeder muss den Besitzer als Freund haben)
+    //   kind 'dm'     – Direktchat zweier Freunde, id = dm_<kleinere uid>_<größere uid>, genau 2 Mitglieder
+    // Die Mitgliederliste steht im Dokument selbst, damit „meine Gruppen“ eine einzige Abfrage ist
+    // (where memberIds array-contains uid) und die Nachrichten-Regeln nur ein Dokument lesen müssen.
+
+    function groupData(gid) {
+      return get(/databases/$(database)/documents/groups/$(gid)).data;
+    }
+
+    function groupMember(gid) {
+      return signedIn() && !isBlocked(request.auth.uid) && hasProfile(request.auth.uid)
+        && request.auth.uid in groupData(gid).memberIds;
+    }
+
+    function dmIdOk(gid, a, b) {
+      return (a < b && gid == 'dm_' + a + '_' + b) || (b < a && gid == 'dm_' + b + '_' + a);
+    }
+
+    match /groups/{gid} {
+      // Nur Mitglieder lesen. Die Listen-Abfrage „meine Gruppen“ ist where memberIds array-contains <eigene uid>.
+      allow get: if isAdmin() || (signedIn() && request.auth.uid in resource.data.memberIds);
+      allow list: if isAdmin() || (signedIn() && request.auth.uid in resource.data.memberIds);
+
+      function validGroupNew() {
+        let d = request.resource.data;
+        let me = request.auth.uid;
+        let n = d.memberIds.size();
+        return d.keys().hasOnly(['kind', 'name', 'owner', 'memberIds', 'memberNames', 'createdAt'])
+          && d.owner == me
+          && d.createdAt == request.time
+          && d.memberIds is list && n >= 1 && n <= 2 && d.memberIds[0] == me
+          && d.memberNames is map && d.memberNames.size() == n && d.memberNames.keys().hasOnly(d.memberIds)
+          && d.memberNames[me] == profileName(me)
+          // der zweite Name: eine Freundin/ein Freund, die/der mich in der eigenen Liste hat, und ihr echter Benutzername
+          && (n == 1 || (isFriendOf(d.memberIds[1]) && d.memberNames[d.memberIds[1]] == profileName(d.memberIds[1])))
+          && (
+            (d.kind == 'group' && d.name is string && d.name.size() >= 1 && d.name.size() <= 40)
+            || (d.kind == 'dm' && n == 2 && d.name == '' && dmIdOk(gid, d.memberIds[0], d.memberIds[1]))
+          );
+      }
+
+      // Besitzer lädt einen Freund ein: genau ein neues Mitglied am Ende der Liste, höchstens 30
+      function validAdd() {
+        let n = request.resource.data;
+        let o = resource.data;
+        let k = o.memberIds.size();
+        return o.kind == 'group' && o.owner == request.auth.uid
+          && n.diff(o).affectedKeys().hasOnly(['memberIds', 'memberNames'])
+          && n.memberIds.size() == k + 1 && k < 30
+          && n.memberIds[0:k] == o.memberIds
+          && isFriendOf(n.memberIds[k])
+          && n.memberNames.diff(o.memberNames).addedKeys() == [n.memberIds[k]].toSet()
+          && n.memberNames.diff(o.memberNames).changedKeys().size() == 0
+          && n.memberNames.diff(o.memberNames).removedKeys().size() == 0
+          && n.memberNames[n.memberIds[k]] == profileName(n.memberIds[k]);
+      }
+
+      // Jemand geht (selbst) oder der Besitzer entfernt jemanden; der Besitzer bleibt immer drin
+      function validRemove() {
+        let n = request.resource.data;
+        let o = resource.data;
+        let me = request.auth.uid;
+        return n.diff(o).affectedKeys().hasOnly(['memberIds', 'memberNames'])
+          && n.memberIds.size() == o.memberIds.size() - 1
+          && o.memberIds.toSet().hasAll(n.memberIds.toSet())
+          && o.owner in n.memberIds
+          && n.memberNames.keys().hasOnly(n.memberIds)
+          && (me == o.owner || (me in o.memberIds && !(me in n.memberIds)));
+      }
+
+      function validRename() {
+        let n = request.resource.data;
+        let o = resource.data;
+        return o.kind == 'group' && o.owner == request.auth.uid
+          && n.diff(o).affectedKeys().hasOnly(['name'])
+          && n.name is string && n.name.size() >= 1 && n.name.size() <= 40;
+      }
+
+      // Jedes Mitglied hinterlegt beim Senden die letzte Nachricht (für Liste und „ungelesen“)
+      function validLast() {
+        let n = request.resource.data;
+        let o = resource.data;
+        let me = request.auth.uid;
+        return n.diff(o).affectedKeys().hasOnly(['lastAt', 'lastText', 'lastName', 'lastUid'])
+          && n.lastAt == request.time && n.lastUid == me && n.lastName == profileName(me)
+          && n.lastText is string && n.lastText.size() <= 80;
+      }
+
+      allow create: if signedIn() && !isBlocked(request.auth.uid) && hasProfile(request.auth.uid) && validGroupNew();
+      allow update: if isAdmin() || (signedIn() && !isBlocked(request.auth.uid) && request.auth.uid in resource.data.memberIds
+        && (validAdd() || validRemove() || validRename() || validLast()));
+      allow delete: if isAdmin() || (signedIn() && resource.data.owner == request.auth.uid);
+
+      match /messages/{id} {
+        allow get: if isAdmin() || groupMember(gid);
+        allow list: if (isAdmin() || groupMember(gid)) && request.query.limit <= 50;
+        allow create: if groupMember(gid) && validNew();
+        allow update: if groupMember(gid) && (validOwnerEdit() || validJoin());
+        // eigene Nachrichten (auch nach dem Verlassen) – der Besitzer räumt beim Löschen der Gruppe auf
+        allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid)
+          || (signedIn() && groupData(gid).owner == request.auth.uid);
       }
     }
 
@@ -250,7 +360,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['room', 'msgId', 'targetUid', 'targetName', 'text', 'reason', 'reporter', 'at'])
         && request.resource.data.reporter == request.auth.uid
         && id == request.auth.uid + '_' + request.resource.data.msgId
-        && request.resource.data.room is string && request.resource.data.room.size() <= 30
+        && request.resource.data.room is string && request.resource.data.room.size() <= 70
         && request.resource.data.msgId is string && request.resource.data.msgId.size() <= 40
         && request.resource.data.targetUid is string && request.resource.data.targetUid.size() <= 128
         && request.resource.data.targetName is string && request.resource.data.targetName.size() <= 30

@@ -143,6 +143,24 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  /** Anzahl der Hintergrundfarben für Buchstaben-Avatare (siehe .ac0 … .ac9 in style.css). */
+  const AVATAR_COLORS = 10;
+
+  /** Welche der Farben zu einem Namen gehört: immer dieselbe für denselben Namen (Groß-/Kleinschreibung egal). */
+  function avatarIndex(name) {
+    const s = String(name || '').trim().replace(/^@/, '').toLowerCase();
+    let h = 2166136261;                       // FNV-1a
+    for (let k = 0; k < s.length; k++) { h ^= s.charCodeAt(k); h = Math.imul(h, 16777619); }
+    return (h >>> 0) % AVATAR_COLORS;
+  }
+
+  /** Großer Anfangsbuchstabe eines Namens (ohne „@“); „ß“ → „S“, leer → „?“. */
+  function avatarInitial(name) {
+    const s = String(name || '').trim().replace(/^@/, '');
+    const first = Array.from(s)[0];
+    return first ? Array.from(first.toLocaleUpperCase('de-DE'))[0] : '?';
+  }
+
   /** Schlüssel, über den Übungen im Verlauf zusammengefasst werden. */
   function normName(s) {
     return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -2150,7 +2168,7 @@
   /* ---------- Export für Tests (Node) ---------- */
   if (typeof document === 'undefined') {
     if (typeof module !== 'undefined') {
-      module.exports = { Core, TimerCore, Sync, createSyncEngine, util: { fmtDate, parseNum, fmtNum, fmtClock, fmtRelative, fmtSet, fmtRest, fmtSets, fmtRepTarget, parseRepTarget, normName, e1rm, esc, clampRest, clampSets, clampGlass } };
+      module.exports = { Core, TimerCore, Sync, createSyncEngine, util: { fmtDate, parseNum, fmtNum, fmtClock, fmtRelative, fmtSet, fmtRest, fmtSets, fmtRepTarget, parseRepTarget, normName, e1rm, esc, clampRest, clampSets, clampGlass, avatarIndex, avatarInitial, AVATAR_COLORS } };
     }
     return;
   }
@@ -3326,7 +3344,12 @@
       case 'friend': return { name: 'friend', id: parts[1] || '', tab: 'profile' };
       case 'leaderboard': return { name: 'leaderboard', tab: 'profile' };
       case 'invite': return { name: 'invite', id: parts[1] || '', tab: 'profile' };
-      case 'chat': return { name: 'chat', tab: 'chat' };
+      case 'chat':
+        // #/chat Liste · #/chat/gym öffentlicher Raum · #/chat/g/<id> Gruppe · #/chat/dm/<uid> Direktchat mit einem Freund
+        if (parts[1] === 'gym') return { name: 'chat-room', room: 'gym', tab: 'chat' };
+        if (parts[1] === 'g' && parts[2]) return { name: 'chat-room', room: '@' + parts[2], tab: 'chat' };
+        if (parts[1] === 'dm' && parts[2]) return { name: 'chat-room', room: '', dm: parts[2], tab: 'chat' };
+        return { name: 'chat', tab: 'chat' };
       case 'library':
         if (parts[1] === 'ex') return { name: 'libex', id: parts[2] || '', tab: extraTab() };
         return { name: 'library', tab: extraTab() };
@@ -3762,6 +3785,7 @@
       case 'library': renderLibrary(view); break;
       case 'libex': renderLibEx(view, route.id); break;
       case 'chat': renderChat(view); break;
+      case 'chat-room': renderChatRoom(view, route); break;
       case 'login': renderLogin(view); break;
       case 'intro': renderIntro(view); break;
       case 'setup': renderSetup(view); break;
@@ -3883,10 +3907,10 @@
     // Im Training steht die Seite fest: nur seitlich wischen, lange Karten scrollen in sich
     document.body.classList.toggle('wk-lock', rn === 'workout' && !!$('#wk-track', view));
     // Im Chat steht die Seite ebenfalls fest: nur die Nachrichtenliste scrollt, das Eingabefeld bleibt unten
-    document.body.classList.toggle('chat-lock', rn === 'chat' && !!$('#chat', view));
+    document.body.classList.toggle('chat-lock', rn === 'chat-room' && !!$('#chat', view));
     if (!sameRoute && (rn === 'friend' || rn === 'leaderboard')) SocialFx.bars(view);
     if (rn === 'workout') WorkoutPager.init(view); else WorkoutPager.stop();
-    if (rn === 'chat') ChatView.mount(view, sameRoute); else { ChatView.unmount(); Chat.sync(); } // verbindet sich, sobald das Profil da ist
+    if (rn === 'chat-room') ChatView.mount(view, sameRoute); else { ChatView.unmount(); Chat.sync(); } // verbindet sich, sobald das Profil da ist
   }
 
   /** Segment-Steuerungen: weiß gefüllter „Daumen“ gleitet zur Auswahl. */
@@ -5765,10 +5789,13 @@
     /* ---------- Hauptseite ---------- */
     if (!sub) {
       const name = isUser() ? account.email : 'Ohne Konto';
-      const initial = isUser() ? esc((account.email || '?').trim().charAt(0).toUpperCase()) : svgI('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>');
+      // Konto: Profilfoto, sonst Anfangsbuchstabe des Benutzernamens (oder der E-Mail) auf Farbhintergrund
+      const avatar = isUser()
+        ? avatarHTML(Social.profile && Social.profile.photo, 'pc', (Social.profile && Social.profile.username) || account.email || '?')
+        : `<span class="profile-avatar" aria-hidden="true">${svgI('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>')}</span>`;
       view.innerHTML = `
         <a class="profile-card" href="#/settings/account">
-          <span class="profile-avatar" aria-hidden="true">${initial}</span>
+          ${avatar}
           <span class="profile-text">
             <b class="break">${esc(name)}</b>
             <small id="sync-status">${isUser() ? esc(syncStatusText()) : 'Daten nur auf diesem Gerät · Anmelden'}</small>
@@ -7530,15 +7557,26 @@
     return null;
   }
 
-  const AVATAR_PX = { '': 42, md: 52, lg: 72, xl: 104 };
+  const AVATAR_PX = { '': 42, md: 52, lg: 72, xl: 104, pc: 58 };
 
-  /** Rundes Profilfoto – ohne Foto ein grauer Platzhalter. size: '' (42px) | 'md' | 'lg' | 'xl' */
-  function avatarHTML(photo, size) {
+  /**
+   * Rundes Profilfoto. Ohne Foto: der große Anfangsbuchstabe des Namens auf einem Farbhintergrund (die Farbe
+   * ergibt sich aus dem Namen, siehe avatarIndex) – ohne Namen ein grauer Platzhalter.
+   * size: '' (42px) | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'pc' (58px, Profilkarte)
+   */
+  function avatarInitialHTML(cls, name) {
+    return `<span class="${cls} avatar-initial ac${avatarIndex(name)}" aria-hidden="true"><span>${esc(avatarInitial(name))}</span></span>`;
+  }
+
+  function avatarHTML(photo, size, name) {
     const src = safePhoto(photo);
     const cls = 'avatar' + (size ? ' ' + size : '');
-    return src
-      ? `<span class="${cls}"><img src="${esc(src)}" alt="" width="${AVATAR_PX[size || ''] || 42}" height="${AVATAR_PX[size || ''] || 42}" loading="lazy" decoding="async"></span>`
-      : `<span class="${cls} avatar-empty" aria-hidden="true">${ICON.user}</span>`;
+    const n = typeof name === 'string' ? name.trim() : '';
+    if (src) {
+      const px = AVATAR_PX[size || ''] || 42;
+      return `<span class="${cls}"${n ? ` data-n="${esc(n)}"` : ''}><img src="${esc(src)}" alt="" width="${px}" height="${px}" loading="lazy" decoding="async"></span>`;
+    }
+    return n ? avatarInitialHTML(cls, n) : `<span class="${cls} avatar-empty" aria-hidden="true">${ICON.user}</span>`;
   }
 
   const Social = {
@@ -7710,6 +7748,7 @@
     changed() {
       this.badge();
       Chat.sync(); // Profil da → Chat verbinden
+      if (parseRoute().name === 'chat') ChatHome.update(); // Kontakte (Freunde) ändern sich
       if (!SOCIAL_ROUTES.has(parseRoute().name)) return;
       const a = document.activeElement;
       if (a && a.matches && a.matches('input')) { renderPending = true; return; }
@@ -7974,7 +8013,7 @@
   }
 
   function personRowHTML(p, side, href, flip) {
-    const inner = avatarHTML(p.photo) +
+    const inner = avatarHTML(p.photo, '', p.username) +
       `<div class="li-main"><div class="li-title break">${p.self ? 'Du' : '@' + esc(p.username)}</div>${p.sub ? `<div class="li-sub">${esc(p.sub)}</div>` : ''}</div>` + (side || '');
     const fl = flip ? ` data-flip="${esc(flip)}"` : '';
     return href ? `<a class="list-item person" href="${href}"${fl}>${inner}${ICON.chevron}</a>` : `<div class="list-item person"${fl}>${inner}</div>`;
@@ -8030,11 +8069,11 @@
     if (Social.profile === undefined) {
       hero = `<section class="profile-hero"><div class="sk avatar xl"></div><div class="sk sk-title" style="width:40%;margin:12px auto 6px"></div><div class="sk sk-line" style="width:30%;margin:0 auto"></div></section>`;
     } else if (!Social.profile) {
-      hero = `<section class="profile-hero">${avatarHTML(null, 'xl')}<h2 class="break">${esc(account.email || 'Dein Konto')}</h2><p>Noch kein Profil</p></section>`;
+      hero = `<section class="profile-hero">${avatarHTML(null, 'xl', account.email || '')}<h2 class="break">${esc(account.email || 'Dein Konto')}</h2><p>Noch kein Profil</p></section>`;
     } else {
       hero = `
         <section class="profile-hero">
-          <a href="#/profile/edit" class="avatar-link" aria-label="Profil bearbeiten">${avatarHTML(Social.profile.photo, 'xl')}</a>
+          <a href="#/profile/edit" class="avatar-link" aria-label="Profil bearbeiten">${avatarHTML(Social.profile.photo, 'xl', Social.profile.username)}</a>
           <h2 class="break">@${esc(Social.profile.username)}</h2>
           <p>${esc(Core.activityText(m.last, now))}</p>
           <a class="btn soft sm" href="#/profile/edit">${ICON.edit} Profil bearbeiten</a>
@@ -8151,7 +8190,7 @@
       ${first ? privacyHTML(true) : ''}
       <section class="avatar-edit">
         <button class="avatar-btn" type="button" data-action="photo-library" aria-label="Profilfoto wählen">
-          ${avatarHTML(preview, 'xl')}<span class="avatar-cam" aria-hidden="true">${ICON.camera}</span>
+          ${avatarHTML(preview, 'xl', p.username.trim() || (Social.profile && Social.profile.username) || '')}<span class="avatar-cam" aria-hidden="true">${ICON.camera}</span>
         </button>
         <div class="btn-row">
           <button class="btn soft sm" type="button" data-action="photo-library">${ICON.image} Foto wählen</button>
@@ -8348,7 +8387,7 @@
     if (c.person) {
       body = `
         <section class="profile-hero">
-          ${avatarHTML(c.person.photo, 'xl')}
+          ${avatarHTML(c.person.photo, 'xl', c.person.username)}
           <h2 class="break">@${esc(c.person.username)}</h2>
           <p>${Social.relation(c.person.uid) === 'self' ? 'Das ist dein eigener Einladungslink.' : 'möchte sich mit dir im Training vergleichen.'}</p>
         </section>
@@ -8463,11 +8502,12 @@
 
     view.innerHTML = `
       <section class="vs-hero">
-        <div class="vs-side">${avatarHTML(Social.profile.photo, 'lg')}<b>Du</b></div>
+        <div class="vs-side">${avatarHTML(Social.profile.photo, 'lg', Social.profile.username)}<b>Du</b></div>
         <span class="vs-mid">vs</span>
-        <div class="vs-side">${avatarHTML(p.photo, 'lg')}<b class="break">${esc(who)}</b></div>
+        <div class="vs-side">${avatarHTML(p.photo, 'lg', p.username || who)}<b class="break">${esc(who)}</b></div>
       </section>
       <p class="wk-meta center">${esc(who)}: ${esc(Core.activityText(fr.last, now))}${p.updatedAt ? ' · Stand ' + esc(fmtRelative(p.updatedAt, now)) : ''}</p>
+      <a class="btn soft block sm" href="#/chat/dm/${encodeURIComponent(uid)}">${ICON.chat || ICON.send} Nachricht schreiben</a>
       <div class="cmp-legend" aria-hidden="true"><span class="me">Du</span><span class="them">${esc(who)}</span></div>
       <section class="card">
         <h2 class="card-title">Training</h2>
@@ -8523,7 +8563,7 @@
     const rows = ranked.map((e) => `
       <a class="list-item lb-row${e.me ? ' me' : ''}${e.rank <= 3 && e.value ? ' top' : ''}" href="${e.me ? '#/profile' : '#/friend/' + encodeURIComponent(e.uid)}" data-flip="lb-${esc(e.uid)}">
         <span class="lb-rank">${e.rank}</span>
-        ${avatarHTML(e.photo)}
+        ${avatarHTML(e.photo, '', e.name)}
         <div class="li-main">
           <div class="li-title break">${e.me ? 'Du' : '@' + esc(e.name)}</div>
           <span class="cmp-track lb-track"><i style="transform:scaleX(${(e.value / max).toFixed(4)})"></i></span>
@@ -8800,7 +8840,13 @@
   AVATAR_PX.xs = 24;
 
   const CHAT_ROOM = 'gym';
+  const GROUP_NAME_MAX = 40;
+  const GROUP_MAX = 30;
+  /** Direktchat zweier Personen: dieselbe ID von beiden Seiten (kleinere ID zuerst – die Firestore-Regeln prüfen das). */
+  const isGroupRoomKey = (room) => typeof room === 'string' && room.charAt(0) === '@';
+  const dmIdOf = (a, b) => (a < b ? 'dm_' + a + '_' + b : 'dm_' + b + '_' + a);
   const CHAT_PAGE = 30;
+  const CHAT_LINGER = 15000;                    // so lange bleibt ein verlassener Raum verbunden (ms)
   const CHAT_SEEN = 'gymtracker.chatseen.v1.';  // + uid → Zeitstempel der zuletzt gesehenen Nachricht
   const CHAT_GROUP_MS = 5 * 60000;              // Nachrichten derselben Person innerhalb 5 min werden gruppiert
   const CHAT_SEND_GAP = 2200;                   // Abstand zwischen Nachrichten (die Regeln erlauben 2 s)
@@ -8821,30 +8867,42 @@
 
   const Chat = {
     uid: null,
-    store: new Map(),     // id → Nachricht (Live-Fenster + nachgeladene ältere Seiten)
-    plans: [],            // Gym-Karten von heute (Live)
+    // Jeder Raum hat sein eigenes Live-Fenster („Feed“). Die Felder store, plans, ready, fromCache, done, loadingOlder, error,
+    // rulesMissing, unsub, unsubPlans, planDay, known, missing und dmPending gehören zum Feed des geöffneten Raums
+    // (Zugriff über Chat.store usw., siehe Object.defineProperty unter dem Objekt). Der Gym-Chat bleibt für Hinweise im
+    // Hintergrund verbunden, verlassene Räume werden nach kurzer Zeit abgebaut (schnelles Hin- und Herwechseln
+    // hört nicht ab und gleich wieder zu – das bringt das Firestore-SDK durcheinander).
+    feeds: new Map(),     // Raum → Feed
     outbox: new Map(),    // id → noch nicht bestätigte bzw. fehlgeschlagene eigene Nachricht
-    ready: false,         // erster Server-Stand ist da
-    fromCache: false,     // Verbindung gestört: gezeigt wird der Zwischenspeicher
-    done: false,          // keine älteren Nachrichten mehr
-    loadingOlder: false,
-    error: null,
-    rulesMissing: false,  // Lesen wird abgelehnt: die Firestore-Regeln lassen den Chat nicht zu (veraltet/nicht veröffentlicht)
-    unsub: null,
-    unsubPlans: null,
-    planDay: '',
-    known: null,          // IDs, die schon da waren (für Hinweise auf neue Gym-Karten)
-    seen: 0,
     sentAt: 0,
     cardAt: 0,
-    draft: '',
+    drafts: {},           // Raum → noch nicht gesendeter Text
+    room: CHAT_ROOM,      // geöffneter Raum: 'gym' | '@<Gruppen-ID>' (Gruppe oder Direktchat)
+    dmCreated: new Set(), // gerade angelegte Direktchats (die Liste kennt sie noch nicht)
+    groups: [],           // meine Gruppen und Direktchats (Live), neueste zuerst
+    groupsReady: false,
+    groupsFromCache: false,
+    groupsError: null,
+    groupsRulesMissing: false,
+    unsubGroups: null,
+    seenAt: {},           // Raum → Zeitstempel der zuletzt gesehenen Nachricht
     photos: {},           // Benutzername → Foto | null
     photoWait: new Set(),
     timers: {},
 
+    get draft() { return this.drafts[this.room] || ''; },
+    set draft(v) { this.drafts[this.room] = v; },
+
     api() { return window.GymCloud && window.GymCloud.chat; },
     enabled() { return isUser() && Social.ready(); },
-    onRoute() { return parseRoute().name === 'chat'; },
+    onRoute() { const n = parseRoute().name; return n === 'chat' || n === 'chat-room'; },
+    inRoom() { return parseRoute().name === 'chat-room'; },
+    /** Raum, den die Ansicht gerade braucht: der geöffnete, sonst der Gym-Chat (Hinweise auf neue Gym-Karten). */
+    wantRoom() {
+      const r = parseRoute();
+      if (r.name !== 'chat-room') return CHAT_ROOM;
+      return r.dm ? '@' + dmIdOf(this.uid || (account && account.uid) || '', r.dm) : r.room;
+    },
     myName() { return Social.profile ? Social.profile.username : ''; },
     blockedSet() { return new Set((db.settings.chatBlocked || []).map((b) => b.uid)); },
 
@@ -8860,104 +8918,273 @@
 
     /** Verbindung herstellen bzw. beenden, je nachdem ob der Chat gebraucht wird (offen oder Hinweise an). */
     sync() {
-      if (!this.enabled()) { if (this.uid && !isUser()) this.detach(); else this.stop(); return; }
-      if (!this.api() || !(this.onRoute() || db.settings.chatNotify)) { this.stop(); return; }
+      if (!this.enabled()) { if (this.uid && !isUser()) this.detach(); else { this.stop(); this.stopGroups(); } return; }
+      if (!this.api() || !(this.onRoute() || db.settings.chatNotify)) { this.stopSoon(); return; }
+      clearTimeout(this.timers.stopSoon);
+      this.timers.stopSoon = 0;
       this.connect();
+      this.connectGroups();
+    },
+
+    /** Nicht mehr gebraucht (Chat-Reiter verlassen, Hinweise aus): nach kurzer Zeit beenden, falls es dabei bleibt. */
+    stopSoon() {
+      if (this.timers.stopSoon) return;
+      this.timers.stopSoon = setTimeout(() => {
+        this.timers.stopSoon = 0;
+        if (!this.onRoute() && !db.settings.chatNotify) { this.stop(); this.stopGroups(); }
+      }, CHAT_LINGER);
     },
 
     reset(uid) {
       this.stop();
-      Object.assign(this, { uid, store: new Map(), plans: [], outbox: new Map(), ready: false, fromCache: false, done: false, loadingOlder: false, error: null, known: null, photos: {} });
+      this.stopGroups();
+      Object.assign(this, {
+        uid, feeds: new Map(), outbox: new Map(), photos: {},
+        room: CHAT_ROOM, dmCreated: new Set(), groups: [], groupsReady: false, groupsFromCache: false, groupsError: null, groupsRulesMissing: false,
+        seenAt: {}, drafts: {},
+      });
       const raw = Number(lsGet(CHAT_SEEN + uid));
-      this.seen = raw > 0 ? raw : Date.now(); // zum ersten Mal: nur Neues zählt als ungelesen
-      if (!(raw > 0)) lsSet(CHAT_SEEN + uid, String(this.seen));
+      this.seenAt[CHAT_ROOM] = raw > 0 ? raw : Date.now(); // zum ersten Mal: nur Neues zählt als ungelesen
+      if (!(raw > 0)) lsSet(CHAT_SEEN + uid, String(this.seenAt[CHAT_ROOM]));
+    },
+
+    /** Zeitstempel der zuletzt gesehenen Nachricht eines Raums (Gym-Chat: seit dem ersten Start; Gruppen: 0 = alles neu). */
+    seenOf(room) {
+      if (room in this.seenAt) return this.seenAt[room];
+      const raw = Number(lsGet(CHAT_SEEN + this.uid + ':' + room));
+      return (this.seenAt[room] = raw > 0 ? raw : 0);
+    },
+
+    setSeen(room, t) {
+      if (!(t > this.seenOf(room))) return;
+      this.seenAt[room] = t;
+      lsSet(room === CHAT_ROOM ? CHAT_SEEN + this.uid : CHAT_SEEN + this.uid + ':' + room, String(t));
+    },
+
+    /** Feed eines Raums (wird bei Bedarf angelegt). */
+    feedFor(room) {
+      let f = this.feeds.get(room);
+      if (!f) {
+        f = { room, store: new Map(), plans: [], ready: false, fromCache: false, done: false, loadingOlder: false, error: null, rulesMissing: false, unsub: null, unsubPlans: null, planDay: '', known: null, missing: false, dmPending: false, timer: 0, retry: 0 };
+        this.feeds.set(room, f);
+      }
+      return f;
     },
 
     connect() {
-      if (this.unsub || !this.api() || !account) return;
+      if (!this.api() || !account) return;
       // Beim App-Start ist die gespeicherte Anmeldung oft noch nicht wiederhergestellt → später erneut (Social.changed)
       const cur = window.GymCloud.currentUser && window.GymCloud.currentUser();
       if (!cur || cur.uid !== account.uid) return;
       if (this.uid !== cur.uid) this.reset(cur.uid);
-      const uid = this.uid;
-      try {
-        this.unsub = this.api().watch(CHAT_ROOM, CHAT_PAGE, (list, meta) => { if (uid === this.uid) this.onLive(list, meta); }, (err) => {
-          if (uid !== this.uid) return;
-          this.error = err;
-          this.rulesMissing = !!(err && err.code === 'permission-denied');
-          this.stop();
-          clearTimeout(this.timers.retry);
-          this.timers.retry = setTimeout(() => this.sync(), 15000);
-          this.changed();
-        });
-        this.watchToday();
-      } catch (e) {
-        this.error = e;
-        this.unsub = null;
+      const want = this.wantRoom();
+      this.room = want;
+      const active = this.feedFor(want);
+      clearTimeout(active.timer);
+      active.timer = 0;
+      const wasReady = active.ready;
+      this.connectFeed(active);
+      if (active.ready && !wasReady) this.changed();   // z. B. leerer Direktchat: es gibt nichts zu laden
+      // Der Gym-Chat bleibt für Hinweise auf neue Gym-Karten im Hintergrund verbunden
+      const gym = this.feedFor(CHAT_ROOM);
+      if (want !== CHAT_ROOM && db.settings.chatNotify) { clearTimeout(gym.timer); gym.timer = 0; this.connectFeed(gym); }
+      // Verlassene Räume nach kurzer Zeit abbauen
+      for (const f of this.feeds.values()) {
+        if (f === active || (f === gym && db.settings.chatNotify) || !(f.unsub || f.unsubPlans) || f.timer) continue;
+        f.timer = setTimeout(() => { f.timer = 0; if (this.wantRoom() !== f.room) this.stopFeed(f); }, CHAT_LINGER);
       }
     },
 
-    /** Listener beenden, Nachrichten im Speicher behalten. */
-    stop() {
-      if (this.unsub) { this.unsub(); this.unsub = null; }
-      if (this.unsubPlans) { this.unsubPlans(); this.unsubPlans = null; }
-      clearTimeout(this.timers.day);
-      this.known = null; // nach einem Neuaufbau nicht alles als „neu“ melden
+    connectFeed(feed) {
+      if (feed.unsub || this.holdForGroup(feed)) return;
+      const uid = this.uid;
+      try {
+        feed.unsub = this.api().watch(feed.room, CHAT_PAGE, (list, meta) => { if (uid === this.uid) this.onLive(feed, list, meta); }, (err) => {
+          if (uid !== this.uid) return;
+          feed.error = err;
+          feed.rulesMissing = !!(err && err.code === 'permission-denied');
+          this.stopFeed(feed);
+          clearTimeout(feed.retry);
+          feed.retry = setTimeout(() => this.sync(), 15000);
+          this.changed();
+        });
+        this.watchToday(feed);
+      } catch (e) {
+        feed.error = e;
+        feed.unsub = null;
+      }
+    },
+
+    /**
+     * Gruppen und Direktchats lassen sich erst lesen, wenn die Gruppenliste bekannt ist (Mitgliedschaft).
+     * true = (noch) nicht verbinden. Ein Direktchat, den es noch nicht gibt, bleibt leer, bis jemand schreibt.
+     */
+    holdForGroup(feed) {
+      if (!isGroupRoomKey(feed.room)) return false;
+      if (this.groupOf(feed.room) || this.dmCreated.has(feed.room)) { feed.missing = false; feed.dmPending = false; return false; }
+      if (!this.groupsReady && !this.groupsError) return true;
+      if (feed.room === this.room && this.inRoom() && parseRoute().dm) { feed.dmPending = true; feed.ready = true; feed.error = null; return true; }
+      if (!this.groupsReady) return true;   // Liste nicht ladbar (Regeln fehlen): nichts verbinden
+      feed.missing = true;
+      feed.ready = true;
+      return true;
+    },
+
+    groupOf(room) { return this.groups.find((g) => g.room === room) || null; },
+
+    /** Listener eines Raums beenden, Nachrichten im Speicher behalten. */
+    stopFeed(f) {
+      if (f.unsub) { f.unsub(); f.unsub = null; }
+      if (f.unsubPlans) { f.unsubPlans(); f.unsubPlans = null; }
+      clearTimeout(f.timer);
+      f.timer = 0;
+      clearTimeout(f.dayTimer);
+      f.known = null; // nach einem Neuaufbau nicht alles als „neu“ melden
+    },
+
+    /** Alle Räume beenden. */
+    stop() { for (const f of this.feeds.values()) this.stopFeed(f); },
+
+    stopGroups() {
+      if (this.unsubGroups) { this.unsubGroups(); this.unsubGroups = null; }
+      clearTimeout(this.timers.groupsRetry);
     },
 
     /** Abmelden / Kontowechsel */
     detach() {
       this.stop();
-      clearTimeout(this.timers.retry);
-      Object.assign(this, { uid: null, store: new Map(), plans: [], outbox: new Map(), ready: false, fromCache: false, done: false, error: null, draft: '' });
+      this.stopGroups();
+      for (const f of this.feeds.values()) clearTimeout(f.retry);
+      clearTimeout(this.timers.stopSoon);
+      this.timers.stopSoon = 0;
+      Object.assign(this, {
+        uid: null, feeds: new Map(), outbox: new Map(), drafts: {},
+        room: CHAT_ROOM, dmCreated: new Set(), groups: [], groupsReady: false, groupsFromCache: false, groupsError: null, groupsRulesMissing: false, seenAt: {},
+      });
       this.badge();
     },
 
-    /** Gym-Karten von heute (Wiener Tag) beobachten – unabhängig vom Nachladen älterer Nachrichten. */
-    watchToday() {
-      if (!this.api()) return;
-      if (this.unsubPlans) { this.unsubPlans(); this.unsubPlans = null; }
-      const now = Date.now();
-      const [from, to] = Core.viennaDayRange(now);
-      this.planDay = Core.viennaDayKey(now);
+    /* ----- Gruppen & Direktchats (Liste) ----- */
+
+    connectGroups() {
+      if (this.unsubGroups || !this.api() || !this.api().groups || !account || !this.uid) return;
+      const cur = window.GymCloud.currentUser && window.GymCloud.currentUser();
+      if (!cur || cur.uid !== account.uid || this.uid !== cur.uid) return;
       const uid = this.uid;
-      this.unsubPlans = this.api().watchPlans(CHAT_ROOM, from, to, (list) => { if (uid === this.uid) { this.plans = list; this.changed(); } }, () => {});
-      clearTimeout(this.timers.day);
-      this.timers.day = setTimeout(() => this.checkDay(), Math.min(to - now + 1000, 2147483000));
+      try {
+        this.unsubGroups = this.api().groups.watch((list, meta) => { if (uid === this.uid) this.onGroups(list, meta); }, (err) => {
+          if (uid !== this.uid) return;
+          this.groupsError = err;
+          this.groupsRulesMissing = !!(err && err.code === 'permission-denied');
+          this.stopGroups();
+          this.timers.groupsRetry = setTimeout(() => this.sync(), 30000);
+          this.changed();
+        });
+      } catch (e) {
+        this.groupsError = e;
+        this.unsubGroups = null;
+      }
     },
 
-    /** Neuer Tag (z. B. App lag über Nacht im Hintergrund)? → „Heute im Gym“ neu aufbauen. */
-    checkDay() {
-      if (this.unsub && Core.viennaDayKey(Date.now()) !== this.planDay) { this.watchToday(); this.changed(); }
-    },
-
-    onLive(list, meta) {
-      this.absorb(list);
-      this.fromCache = meta.fromCache;
-      if (!meta.fromCache) { this.ready = true; this.error = null; this.rulesMissing = false; }
-      // Hinweise auf neue Gym-Karten anderer – nicht auf den ersten Stand und nicht auf Zwischenspeicher
-      if (this.known === null) {
-        if (!meta.fromCache) this.known = new Set(list.map((m) => m.id));
-      } else {
+    onGroups(list, meta) {
+      const before = new Map(this.groups.map((g) => [g.id, g]));
+      this.groups = list.slice().sort((x, y) => (y.lastAt || y.createdAt) - (x.lastAt || x.createdAt));
+      this.groupsFromCache = meta.fromCache;
+      if (!meta.fromCache) { this.groupsReady = true; this.groupsError = null; this.groupsRulesMissing = false; }
+      // Neue Nachricht in einer Gruppe, die gerade nicht offen ist: Hinweis (App sichtbar) bzw. Benachrichtigung
+      if (this.groupsReady && !meta.fromCache) {
         const blocked = this.blockedSet();
-        for (const m of list) {
-          if (this.known.has(m.id)) continue;
-          this.known.add(m.id);
-          if (m.pending || m.uid === this.uid || blocked.has(m.uid)) continue;
-          this.announce(m);
-          // Screenreader: neue Nachricht vorlesen (die Liste selbst wird bei jedem Stand neu aufgebaut)
-          if (this.onRoute() && ChatView.el) ChatView.say('@' + m.name + ': ' + (m.kind === 'gym' ? 'Gym-Besuch ' + Core.chatWhenLabel(m.when, Date.now()) : m.text));
+        for (const g of this.groups) {
+          const old = before.get(g.id);
+          if (!old || !g.lastAt || g.lastAt <= (old.lastAt || 0) || g.lastUid === this.uid || blocked.has(g.lastUid) || g.pending) continue;
+          this.announceGroup(g);
         }
+      }
+      // Im geöffneten Raum: Gruppe aufgetaucht, verschwunden oder umbenannt → Seite neu aufbauen
+      if (this.inRoom() && isGroupRoomKey(this.room)) {
+        const id = this.room.slice(1);
+        const had = before.get(id), now = this.groupOf(this.room);
+        this.dmCreated.forEach((r) => { if (this.groupOf(r)) this.dmCreated.delete(r); });
+        if (!this.unsub) this.sync();                                    // wir haben auf die Gruppe gewartet
+        else if (had && !now) { this.stopFeed(this.cur); this.sync(); }  // Gruppe gelöscht bzw. ich wurde entfernt
+        if (!!had !== !!now || (had && now && had.name !== now.name)) { render(); return; }
       }
       this.changed();
     },
 
+    announceGroup(g) {
+      if (!db.settings.chatNotify) return;
+      if (this.inRoom() && this.room === g.room) return;
+      const title = this.groupTitle(g);
+      const text = (g.kind === 'dm' ? '@' + g.lastName : '@' + g.lastName + ' in ' + title) + ': ' + g.lastText;
+      if (document.visibilityState === 'visible') toast(text, { action: 'Ansehen', onAction: () => go(this.hashFor(g)) });
+      else Notify.show(g.kind === 'dm' ? 'Neue Nachricht' : title, '@' + g.lastName + ': ' + g.lastText);
+    },
+
+    /** Anzeigename: Gruppenname; Direktchat = Name der anderen Person. */
+    groupTitle(g) {
+      if (g.kind !== 'dm') return g.name;
+      const other = g.memberIds.find((u) => u !== this.uid);
+      return (other && g.memberNames[other]) || 'Direktchat';
+    },
+
+    /** Adresse zum Öffnen: Gruppe #/chat/g/<id>, Direktchat #/chat/dm/<uid der anderen Person>. */
+    hashFor(g) {
+      if (g.kind === 'dm') return '#/chat/dm/' + encodeURIComponent(g.memberIds.find((u) => u !== this.uid) || '');
+      return '#/chat/g/' + encodeURIComponent(g.id);
+    },
+
+    dmWith(uid) { return this.groups.find((g) => g.kind === 'dm' && g.memberIds.includes(uid) && g.memberIds.includes(this.uid)) || null; },
+
+    /** Gym-Karten von heute (Wiener Tag) beobachten – unabhängig vom Nachladen älterer Nachrichten. */
+    watchToday(feed) {
+      if (!this.api()) return;
+      if (feed.unsubPlans) { feed.unsubPlans(); feed.unsubPlans = null; }
+      const now = Date.now();
+      const [from, to] = Core.viennaDayRange(now);
+      feed.planDay = Core.viennaDayKey(now);
+      const uid = this.uid;
+      feed.unsubPlans = this.api().watchPlans(feed.room, from, to, (list) => { if (uid === this.uid) { feed.plans = list; if (feed.room === this.room) this.changed(); } }, () => {});
+      clearTimeout(feed.dayTimer);
+      feed.dayTimer = setTimeout(() => this.checkDay(), Math.min(to - now + 1000, 2147483000));
+    },
+
+    /** Neuer Tag (z. B. App lag über Nacht im Hintergrund)? → „Heute im Gym“ neu aufbauen. */
+    checkDay() {
+      let any = false;
+      for (const f of this.feeds.values()) {
+        if (f.unsub && Core.viennaDayKey(Date.now()) !== f.planDay) { this.watchToday(f); any = true; }
+      }
+      if (any) this.changed();
+    },
+
+    onLive(feed, list, meta) {
+      this.absorb(feed, list);
+      feed.fromCache = meta.fromCache;
+      if (!meta.fromCache) { feed.ready = true; feed.error = null; feed.rulesMissing = false; }
+      // Hinweise auf neue Gym-Karten anderer – nicht auf den ersten Stand und nicht auf Zwischenspeicher
+      if (feed.known === null) {
+        if (!meta.fromCache) feed.known = new Set(list.map((m) => m.id));
+      } else {
+        const blocked = this.blockedSet();
+        for (const m of list) {
+          if (feed.known.has(m.id)) continue;
+          feed.known.add(m.id);
+          if (m.pending || m.uid === this.uid || blocked.has(m.uid)) continue;
+          if (feed.room === CHAT_ROOM) this.announce(m); // Gruppen melden sich über die Gruppenliste (announceGroup)
+          // Screenreader: neue Nachricht vorlesen (die Liste selbst wird bei jedem Stand neu aufgebaut)
+          if (feed.room === this.room && this.inRoom() && ChatView.el) ChatView.say('@' + m.name + ': ' + (m.kind === 'gym' ? 'Gym-Besuch ' + Core.chatWhenLabel(m.when, Date.now()) : m.text));
+        }
+      }
+      if (feed.room === this.room) this.changed(); else this.badge();
+    },
+
     /** Live-Fenster übernehmen: neue/geänderte Nachrichten setzen, im Fenster gelöschte entfernen. */
-    absorb(list) {
+    absorb(feed, list) {
       const ids = new Set(list.map((m) => m.id));
       const floor = list.length >= CHAT_PAGE ? list[list.length - 1].createdAt : -Infinity; // Liste: neueste zuerst
-      for (const [id, m] of this.store) if (m.createdAt >= floor && !ids.has(id)) this.store.delete(id);
-      for (const m of list) this.store.set(m.id, m);
+      for (const [id, m] of feed.store) if (m.createdAt >= floor && !ids.has(id)) feed.store.delete(id);
+      for (const m of list) feed.store.set(m.id, m);
     },
 
     messages() { return Core.chatMerge([...this.store.values()]); },
@@ -8967,23 +9194,37 @@
       if (m.kind !== 'gym' || !db.settings.chatNotify || Core.chatCardPast(m, Date.now())) return;
       const text = '@' + m.name + ': ' + Core.chatWhenLabel(m.when, Date.now()) + (m.workout ? ' · ' + Core.chatWorkoutLabel(m.workout) : '');
       if (document.visibilityState === 'visible') {
-        if (this.onRoute()) return; // steht schon vor den Augen
-        toast(text, { action: 'Ansehen', onAction: () => go('#/chat') });
+        if (this.inRoom() && this.room === CHAT_ROOM) return; // steht schon vor den Augen
+        toast(text, { action: 'Ansehen', onAction: () => go('#/chat/gym') });
       } else {
         Notify.show('Neuer Gym-Besuch', text);
       }
     },
 
-    unread() {
+    unread() { return this.gymUnread() || this.groupsUnread(); },
+
+    gymUnread() {
+      const gym = this.feeds.get(CHAT_ROOM);
+      if (!gym) return false;
       const blocked = this.blockedSet();
-      for (const m of this.store.values()) if (m.uid !== this.uid && !m.pending && !blocked.has(m.uid) && m.createdAt > this.seen) return true;
+      const seen = this.seenOf(CHAT_ROOM);
+      for (const m of gym.store.values()) if (m.uid !== this.uid && !m.pending && !blocked.has(m.uid) && m.createdAt > seen) return true;
       return false;
     },
 
+    /** Neue Nachricht von jemand anderem in dieser Gruppe, seit sie zuletzt gesehen wurde? */
+    groupUnread(g) {
+      if (!g.lastAt || g.lastUid === this.uid || this.blockedSet().has(g.lastUid)) return false;
+      if (this.inRoom() && this.room === g.room && ChatView.stick) return false; // liegt gerade vor den Augen
+      return g.lastAt > this.seenOf(g.room);
+    },
+
+    groupsUnread() { return this.groups.some((g) => this.groupUnread(g)); },
+
     markSeen() {
-      let t = this.seen;
+      let t = this.seenOf(this.room);
       for (const m of this.store.values()) if (!m.pending && m.createdAt > t) t = m.createdAt;
-      if (t !== this.seen) { this.seen = t; if (this.uid) lsSet(CHAT_SEEN + this.uid, String(t)); }
+      this.setSeen(this.room, t);
       this.badge();
     },
 
@@ -8996,6 +9237,7 @@
     changed(opts) {
       this.badge();
       if (ChatView.el) ChatView.update(opts);
+      else if (parseRoute().name === 'chat') ChatHome.update();
     },
 
     onOnline() { this.error = null; this.rulesMissing = false; this.sync(); this.changed(); },
@@ -9009,19 +9251,29 @@
       return true;
     },
 
+    /** Freund, mit dem ein noch nicht angelegter Direktchat entsteht ({ uid, name }), sonst null. */
+    dmPeer() {
+      const r = parseRoute();
+      if (r.name !== 'chat-room' || !r.dm || this.groupOf(this.room)) return null;
+      const p = Social.people && Social.people[r.dm];
+      return { uid: r.dm, name: (p && p.username) || '' };
+    },
+
     send(raw) {
+      if (this.missing) { toast('Diese Gruppe gibt es nicht mehr.'); return false; }
       const text = Core.chatCheckText(raw);
       if (!text) { if (String(raw || '').trim()) toast('Die Nachricht ist zu lang (höchstens 500 Zeichen).'); return false; }
       if (this.tooFast(this.sentAt, CHAT_SEND_GAP, 'Bitte kurz warten, bevor du die nächste Nachricht sendest.')) return false;
       this.sentAt = Date.now();
-      this.dispatch({ id: this.api().newId(CHAT_ROOM), kind: 'text', text, createdAt: Date.now() });
+      this.dispatch({ id: this.api().newId(this.room), room: this.room, dm: this.dmPeer(), kind: 'text', text, createdAt: Date.now() });
       return true;
     },
 
     sendCard(c) {
+      if (this.missing) { toast('Diese Gruppe gibt es nicht mehr.'); return false; }
       if (this.tooFast(this.cardAt, CHAT_CARD_GAP, 'Du hast gerade erst einen Besuch gepostet – bitte kurz warten.')) return false;
       this.cardAt = this.sentAt = Date.now();
-      this.dispatch({ id: this.api().newId(CHAT_ROOM), kind: 'gym', when: c.when, workout: c.workout, note: c.note, createdAt: Date.now() });
+      this.dispatch({ id: this.api().newId(this.room), room: this.room, dm: this.dmPeer(), kind: 'gym', when: c.when, workout: c.workout, note: c.note, createdAt: Date.now() });
       return true;
     },
 
@@ -9038,18 +9290,29 @@
         ? { id: entry.id, name: this.myName(), when: entry.when, workout: entry.workout, note: entry.note }
         : { id: entry.id, name: this.myName(), text: entry.text };
       const timeout = new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), CHAT_SEND_TIMEOUT));
+      const room = entry.room || CHAT_ROOM;
       try {
+        // Direktchat, den es noch nicht gibt: erst anlegen (beide Namen kommen aus den Profilen, die Regeln prüfen die Freundschaft)
+        if (entry.dm && !this.groupOf(room) && !this.dmCreated.has(room)) {
+          try { await Promise.race([api.groups.createDm({ myName: this.myName(), peer: entry.dm }), timeout]); } catch (e) { if (e && e.code === 'timeout') throw e; /* gibt es schon */ }
+          this.dmCreated.add(room);
+          const f = this.feedFor(room);
+          f.dmPending = false;
+          this.stopFeed(f);
+          this.connectFeed(f);
+        }
         // Beim erneuten Senden zuerst prüfen, ob die Nachricht doch schon angekommen ist (verlorene Bestätigung)
-        if (entry.retried && await api.exists(CHAT_ROOM, entry.id)) { this.outbox.delete(entry.id); this.changed(); return; }
-        await Promise.race([entry.kind === 'gym' ? api.sendCard(CHAT_ROOM, args) : api.send(CHAT_ROOM, args), timeout]);
+        if (entry.retried && await api.exists(room, entry.id)) { this.outbox.delete(entry.id); this.changed(); return; }
+        await Promise.race([entry.kind === 'gym' ? api.sendCard(room, args) : api.send(room, args), timeout]);
         this.outbox.delete(entry.id);
       } catch (e) {
-        if (await api.exists(CHAT_ROOM, entry.id)) { this.outbox.delete(entry.id); this.changed(); return; }
+        if (await api.exists(room, entry.id)) { this.outbox.delete(entry.id); this.changed(); return; }
         entry.status = 'failed';
         entry.code = (e && e.code) || '';
         if (entry.code === 'permission-denied' && typeof api.probe === 'function') {
-          const pr = await api.probe(CHAT_ROOM);
-          if (!pr.read) { this.rulesMissing = true; this.error = this.error || { code: pr.code || 'permission-denied' }; }
+          const pr = await api.probe(room);
+          // Gym-Chat: Regeln fehlen. Gruppe: nur melden, wenn schon die Gruppenliste abgelehnt wird (sonst ist man evtl. nicht mehr Mitglied)
+          if (!pr.read && (!isGroupRoomKey(room) || this.groupsRulesMissing)) { this.rulesMissing = true; this.error = this.error || { code: pr.code || 'permission-denied' }; }
         }
         entry.error = chatErrorText(e, entry.kind);
       }
@@ -9072,22 +9335,22 @@
       if (!m || !this.api()) return;
       const me = Object.prototype.hasOwnProperty.call(m.joined || {}, this.uid);
       try {
-        if (me) await this.api().leave(CHAT_ROOM, id); else await this.api().join(CHAT_ROOM, id, this.myName());
+        if (me) await this.api().leave(this.room, id); else await this.api().join(this.room, id, this.myName());
         Haptics.tap();
       } catch (e) { toast(socialErrorText(e)); }
     },
 
     async remove(id) {
-      try { await this.api().remove(CHAT_ROOM, id); this.store.delete(id); this.changed(); }
+      try { await this.api().remove(this.room, id); this.store.delete(id); this.changed(); }
       catch (e) { toast(socialErrorText(e)); }
     },
 
     async editText(id, text) {
-      try { await this.api().editText(CHAT_ROOM, id, text); } catch (e) { toast(socialErrorText(e)); }
+      try { await this.api().editText(this.room, id, text); } catch (e) { toast(socialErrorText(e)); }
     },
 
     async editCard(id, c) {
-      try { await this.api().editCard(CHAT_ROOM, id, c); } catch (e) { toast(socialErrorText(e)); }
+      try { await this.api().editCard(this.room, id, c); } catch (e) { toast(socialErrorText(e)); }
     },
 
     block(uid, name) {
@@ -9104,7 +9367,7 @@
     },
 
     async report(m, reason) {
-      try { await this.api().report(CHAT_ROOM, m, reason); toast('Danke – die Meldung ist angekommen.'); }
+      try { await this.api().report(this.room, m, reason); toast('Danke – die Meldung ist angekommen.'); }
       catch (e) { toast(e && e.code === 'permission-denied' ? 'Du hast diese Nachricht schon gemeldet.' : socialErrorText(e)); }
     },
 
@@ -9114,19 +9377,46 @@
       const oldest = this.messages()[0];
       if (!oldest) return;
       const uid = this.uid;
-      this.loadingOlder = true;
+      const feed = this.cur;
+      feed.loadingOlder = true;
       this.changed();
       try {
-        const r = await this.api().older(CHAT_ROOM, oldest, CHAT_PAGE);
+        const r = await this.api().older(feed.room, oldest, CHAT_PAGE);
         if (uid !== this.uid) return;
-        for (const m of r.messages) if (!this.store.has(m.id)) this.store.set(m.id, m);
-        this.done = r.done;
+        for (const m of r.messages) if (!feed.store.has(m.id)) feed.store.set(m.id, m);
+        feed.done = r.done;
       } catch (e) {
         toast('Ältere Nachrichten konnten nicht geladen werden.');
       }
-      this.loadingOlder = false;
-      this.changed({ anchorOlder: true });
+      feed.loadingOlder = false;
+      if (feed === this.cur) this.changed({ anchorOlder: true });
     },
+
+    /* ----- Gruppen ----- */
+
+    /** Gruppe anlegen und die gewählten Freunde einzeln einladen → { id, failed: [Freunde, die sich nicht einladen ließen] } */
+    async createGroup(name, members) {
+      const api = this.api();
+      if (!api || !api.groups) throw Object.assign(new Error('update'), { code: 'update' });
+      const id = await api.groups.create({ name, myName: this.myName() });
+      const failed = [];
+      for (const m of members) {
+        try { await api.groups.addMember(id, m.uid, m.name); } catch (e) { failed.push(m); }
+      }
+      return { id, failed };
+    },
+
+    async addMembers(gid, members) {
+      const failed = [];
+      for (const m of members) {
+        try { await this.api().groups.addMember(gid, m.uid, m.name); } catch (e) { failed.push(m); }
+      }
+      return failed;
+    },
+
+    removeMember(gid, uid) { return this.api().groups.removeMember(gid, uid); },
+    rename(gid, name) { return this.api().groups.rename(gid, name); },
+    async deleteGroup(gid) { await this.api().groups.remove(gid); },
 
     /** Profilfoto zu einem Benutzernamen (aus dem Cache; fehlt es, wird es im Hintergrund geholt). */
     photoFor(name, uid) {
@@ -9145,6 +9435,12 @@
     },
   };
 
+  // Zustand des geöffneten Raums: Chat.store, Chat.ready … zeigen auf dessen Feed
+  Object.defineProperty(Chat, 'cur', { get() { return this.feedFor(this.room); }, configurable: true });
+  ['store', 'plans', 'ready', 'fromCache', 'done', 'loadingOlder', 'error', 'rulesMissing', 'unsub', 'unsubPlans', 'planDay', 'known', 'missing', 'dmPending'].forEach((k) => {
+    Object.defineProperty(Chat, k, { get() { return this.feedFor(this.room)[k]; }, set(v) { this.feedFor(this.room)[k] = v; }, configurable: true });
+  });
+
   /* ---------- Ansicht ---------- */
 
   const WORKOUT_CHIPS = Core.CHAT_WORKOUTS;
@@ -9162,7 +9458,7 @@
       : m.pending ? '<span class="msg-state">Wird gesendet …</span>' : '';
     return `
       <div class="msg ${mine ? 'mine' : 'theirs'}${first ? ' first' : ''}${last ? ' last' : ''}${m.failed ? ' failed' : ''}${m.pending ? ' pending' : ''}" data-id="${esc(m.id)}">
-        ${mine ? '' : first ? avatarHTML(Chat.photoFor(m.name, m.uid), 'sm') : '<span class="avatar-gap" aria-hidden="true"></span>'}
+        ${mine ? '' : first ? avatarHTML(Chat.photoFor(m.name, m.uid), 'sm', m.name) : '<span class="avatar-gap" aria-hidden="true"></span>'}
         <div class="msg-col">
           ${!mine && first ? `<span class="msg-name">@${esc(m.name)}</span>` : ''}
           ${m.failed ? `<span class="bubble">${esc(m.text)}</span>`
@@ -9180,7 +9476,7 @@
     const wk = Core.chatWorkoutLabel(m.workout);
     const when = Core.chatWhenLabel(m.when, now);
     const people = joined.length
-      ? `<div class="plan-people"><span class="plan-faces">${joined.slice(0, 4).map((j) => avatarHTML(Chat.photoFor(j.name, j.uid), 'xs')).join('')}</span><span>${esc(chatNamesText(joined))} ${joined.length === 1 ? 'kommt' : 'kommen'} mit</span></div>`
+      ? `<div class="plan-people"><span class="plan-faces">${joined.slice(0, 4).map((j) => avatarHTML(Chat.photoFor(j.name, j.uid), 'xs', j.name)).join('')}</span><span>${esc(chatNamesText(joined))} ${joined.length === 1 ? 'kommt' : 'kommen'} mit</span></div>`
       : `<div class="plan-people muted"><span>${past ? 'Niemand dabei' : 'Noch niemand dabei'}</span></div>`;
     const action = mine || past || m.pending || m.failed ? '' : me
       ? `<button type="button" class="btn soft sm block" data-action="chat-join" data-id="${esc(m.id)}">Ich komme doch nicht mit</button>`
@@ -9210,6 +9506,7 @@
     const msgs = Chat.messages().filter((m) => !blocked.has(m.uid));
     const have = new Set(msgs.map((m) => m.id));
     for (const o of Chat.outbox.values()) {
+      if ((o.room || CHAT_ROOM) !== Chat.room) continue;
       if (!have.has(o.id) || o.status === 'failed') {
         if (have.has(o.id)) msgs.splice(msgs.findIndex((x) => x.id === o.id), 1);
         msgs.push({ ...o, uid: Chat.uid, name: Chat.myName(), joined: {}, pending: o.status === 'sending', failed: o.status === 'failed' });
@@ -9218,7 +9515,9 @@
     msgs.sort((a, b) => a.createdAt - b.createdAt);
     if (!msgs.length) {
       if (!Chat.ready) return '<div class="chat-skel" aria-hidden="true">' + [60, 40, 70, 50].map((w, i) => `<div class="sk sk-bubble ${i % 2 ? 'r' : ''}" style="width:${w}%"></div>`).join('') + '</div>';
-      return `<div class="empty chat-empty"><p><strong>Noch keine Nachrichten</strong></p><p class="muted">Schreib, wann du ins Gym gehst – dann können sich andere anschließen.</p></div>`;
+      return `<div class="empty chat-empty"><p><strong>Noch keine Nachrichten</strong></p><p class="muted">${Chat.room === CHAT_ROOM
+        ? 'Schreib, wann du ins Gym gehst – dann können sich andere anschließen.'
+        : 'Schreib die erste Nachricht – oder sag, wann du ins Gym gehst.'}</p></div>`;
     }
     let html = Chat.loadingOlder ? '<div class="chat-older" role="status">Ältere Nachrichten werden geladen …</div>'
       : Chat.done ? '<p class="chat-start">Anfang des Chats</p>' : '';
@@ -9272,16 +9571,149 @@
     return `<div class="chat-note" role="status">${ICON.cloudOff}<span>${esc(text)}</span>${help || retry ? `<span class="chat-note-actions">${help}${retry}</span>` : ''}</div>`;
   }
 
+  /* ---------- Chat-Liste: Gym-Chat, Gruppen, Kontakte ---------- */
+
+  /** Uhrzeit (heute) bzw. Tag (früher) für die Liste */
+  function chatRowTime(ts, now) {
+    if (!ts) return '';
+    return Core.viennaDayKey(ts) === Core.viennaDayKey(now) ? Core.fmtViennaTime(ts) : Core.chatDayLabel(ts, now);
+  }
+
+  function chatRowHTML({ href, avatar, title, sub, time, unread, id }) {
+    return `
+      <a class="list-item chat-row${unread ? ' unread' : ''}" href="${esc(href)}"${id ? ` data-flip="${esc(id)}"` : ''}>
+        ${avatar}
+        <div class="li-main"><div class="li-title break">${title}</div><div class="li-sub">${esc(sub)}</div></div>
+        <span class="chat-row-meta">${time ? `<small>${esc(time)}</small>` : ''}${unread ? '<i class="unread-dot" role="img" aria-label="Ungelesen"></i>' : ''}</span>
+        ${ICON.chevron}
+      </a>`;
+  }
+
+  function chatPreview(g) {
+    if (!g.lastText) return g.kind === 'dm' ? 'Nachricht schreiben' : 'Noch keine Nachrichten';
+    return (g.lastUid === Chat.uid ? 'Du' : (g.kind === 'dm' ? '' : '@' + g.lastName)) + (g.lastUid === Chat.uid || g.kind !== 'dm' ? ': ' : '') + g.lastText;
+  }
+
+  function chatHomeHTML() {
+    const now = Date.now();
+    const blockedIds = Chat.blockedSet();
+    // Gym-Chat (immer da)
+    const gym = chatRowHTML({
+      href: '#/chat/gym', avatar: `<span class="avatar avatar-room" aria-hidden="true">${ICON.dumbbell}</span>`,
+      title: 'Gym-Chat', sub: 'Alle Mitglieder', unread: Chat.gymUnread(),
+    });
+    // Gruppen
+    const groups = Chat.groups.filter((g) => g.kind === 'group');
+    let groupsHTML;
+    if (Chat.groupsError && !Chat.groups.length) {
+      groupsHTML = Chat.groupsRulesMissing
+        ? `<div class="chat-note" role="status">${ICON.cloudOff}<span>Gruppen sind noch nicht freigeschaltet: Die Firestore-Regeln müssen einmal neu veröffentlicht werden.</span><span class="chat-note-actions"><button type="button" class="btn primary sm" data-action="chat-rules-help">So schaltest du sie frei</button></span></div>`
+        : `<div class="chat-note" role="status">${ICON.cloudOff}<span>Gruppen konnten nicht geladen werden${Chat.groupsError.code ? ' (' + esc(Chat.groupsError.code) + ')' : ''}.</span></div>`;
+    } else if (!Chat.groupsReady && !Chat.groups.length) {
+      groupsHTML = skeletonRows(2);
+    } else if (!groups.length) {
+      groupsHTML = `<div class="empty chat-empty-small"><p class="muted">Noch keine Gruppen. Lege eine an und lade Freunde ein – zum Beispiel für dein Trainingsteam.</p><button type="button" class="btn soft sm" data-action="chat-new-group">${ICON.plus} Neue Gruppe</button></div>`;
+    } else {
+      groupsHTML = '<div class="list">' + groups.map((g) => chatRowHTML({
+        href: Chat.hashFor(g), avatar: avatarHTML(null, '', g.name), title: esc(g.name), sub: chatPreview(g),
+        time: chatRowTime(g.lastAt, now), unread: Chat.groupUnread(g), id: 'grp-' + g.id,
+      })).join('') + '</div>';
+    }
+    // Kontakte = Freunde (Direktchat)
+    let contactsHTML;
+    if (Social.friends === null) {
+      contactsHTML = skeletonRows(2);
+    } else {
+      const people = Social.friends.map((f) => ({ uid: f.uid, p: Social.people[f.uid] })).filter((x) => x.p && !x.p.missing && x.p.username);
+      if (!Social.friends.length) {
+        contactsHTML = `<div class="empty chat-empty-small"><p class="muted">Noch keine Kontakte. Füge Freunde hinzu – dann kannst du ihnen schreiben und sie in Gruppen einladen.</p><a class="btn soft sm" href="#/friends/add">${ICON.plus} Freunde hinzufügen</a></div>`;
+      } else if (!people.length) {
+        contactsHTML = skeletonRows(2);
+      } else {
+        const rows = people.map((x) => ({ ...x, dm: Chat.dmWith(x.uid) }))
+          .sort((x, y) => ((y.dm && y.dm.lastAt) || 0) - ((x.dm && x.dm.lastAt) || 0) || x.p.username.localeCompare(y.p.username, 'de'));
+        contactsHTML = '<div class="list">' + rows.map((x) => chatRowHTML({
+          href: '#/chat/dm/' + encodeURIComponent(x.uid), avatar: avatarHTML(x.p.photo, '', x.p.username), title: '@' + esc(x.p.username),
+          sub: x.dm ? chatPreview(x.dm) : 'Nachricht schreiben', time: x.dm ? chatRowTime(x.dm.lastAt, now) : '', unread: !!x.dm && Chat.groupUnread(x.dm), id: 'dm-' + x.uid,
+        })).join('') + '</div>';
+      }
+    }
+    void blockedIds;
+    return `
+      <div class="list">${gym}</div>
+      <div class="section-head"><p class="section-label">Gruppen</p>${groups.length ? `<button type="button" class="btn ghost sm" data-action="chat-new-group">${ICON.plus} Neu</button>` : ''}</div>
+      ${groupsHTML}
+      <p class="section-label">Kontakte</p>
+      ${contactsHTML}`;
+  }
+
+  const ChatHome = {
+    update() {
+      const el = $('#chat-home');
+      if (!el || !el.isConnected) return;
+      const note = $('#chat-home-note');
+      if (note) note.innerHTML = chatNoteHTML();
+      $('#chat-home-body', el).innerHTML = chatHomeHTML();
+    },
+  };
+
   function renderChat(view) {
-    setHeader({ title: 'Gym-Chat', actions: `<a class="hdr-btn" href="#/settings/chat" aria-label="Chat-Einstellungen">${ICON.gear}</a>` });
-    if (!isUser()) { view.innerHTML = socialGuestHTML('Mit einem Konto schreibst du mit anderen Mitgliedern, wann du ins Gym gehst – und siehst, wer sich anschließt.', 'Gym-Chat'); return; }
+    Chat.room = CHAT_ROOM;
+    setHeader({
+      title: 'Chats', large: true,
+      actions: `<button type="button" class="hdr-btn" data-action="chat-new-group" aria-label="Neue Gruppe">${ICON.plus}</button><a class="hdr-btn" href="#/settings/chat" aria-label="Chat-Einstellungen">${ICON.gear}</a>`,
+    });
+    if (!isUser()) { view.innerHTML = socialGuestHTML('Mit einem Konto schreibst du mit anderen Mitgliedern, gründest Gruppen und schreibst deinen Freunden direkt.', 'Chats'); return; }
     if (Social.profile === undefined) {
       view.innerHTML = navigator.onLine ? skeletonRows(3) : '<div class="empty"><p class="muted">Offline – dein Profil wird geladen, sobald du wieder online bist.</p></div>';
       return;
     }
     if (!Social.ready()) { view.innerHTML = setupPromptHTML('Für den Chat brauchst du einen Benutzernamen – so sehen die anderen, wer schreibt.'); return; }
+    view.innerHTML = `<div class="chat-home" id="chat-home"><div id="chat-home-note">${chatNoteHTML()}</div><div id="chat-home-body">${chatHomeHTML()}</div></div>`;
+    Chat.sync();
+  }
+
+  /* ---------- Raum: Gym-Chat, Gruppe oder Direktchat ---------- */
+
+  function renderChatRoom(view, route) {
+    const room = route.dm ? '@' + dmIdOf(Chat.uid || (account && account.uid) || '', route.dm) : route.room;
+    Chat.room = room; // ab jetzt zeigen Chat.store, Chat.draft … diesen Raum (die Verbindung folgt in Chat.sync)
+    const g = Chat.groupOf(room);
+    let title = 'Gym-Chat';
+    let actions = `<a class="hdr-btn" href="#/settings/chat" aria-label="Chat-Einstellungen">${ICON.gear}</a>`;
+    if (room !== CHAT_ROOM) {
+      const peer = route.dm ? Social.people && Social.people[route.dm] : null;
+      title = g ? Chat.groupTitle(g) : route.dm ? (peer && peer.username) || 'Direktchat' : 'Gruppe';
+      if (route.dm && g) title = '@' + title;
+      else if (route.dm && peer) title = '@' + title;
+      actions = g && g.kind === 'group' ? `<button type="button" class="hdr-btn" data-action="chat-info" aria-label="Gruppeninfo">${ICON.users}</button>` : '';
+    }
+    setHeader({ title, back: '#/chat', actions });
+    if (!isUser()) { view.innerHTML = socialGuestHTML('Mit einem Konto schreibst du mit anderen Mitgliedern, wann du ins Gym gehst – und siehst, wer sich anschließt.', 'Chats'); return; }
+    if (Social.profile === undefined) {
+      view.innerHTML = navigator.onLine ? skeletonRows(3) : '<div class="empty"><p class="muted">Offline – dein Profil wird geladen, sobald du wieder online bist.</p></div>';
+      return;
+    }
+    if (!Social.ready()) { view.innerHTML = setupPromptHTML('Für den Chat brauchst du einen Benutzernamen – so sehen die anderen, wer schreibt.'); return; }
+    // Direktchat nur mit Freunden (oder wenn es ihn schon gibt)
+    if (route.dm && !g && Social.friends && !Social.friends.some((f) => f.uid === route.dm)) {
+      view.innerHTML = '<div class="empty"><p><strong>Kein Kontakt</strong></p><p class="muted">Direktnachrichten gibt es nur mit Freunden.</p><a class="btn soft" href="#/friends/add">Freunde hinzufügen</a></div>';
+      return;
+    }
+    // Gruppen lassen sich nicht laden: Regeln fehlen noch
+    if (Chat.groupsError && !g && room !== CHAT_ROOM && !route.dm) {
+      view.innerHTML = Chat.groupsRulesMissing
+        ? `<div class="chat-note" role="status">${ICON.cloudOff}<span>Gruppen sind noch nicht freigeschaltet: Die Firestore-Regeln müssen einmal neu veröffentlicht werden.</span><span class="chat-note-actions"><button type="button" class="btn primary sm" data-action="chat-rules-help">So schaltest du sie frei</button></span></div>`
+        : `<div class="chat-note" role="status">${ICON.cloudOff}<span>Die Gruppe konnte nicht geladen werden.</span></div>`;
+      return;
+    }
+    // Gruppe gelöscht oder nicht mehr Mitglied
+    if (Chat.groupsReady && !g && room !== CHAT_ROOM && !route.dm && !Chat.dmCreated.has(room)) {
+      view.innerHTML = '<div class="empty"><p><strong>Gruppe nicht gefunden</strong></p><p class="muted">Sie wurde gelöscht, oder du bist nicht mehr Mitglied.</p><a class="btn soft" href="#/chat">Zu den Chats</a></div>';
+      return;
+    }
     view.innerHTML = `
-      <div class="chat" id="chat">
+      <div class="chat" id="chat" data-room="${esc(room)}">
         <div id="chat-note">${chatNoteHTML()}</div>
         <section class="chat-today" id="chat-today" aria-label="Heute im Gym">${chatTodayHTML()}</section>
         <div class="chat-list" id="chat-list" role="region" aria-label="Nachrichten"></div>
@@ -9399,6 +9831,138 @@
     },
   };
 
+  /* ---------- Gruppen: erstellen, Mitglieder verwalten ---------- */
+
+  function chatGroupErrorText(e) {
+    const code = (e && e.code) || '';
+    console.error('GRPERR', code, e && e.message, e && e.stack);
+    if (code === 'permission-denied') return 'Nicht erlaubt – hat die Firestore-Regel für Gruppen gefehlt? Unter Chat → „So schaltest du sie frei“ veröffentlichst du sie.';
+    if (code === 'update') return 'Die App wurde aktualisiert – bitte einmal neu laden.';
+    if (code === 'timeout') return 'Keine Verbindung – bitte später erneut versuchen.';
+    return socialErrorText(e);
+  }
+
+  /** Freunde (mit Profil), die sich für Gruppen auswählen lassen – ohne `exclude`. */
+  function friendChoices(exclude) {
+    const ex = new Set(exclude || []);
+    return (Social.friends || [])
+      .map((f) => ({ uid: f.uid, p: Social.people[f.uid] }))
+      .filter((x) => x.p && !x.p.missing && x.p.username && !ex.has(x.uid))
+      .sort((x, y) => x.p.username.localeCompare(y.p.username, 'de'));
+  }
+
+  /**
+   * Formular „Neue Gruppe“ (mit Namen) bzw. „Mitglieder hinzufügen“ (ohne) → Promise mit
+   * { name, members: [{ uid, name }] } oder null (abgebrochen).
+   */
+  function openGroupForm({ title, withName, exclude, max, okLabel }) {
+    return new Promise((resolve) => {
+      const people = friendChoices(exclude);
+      const rows = people.map((x) => '<label class="pick-row"><input type="checkbox" value="' + esc(x.uid) + '">' + avatarHTML(x.p.photo, 'sm', x.p.username) +
+        '<span class="pick-main"><span class="pick-name">@' + esc(x.p.username) + '</span></span></label>').join('');
+      const none = Social.friends && Social.friends.length
+        ? 'Alle deine Freunde sind schon dabei.'
+        : 'Du hast noch keine Freunde. Füge zuerst Freunde hinzu – nur sie lassen sich einladen.';
+      let done = false;
+      const m = customModal(
+        '<h2 class="modal-title">' + esc(title) + '</h2>' +
+        (withName ? '<input class="in modal-input" id="grp-name" maxlength="' + GROUP_NAME_MAX + '" placeholder="Gruppenname, z. B. Push-Team" aria-label="Gruppenname" autocomplete="off" enterkeyhint="done">' : '') +
+        '<p class="section-label">' + (withName ? 'Freunde einladen' : 'Freunde') + '</p>' +
+        (people.length ? '<div class="list scroll-list" id="grp-list">' + rows + '</div>'
+          : '<p class="hint">' + none + '</p>' + (Social.friends && Social.friends.length ? '' : '<a class="btn soft block" href="#/friends/add" data-close>Freunde hinzufügen</a>')) +
+        '<p class="hint" id="grp-hint" role="status"></p>' +
+        '<div class="modal-actions"><button class="btn ghost" data-close>Abbrechen</button><button class="btn primary" data-ok disabled>' + esc(okLabel) + '</button></div>',
+        { full: true, onClose: () => { if (!done) { done = true; resolve(null); } } });
+      const nameEl = m.card.querySelector('#grp-name');
+      const ok = m.card.querySelector('[data-ok]');
+      const hint = m.card.querySelector('#grp-hint');
+      const chosen = () => [...m.card.querySelectorAll('#grp-list input:checked')].map((i) => i.value);
+      const update = () => {
+        const n = chosen().length;
+        const nameOk = !nameEl || nameEl.value.trim().length > 0;
+        const tooMany = n > max;
+        ok.disabled = !(n >= 1 && nameOk && !tooMany);
+        ok.textContent = n ? okLabel + ' (' + n + ')' : okLabel;
+        hint.textContent = tooMany ? 'Höchstens ' + max + ' weitere Mitglieder (insgesamt ' + GROUP_MAX + ').' : '';
+      };
+      m.card.addEventListener('change', update);
+      if (nameEl) nameEl.addEventListener('input', update);
+      ok.addEventListener('click', () => {
+        const ids = new Set(chosen());
+        const members = people.filter((x) => ids.has(x.uid)).map((x) => ({ uid: x.uid, name: x.p.username }));
+        done = true;
+        resolve({ name: nameEl ? nameEl.value.trim().slice(0, GROUP_NAME_MAX) : '', members });
+        m.close();
+      });
+      if (nameEl) setTimeout(() => nameEl.focus(), 350);
+    });
+  }
+
+  /** Gruppeninfo: Mitglieder, Hinzufügen/Entfernen/Umbenennen/Löschen (Besitzer) bzw. Verlassen. */
+  function openGroupInfo() {
+    const g = Chat.groupOf(Chat.room);
+    if (!g || g.kind !== 'group') return;
+    const mine = g.owner === Chat.uid;
+    const members = g.memberIds.map((uid) => ({ uid, name: g.memberNames[uid] || '?' }));
+    const rows = members.map((x) => `
+      <div class="list-item person grp-member">
+        ${avatarHTML(Chat.photoFor(x.name, x.uid), '', x.name)}
+        <div class="li-main"><div class="li-title break">${x.uid === Chat.uid ? 'Du' : '@' + esc(x.name)}</div>${x.uid === g.owner ? '<div class="li-sub">Besitzer</div>' : ''}</div>
+        ${mine && x.uid !== Chat.uid ? `<button type="button" class="icon-btn sm" data-remove="${esc(x.uid)}" data-name="${esc(x.name)}" aria-label="@${esc(x.name)} entfernen">${ICON.trash}</button>` : ''}
+      </div>`).join('');
+    const m = customModal(
+      '<h2 class="modal-title break">' + esc(g.name) + '</h2>' +
+      '<p class="modal-msg">' + members.length + (members.length === 1 ? ' Mitglied' : ' Mitglieder') + '</p>' +
+      '<div class="list scroll-list">' + rows + '</div>' +
+      '<div class="modal-actions stack">' +
+        (mine
+          ? `<button class="btn soft" data-act="add">${ICON.plus} Mitglieder hinzufügen</button><button class="btn soft" data-act="rename">${ICON.edit} Umbenennen</button><button class="btn danger-soft" data-act="delete">Gruppe löschen</button>`
+          : '<button class="btn danger-soft" data-act="leave">Gruppe verlassen</button>') +
+        '<button class="btn ghost" data-close>Schließen</button></div>', { full: true });
+    const reopen = () => setTimeout(() => { if (Chat.inRoom() && Chat.groupOf(Chat.room) && !document.querySelector('.modal:not(.closing)')) openGroupInfo(); }, 250);
+    m.card.addEventListener('click', async (e) => {
+      const rm = e.target.closest('[data-remove]');
+      if (rm) {
+        m.close();
+        const ok = await confirmAction('@' + rm.dataset.name + ' entfernen?', 'Die Person sieht die Gruppe danach nicht mehr.', 'Entfernen', true);
+        if (!ok) { reopen(); return; }
+        try { await Chat.removeMember(g.id, rm.dataset.remove); toast('@' + rm.dataset.name + ' entfernt'); } catch (err) { toast(chatGroupErrorText(err)); }
+        reopen();
+        return;
+      }
+      const act = e.target.closest('[data-act]');
+      if (!act) return;
+      m.close();
+      try {
+        if (act.dataset.act === 'add') {
+          const r = await openGroupForm({ title: 'Mitglieder hinzufügen', exclude: g.memberIds, max: GROUP_MAX - g.memberIds.length, okLabel: 'Hinzufügen' });
+          if (!r) return;
+          const failed = await Chat.addMembers(g.id, r.members);
+          toast(failed.length ? failed.length + ' von ' + r.members.length + ' konnten nicht eingeladen werden.' : r.members.length === 1 ? '@' + r.members[0].name + ' hinzugefügt' : r.members.length + ' Mitglieder hinzugefügt');
+          reopen();
+        } else if (act.dataset.act === 'rename') {
+          const name = await promptText('Gruppe umbenennen', { value: g.name, placeholder: 'Gruppenname', okLabel: 'Speichern' });
+          if (name === null) return;
+          await Chat.rename(g.id, name);
+          toast('Umbenannt');
+        } else if (act.dataset.act === 'delete') {
+          const ok = await confirmAction('Gruppe „' + g.name + '“ löschen?', 'Alle Nachrichten verschwinden für alle Mitglieder. Das lässt sich nicht rückgängig machen.', 'Löschen', true);
+          if (!ok) return;
+          toast('Gruppe wird gelöscht …');
+          await Chat.deleteGroup(g.id);
+          go('#/chat');
+          toast('Gruppe gelöscht');
+        } else if (act.dataset.act === 'leave') {
+          const ok = await confirmAction('Gruppe „' + g.name + '“ verlassen?', 'Du siehst die Nachrichten danach nicht mehr. Der Besitzer kann dich wieder einladen.', 'Verlassen', true);
+          if (!ok) return;
+          await Chat.removeMember(g.id, Chat.uid);
+          go('#/chat');
+          toast('Gruppe verlassen');
+        }
+      } catch (err) { toast(chatGroupErrorText(err)); }
+    });
+  }
+
   /* ---------- Chat freischalten: Firestore-Regeln kopieren & Firebase öffnen ---------- */
 
   const ADMIN_PLACEHOLDER = "'ADMIN-NUTZER-ID-HIER-EINTRAGEN'";
@@ -9420,7 +9984,7 @@
       : 'https://console.firebase.google.com/';
     const m = customModal(
       '<h2 class="modal-title">Chat freischalten</h2>' +
-      '<p class="modal-msg">Firebase lässt den Chat noch nicht zu („permission-denied“): Die Sicherheitsregeln in deinem Firebase-Projekt sind älter als diese App oder fehlen. Das behebst du einmal, in zwei Minuten – am besten am Computer:</p>' +
+      '<p class="modal-msg">Firebase lässt den Chat bzw. die Gruppen noch nicht zu („permission-denied“): Die Sicherheitsregeln in deinem Firebase-Projekt sind älter als diese App oder fehlen. Das behebst du einmal, in zwei Minuten – am besten am Computer:</p>' +
       '<ol class="help-steps">' +
         '<li><b>Regeln kopieren</b> – gleich unten tippen.</li>' +
         '<li><b>Firebase-Regeln öffnen</b>, den ganzen Text dort ersetzen (alles markieren, einfügen) und auf <em>Veröffentlichen</em> tippen.</li>' +
@@ -9562,6 +10126,19 @@
     'chat-today-open': (el) => openPlanInfo(el.dataset.id),
     'chat-retry-connect': () => { if (window.GymCloud && !window.GymCloud.chat) { reloadForUpdate(); return; } Chat.error = null; Chat.rulesMissing = false; Chat.stop(); Chat.sync(); Chat.changed(); },
     'chat-rules-help': () => openChatRulesHelp(),
+    'chat-new-group': async () => {
+      if (!isUser() || !Social.ready()) { toast('Für Gruppen brauchst du ein Konto mit Benutzernamen.'); return; }
+      if (!needOnline()) return;
+      const r = await openGroupForm({ title: 'Neue Gruppe', withName: true, max: GROUP_MAX - 1, okLabel: 'Erstellen' });
+      if (!r) return;
+      try {
+        const res = await Promise.race([Chat.createGroup(r.name, r.members), new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), 20000))]);
+        Haptics.tap();
+        go('#/chat/g/' + encodeURIComponent(res.id));
+        if (res.failed.length) toast(res.failed.length + ' von ' + r.members.length + ' konnten nicht eingeladen werden.');
+      } catch (e) { toast(chatGroupErrorText(e)); }
+    },
+    'chat-info': () => openGroupInfo(),
     'chat-menu': async (el) => {
       const m = Chat.store.get(el.dataset.id);
       if (!m) return;
@@ -9610,7 +10187,7 @@
       if (rn === 'home' || rn === 'settings' || rn === 'profile') render();
       if (SOCIAL_ROUTES.has(rn)) Social.refreshPeople();
       Chat.checkDay();
-      if (rn === 'chat' && ChatView.el) { Chat.sync(); if (ChatView.stick) Chat.markSeen(); }
+      if (rn === 'chat-room' && ChatView.el) { Chat.sync(); if (ChatView.stick) Chat.markSeen(); }
       // Home-Bildschirm-Apps werden oft nur "aufgeweckt" statt neu gestartet → dabei nach Updates schauen
       if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
     } else {
@@ -9722,8 +10299,16 @@
     document.addEventListener('error', (e) => {
       const img = e.target;
       if (img && img.tagName === 'IMG' && img.parentElement && img.parentElement.classList.contains('avatar')) {
-        img.parentElement.classList.add('avatar-empty');
-        img.replaceWith(document.createRange().createContextualFragment(ICON.user));
+        const box = img.parentElement;
+        if (box.dataset.n) {
+          // mit Namen: Buchstaben-Avatar statt grauem Platzhalter
+          box.classList.add('avatar-initial', 'ac' + avatarIndex(box.dataset.n));
+          box.setAttribute('aria-hidden', 'true');
+          box.replaceChildren(Object.assign(document.createElement('span'), { textContent: avatarInitial(box.dataset.n) }));
+        } else {
+          box.classList.add('avatar-empty');
+          img.replaceWith(document.createRange().createContextualFragment(ICON.user));
+        }
       }
     }, true);
 

@@ -211,7 +211,7 @@ test('Ohne Konto und ohne Firebase: Training, Timer, Bibliothek, Verlauf, Profil
   // Chat: Reiter ist da, ohne Konto kommt der Hinweis zum Anmelden
   await page.locator('.tab[data-tab="chat"]').click();
   await waitHash(page, /#\/chat/);
-  await page.locator('.social-cta h2', { hasText: 'Gym-Chat' }).waitFor();
+  await page.locator('.social-cta h2', { hasText: 'Chats' }).waitFor();
   await page.locator('.tab[data-tab="home"]').click();
   await waitHash(page, /#\/$/);
   // Mein Gym: festlegen (Adresse + GPS-Standort) → Route öffnet die Karten-App
@@ -406,7 +406,9 @@ test('Freunde: Registrierung, Profil mit Foto, Anfrage, Vergleich, Rangliste, of
   await B.page.fill('#pedit-username', 'Ben!');
   await B.page.locator('#uname-status .bad').waitFor();
   await createProfile(B.page, 'ben', false);
-  await B.page.locator('.profile-hero .avatar.avatar-empty').waitFor(); // grauer Platzhalter ohne Foto
+  const initial = B.page.locator('.profile-hero .avatar.avatar-initial'); // ohne Foto: großer Anfangsbuchstabe auf Farbe
+  await initial.waitFor();
+  assert.equal((await initial.textContent()).trim(), 'B');
   await logBench(B.page, 100, 5);
 
   // --- Anfrage senden (B → A) ---
@@ -569,7 +571,7 @@ test('Chat: Nachrichten in Echtzeit, Gym-Karte, mitkommen, Wiener Zeit, Fehler m
   await register(B.page, 'chatben@test.de');
   await createProfile(B.page, 'chatben', false);
   const list = (p) => p.locator('#chat-list');
-  const openChat = async (p) => { await p.locator('.tab[data-tab="chat"]').click(); await waitHash(p, /#\/chat/); await p.locator('#chat-input').waitFor(); };
+  const openChat = async (p) => { await p.locator('.tab[data-tab="chat"]').click(); await p.locator('a.chat-row[href="#/chat/gym"]').click(); await waitHash(p, /#\/chat\/gym/); await p.locator('#chat-input').waitFor(); };
 
   // --- A: leerer Chat, erste Nachricht (Enter sendet) ---
   await openChat(A.page);
@@ -600,7 +602,7 @@ test('Chat: Nachrichten in Echtzeit, Gym-Karte, mitkommen, Wiener Zeit, Fehler m
 
   // --- B (auf dem Profil-Reiter): Punkt am Chat-Reiter, dann Nachricht links mit Name ---
   await B.page.locator('#tab-dot-chat:not([hidden])').waitFor().catch(async (e) => {
-    throw new Error(e.message + ' | Chat-Zustand: ' + JSON.stringify(await B.page.evaluate(() => { const c = window.GymApp.Chat; return { uid: c.uid, verbunden: !!c.unsub, bereit: c.ready, fehler: c.error && (c.error.code || String(c.error)), aktiv: c.enabled(), gesehen: c.seen, anzahl: c.store.size, route: location.hash, cloud: !!(window.GymCloud && window.GymCloud.chat) }; })));
+    throw new Error(e.message + ' | Chat-Zustand: ' + JSON.stringify(await B.page.evaluate(() => { const c = window.GymApp.Chat; return { uid: c.uid, verbunden: !!c.unsub, bereit: c.ready, fehler: c.error && (c.error.code || String(c.error)), aktiv: c.enabled(), gesehen: c.seenAt && c.seenAt.gym, anzahl: c.store.size, route: location.hash, cloud: !!(window.GymCloud && window.GymCloud.chat) }; })));
   });
   await openChat(B.page);
   assert.equal(await B.page.locator('#tab-dot-chat').isHidden(), true);
@@ -702,7 +704,7 @@ test('Chat: Nachrichten in Echtzeit, Gym-Karte, mitkommen, Wiener Zeit, Fehler m
   await A.page.goto(base + '/#/settings/chat');
   await A.page.locator('.row', { hasText: '@chatben' }).locator('[data-action="chat-unblock"]').click();
   await A.page.locator('.empty', { hasText: 'niemanden blockiert' }).waitFor();
-  await A.page.locator('.tab[data-tab="chat"]').click();
+  await openChat(A.page);
   await list(A.page).locator('.msg.theirs .bubble', { hasText: 'Ich bin um 18 Uhr da' }).waitFor();
 
   // --- Eigene Nachricht bearbeiten und löschen (A) ---
@@ -766,9 +768,8 @@ test('Chat: Nachrichten in Echtzeit, Gym-Karte, mitkommen, Wiener Zeit, Fehler m
   // --- Heller Modus und schmaler Bildschirm (320 px): nichts läuft über, Kontraste stimmen ---
   await A.page.goto(base + '/#/settings/appearance');
   await A.page.locator('[data-action="theme"][data-value="light"]').click();
-  await A.page.locator('.tab[data-tab="chat"]').click();
+  await openChat(A.page);
   await list(A.page).locator('.plan').waitFor();
-  await waitHash(A.page, /#\/chat/);
   await sleepMs(600); // Seitenübergang abwarten
   await shot(A.page, '7-hell');
   const colors = await A.page.evaluate(() => {
@@ -816,3 +817,133 @@ test('Chat: Nachrichten in Echtzeit, Gym-Karte, mitkommen, Wiener Zeit, Fehler m
 
 const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
 const dlgButtonSubmit = (page) => page.locator('.modal:not(.closing) form button[type="submit"]');
+
+test('Chats: Gruppe erstellen, Kontakte (Freunde) mit Direktnachricht, Mitglieder verwalten, Buchstaben-Avatare', async () => {
+  await resetEmulators();
+  const A = await device('grp-anna');
+  const B = await device('grp-ben');
+  await register(A.page, 'grpanna@test.de');
+  await createProfile(A.page, 'grpanna', false);
+  await register(B.page, 'grpben@test.de');
+  await createProfile(B.page, 'grpben', false);
+  // Freundschaft über dieselbe Cloud-Schicht wie die App (Anfrage von B, A nimmt an)
+  const uidA = await A.page.evaluate(() => window.GymCloud.currentUser().uid);
+  const uidB = await B.page.evaluate(() => window.GymCloud.currentUser().uid);
+  await B.page.evaluate(([to]) => window.GymCloud.social.sendRequest(to, { username: 'grpben', photo: null }, { username: 'grpanna', photo: null }), [uidA]);
+  await A.page.evaluate(([from]) => window.GymCloud.social.acceptRequest(from, false), [uidB]);
+
+  const shots = process.env.GRP_SHOTS;
+  const shot = async (page, name) => { if (shots) { fs.mkdirSync(shots, { recursive: true }); await sleepMs(500); await page.screenshot({ path: path.join(shots, name + '.png') }); } };
+  const openList = async (p) => { await p.locator('.tab[data-tab="chat"]').click(); await p.locator('#chat-home').waitFor(); };
+  const send = async (p, text) => { await p.fill('#chat-input', text); await p.press('#chat-input', 'Enter'); };
+
+  // --- A: Chat-Reiter = Liste: Gym-Chat, noch keine Gruppen, Kontakt @grpben mit Buchstaben-Avatar ---
+  await openList(A.page);
+  await A.page.locator('a.chat-row[href="#/chat/gym"]', { hasText: 'Gym-Chat' }).waitFor();
+  await A.page.locator('.chat-empty-small', { hasText: 'Noch keine Gruppen' }).waitFor();
+  const contact = A.page.locator('a.chat-row[href="#/chat/dm/' + uidB + '"]');
+  await contact.waitFor();
+  assert.equal((await contact.locator('.li-title').innerText()).trim(), '@grpben');
+  await shot(A.page, '1-liste-leer');
+  const av = contact.locator('.avatar.avatar-initial');
+  assert.equal((await av.innerText()).trim(), 'G');                       // großer Anfangsbuchstabe
+  assert.match(await av.getAttribute('class'), /\bac\d\b/);               // eigene Hintergrundfarbe
+  const avColor = await av.evaluate((e) => getComputedStyle(e).backgroundColor);
+  assert.notEqual(avColor, 'rgba(0, 0, 0, 0)');
+
+  // --- Neue Gruppe: Name + Freund wählen ---
+  await A.page.locator('.app-header [data-action="chat-new-group"]').click();
+  const ok = A.page.locator('.modal:not(.closing) [data-ok]');
+  assert.equal(await ok.isDisabled(), true);                              // ohne Namen und Auswahl nicht möglich
+  await A.page.fill('.modal:not(.closing) #grp-name', 'Push-Team');
+  assert.equal(await ok.isDisabled(), true);                              // ohne Freund auch nicht
+  await A.page.locator('.modal:not(.closing) .pick-row', { hasText: '@grpben' }).click();
+  await shot(A.page, '2-neue-gruppe');
+  await ok.click();
+  await waitHash(A.page, /#\/chat\/g\//);
+  await A.page.locator('#chat-input').waitFor();
+  assert.equal((await A.page.locator('.app-header .hdr-title').innerText()).trim(), 'Push-Team');
+  await A.page.locator('.chat-empty').waitFor();
+  await send(A.page, 'Hallo Team');
+  await A.page.locator('#chat-list .msg.mine .bubble', { hasText: 'Hallo Team' }).waitFor();
+
+  // --- B: Gruppe erscheint mit Vorschau und Ungelesen-Punkt; am Reiter ein Punkt, solange B woanders ist ---
+  await B.page.locator('#tab-dot-chat:not([hidden])').waitFor();
+  await openList(B.page);
+  const grp = B.page.locator('a.chat-row[href^="#/chat/g/"]', { hasText: 'Push-Team' });
+  await grp.waitFor();
+  assert.match(await grp.locator('.li-sub').innerText(), /^@grpanna: Hallo Team$/);
+  await grp.locator('.unread-dot').waitFor();
+  await shot(B.page, '3a-liste-ungelesen');
+  assert.equal((await grp.locator('.avatar-initial').innerText()).trim(), 'P'); // Gruppen-Avatar: Anfangsbuchstabe des Namens
+  await grp.click();
+  await B.page.locator('#chat-list .msg.theirs .bubble', { hasText: 'Hallo Team' }).waitFor();
+  await B.page.locator('#chat-list .msg-name', { hasText: '@grpanna' }).waitFor();
+  await B.page.locator('#chat-list .msg.theirs .avatar-initial', { hasText: 'G' }).waitFor(); // Absender ohne Foto: Buchstabe
+  await shot(B.page, '3-gruppe-raum');
+  await sleepMs(2300);
+  await send(B.page, 'Bin dabei');
+  await A.page.locator('#chat-list .msg.theirs .bubble', { hasText: 'Bin dabei' }).waitFor();
+  // zurück zur Liste: kein Ungelesen-Punkt mehr (gesehen)
+  await B.page.locator('.app-header a.hdr-btn[href="#/chat"]').click();
+  await B.page.locator('#chat-home').waitFor();
+  await B.page.locator('a.chat-row[href^="#/chat/g/"]', { hasText: 'Push-Team' }).waitFor();
+  assert.equal(await B.page.locator('a.chat-row[href^="#/chat/g/"] .unread-dot').count(), 0);
+
+  // --- Direktnachricht: B → A über „Kontakte“ (entsteht erst beim Senden) ---
+  await B.page.locator('a.chat-row[href="#/chat/dm/' + uidA + '"]').click();
+  await B.page.locator('#chat-input').waitFor();
+  assert.equal((await B.page.locator('.app-header .hdr-title').innerText()).trim(), '@grpanna');
+  await B.page.locator('.chat-empty').waitFor();
+  assert.equal(await B.page.locator('.app-header [data-action="chat-info"]').count(), 0);     // kein Gruppen-Info im Direktchat
+  await sleepMs(2300);
+  await send(B.page, 'Direkt gefragt');
+  await B.page.locator('#chat-list .msg.mine .bubble', { hasText: 'Direkt gefragt' }).waitFor();
+  await A.page.locator('.app-header a.hdr-btn[href="#/chat"]').click();
+  const dmRow = A.page.locator('a.chat-row[href="#/chat/dm/' + uidB + '"]');
+  await dmRow.locator('.li-sub', { hasText: 'Direkt gefragt' }).waitFor();
+  await dmRow.locator('.unread-dot').waitFor();
+  await dmRow.click();
+  await A.page.locator('#chat-list .msg.theirs .bubble', { hasText: 'Direkt gefragt' }).waitFor();
+  // ein Direktchat mit jemandem, der kein Freund ist
+  await A.page.goto(base + '/#/chat/dm/fremde-uid-123');
+  await A.page.locator('.empty', { hasText: 'Kein Kontakt' }).waitFor();
+
+  // --- Gruppeninfo: A (Besitzerin) sieht beide, B verlässt die Gruppe ---
+  await A.page.goto(base + '/#/chat');
+  await A.page.locator('a.chat-row[href^="#/chat/g/"]', { hasText: 'Push-Team' }).click();
+  await A.page.locator('.app-header [data-action="chat-info"]').click();
+  const info = A.page.locator('.modal:not(.closing)');
+  await info.locator('.grp-member', { hasText: 'Du' }).waitFor();
+  await info.locator('.grp-member', { hasText: '@grpben' }).waitFor();
+  await info.locator('[data-act="add"]').waitFor();
+  await shot(A.page, '4-gruppeninfo');
+  await A.page.keyboard.press('Escape');
+  await B.page.locator('.app-header a.hdr-btn[href="#/chat"]').click();
+  await B.page.locator('a.chat-row[href^="#/chat/g/"]', { hasText: 'Push-Team' }).click();
+  await B.page.locator('.app-header [data-action="chat-info"]').click();
+  assert.equal(await B.page.locator('.modal:not(.closing) [data-act="delete"]').count(), 0);    // Mitglieder löschen nichts
+  await B.page.locator('.modal:not(.closing) [data-act="leave"]').click();
+  await dlgButton(B.page, 'Verlassen').click();
+  await waitHash(B.page, /#\/chat$/).catch(async (e) => { throw new Error(e.message + ' | Toasts: ' + JSON.stringify(await B.page.evaluate(() => window.__toasts)) + ' | Hash: ' + await B.page.evaluate(() => location.hash) + ' | Fehler: ' + JSON.stringify(errors.slice(-4))); });
+  await B.page.locator('.chat-empty-small', { hasText: 'Noch keine Gruppen' }).waitFor();
+
+  // --- A lädt B wieder ein (Mitglieder hinzufügen), dann löscht die Gruppe ---
+  await A.page.locator('.app-header [data-action="chat-info"]').click();
+  await A.page.locator('.modal:not(.closing) [data-act="add"]').click();
+  await A.page.locator('.modal:not(.closing) .pick-row', { hasText: '@grpben' }).click();
+  await A.page.locator('.modal:not(.closing) [data-ok]').click();
+  await B.page.locator('a.chat-row[href^="#/chat/g/"]', { hasText: 'Push-Team' }).waitFor();
+  // Die Gruppeninfo öffnet sich nach dem Hinzufügen von selbst wieder – jetzt mit beiden Mitgliedern
+  await A.page.locator('.modal:not(.closing) .grp-member', { hasText: '@grpben' }).waitFor();
+  await A.page.locator('.modal:not(.closing) [data-act="delete"]').click();
+  await dlgButton(A.page, 'Löschen').click();
+  await waitHash(A.page, /#\/chat$/);
+  await A.page.locator('.chat-empty-small', { hasText: 'Noch keine Gruppen' }).waitFor();
+  await B.page.locator('.chat-empty-small', { hasText: 'Noch keine Gruppen' }).waitFor();
+
+  for (const p of pages) toastLog.push(...await p.page.evaluate(() => window.__toasts || []).catch(() => []));
+  await Promise.all([A.ctx.close(), B.ctx.close()]);
+  assert.deepEqual(errors.filter((e) => /grp-/.test(e)), [], JSON.stringify(errors));
+  assert.deepEqual(toastLog.filter((t) => /Fehler|fehlgeschlagen|nicht geklappt|Berechtigung|Nicht erlaubt/.test(t)), []);
+});

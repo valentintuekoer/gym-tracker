@@ -181,3 +181,19 @@ test('Berührung: Lichtfläche, Reduzierte Bewegung und erzwungene Farben sind a
   assert.match(appCss, /@media \(forced-colors: active\) \{\s*\.gt-lit \{ display: none; \}/);
   assert.match(appCss, /html\.gt :is\(/);
 });
+
+/* ---------- Avatare ohne Foto: Farben mit weißer Schrift lesbar ---------- */
+
+test('Buchstaben-Avatare: alle zehn Hintergrundfarben tragen weiße Schrift mit mindestens 4,5:1', () => {
+  const hsl = (h, s, l) => { s /= 100; l /= 100; const a = s * Math.min(l, 1 - l); const f = (n) => { const k = (n + h / 30) % 12; return l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1))); }; return [f(0), f(8), f(4)].map((x) => Math.round(x * 255)); };
+  const found = [...appCss.matchAll(/\.ac(\d)\s*\{\s*--ac:\s*(\d+) (\d+)% (\d+)%;\s*\}/g)];
+  assert.equal(found.length, 10);
+  assert.deepEqual(found.map((m) => Number(m[1])), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  for (const m of found) {
+    const bg = hsl(Number(m[2]), Number(m[3]), Number(m[4]));
+    const ratio = contrast(WHITE, bg);
+    assert.ok(ratio >= 4.5, `.ac${m[1]} hsl(${m[2]} ${m[3]}% ${m[4]}%) → ${ratio.toFixed(2)}:1`);
+  }
+  // die Farben unterscheiden sich spürbar (verschiedene Farbtöne)
+  assert.equal(new Set(found.map((m) => m[2])).size, 10);
+});

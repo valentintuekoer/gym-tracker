@@ -108,7 +108,7 @@ spacing:
   s-6: "32px"
   s-7: "48px"
   gutter: "16px"
-  tap: "40px"
+  tap: "44px"
 components:
   button-primary:
     backgroundColor: "{colors.accent-dark}"
@@ -208,7 +208,7 @@ Die Stufen folgen den iOS-Textstilen: Large Title 34–46 · Title 20 · Headlin
 - **8-px-Raster** (`--s-1` … `--s-7`), 16 px Seitenrand, Inhalt max. 640 px breit (iPad/Desktop zentriert).
 - **Safe Areas** über `env(safe-area-inset-*)`: nichts unter Dynamic Island, Statusleiste oder Home-Indikator.
 - **Daumenzone:** Primäraktionen unten (Training starten, Beenden, Speichern), Navigation oben.
-- **Tippflächen: Token `--tap` = 40 pt** (Auswahl im Design-Builder; Apple HIG empfiehlt 44 × 44 pt). Kleine Chips und Icons vergrößern ihre Fläche weiter mit `::after`, statt größer zu werden. Wer wieder auf 44 pt gehen will, ändert nur `--tap`.
+- **Tippflächen ≥ 44 × 44 px** (Token `--tap`) – kleine Chips und Icons vergrößern ihre Fläche mit `::after`, statt größer zu werden.
 - **Dichte „kompakt“:** Kartenabstand 8 px, Kartenpolster 12 px (Tageskarten 16 px), Wochenkarte 12/16 px.
 - Listen sind gruppiert (`.card.flush` + `.row`) wie iOS-Einstellungen; Menüzeilen haben Icon-Kachel, Titel, Unterzeile, Wert, Chevron.
 

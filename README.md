@@ -171,7 +171,7 @@ Speicherorte: `usernames/{name}`, `publicProfiles/{uid}`, `users/{uid}/friends/{
 Dunkel (Standard): tiefes Schwarz mit feinem Raster, darauf klares Liquid Glass aus fünf Schichten (Glanz, Lichtkante,
 Schatten; Unschärfe und Tönung folgen dem Regler, Vorgabe „ultraklar“), Akzent Blau `#0061fe` nur für Hauptaktion und Zustände,
 Nunito als Fließtextschrift (lokal eingebunden, läuft offline), Überschriften in der Systemschrift, kompakte Karten mit
-24 px Radius und eine Tab-Leiste nur mit Symbolen. Hell: blauer Verlauf mit drei Farbflecken wie in der [Liquid-Glass-Demo](#liquid-glass-demo),
+24 px Radius und eine Tab-Leiste nur mit Symbolen (Tippflächen weiter ≥ 44 pt). Hell: blauer Verlauf mit drei Farbflecken wie in der [Liquid-Glass-Demo](#liquid-glass-demo),
 tiefblauer Akzent. Die Auswahl stammt aus dem Design-Builder; es ist nur das Aussehen – Inhalte und Aufbau der Bildschirme sind
 unverändert. Die schwebende Tab-Leiste lässt sich mit dem Finger über die Reiter ziehen. Wie in iOS 27 reagiert Glas auf
 Berührung (es hebt sich, federt, leuchtet unter dem Finger auf und breitet das Licht auf nahes Glas aus), Sheets und Dialoge wachsen aus

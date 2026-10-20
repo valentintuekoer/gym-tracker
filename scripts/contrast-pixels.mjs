@@ -77,6 +77,9 @@ for (const scheme of ['dark', 'light']) {
         // Text in der Ausblendzone über der Tab-Leiste (Inhalt blendet dort absichtlich aus) zählt nicht
         const tb = document.querySelector('.tabbar');
         if (!document.querySelector('.modal-card') && tb && getComputedStyle(tb).display !== 'none' && b.bottom > tb.getBoundingClientRect().top - 28) continue;
+        // ebenso über dem Pausentimer: die Karte blendet dort aus
+        const tm = document.querySelector('.timer-bar.show');
+        if (tm && !document.querySelector('.modal-card') && b.bottom > tm.getBoundingClientRect().top - 28) continue;
         // verdeckt (Tab-Leiste, Timer, Sheet-Hintergrund …)? Dann zählt der Text nicht
         const modal = document.querySelector('.modal-card');
         if (modal && !modal.contains(el)) continue;

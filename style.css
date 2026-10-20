@@ -204,7 +204,7 @@
   --r-pill: 999px;
 
   /* Maße */
-  --tap: 40px;               /* Auswahl im Design-Builder: 40 pt (Apple HIG empfiehlt 44) */
+  --tap: 44px;               /* Mindest-Tippfläche (Apple HIG: 44 × 44 pt) */
   --gutter: 16px;
   --hdr-h: 44px;
   --tabbar-h: 54px;

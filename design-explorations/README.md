@@ -28,6 +28,18 @@ Die Beschreibungen stehen in `variants.json`; je Variante gibt es ein Blatt unte
   in Safari und Firefox bleibt das Glas ohne Brechung (Unschärfe, Tönung, Rand und Glanz bleiben).
 - `RESEARCH.md` – Zusammenfassung der Recherche (Apple HIG, WWDC25/26, technische Funktionsweise, Barrierefreiheit) mit Quellen.
 
+## Glasstärke (ultraklar … voll getönt)
+
+Apple bringt mit iOS 27 einen Regler für die Glasstärke. Die Prototypen haben dafür einen Regler von 0 (ultraklar: kaum Tönung, wenig Weichzeichnung)
+bis 100 (voll getönt: deckende dunkle Fläche im Farbton der Variante); 50 ist der Stand der Variante, wie in den ersten Blättern.
+Akzentfarbene Knöpfe bleiben Akzent. Apple nennt keine Zahlen, die Kurven sind Näherungen.
+
+- `glass-strength/sheets/NN-name.png` – je Variante Training, Laufendes Training und eine Glasprobe in fünf Stufen (0, 25, 50, 75, 100).
+- `glass-strength/overview.png` – Laufendes Training, je Reihe eine Stufe, alle zehn Varianten nebeneinander.
+- `glass-strength/probe-overview.png` – Glasprobe auf buntem, kontrastreichem Grund: je Zeile eine Variante, je Spalte eine Stufe.
+  In den App-Screens liegt hinter dem Glas fast nur Schwarz, dort sieht man die Stufen schwach; die Probe zeigt sie deutlich.
+- Live wählen: `vNN-name/index.html?ui=1` blendet oben einen Regler ein; `?glass=0…100` setzt die Stärke direkt. Dasselbe gilt für `glass-strength/probe.html?v=v03-tiefsee&a=%2319d3c5`.
+
 ## Neu erzeugen
 
 ```sh
@@ -35,6 +47,7 @@ cd tests/emulator && npm install      # einmalig: installiert Playwright
 node design-explorations/build/shoot.mjs            # alles
 node design-explorations/build/shoot.mjs v03        # nur Varianten, deren Ordner so beginnt
 SCALE=1 node design-explorations/build/shoot.mjs    # kleinere Bilder
+node design-explorations/build/shoot-strength.mjs   # Glasstärke: Einzelbilder, Blätter, Übersichten (dauert gut zwei Minuten)
 ```
 
 ## Aufbau

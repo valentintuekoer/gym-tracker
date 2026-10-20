@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glasprobe</title>
+<!-- Glasprobe: das Material einer Variante (Weichzeichnung, Tönung, Linse, Rand) über buntem, kontrastreichem Grund.
+     Aufruf: probe.html?v=v03-tiefsee&a=%2319d3c5&glass=0…100. Die Variante liefert nur ihr style.css; alle Elemente hier sind generisch. -->
+<link rel="stylesheet" href="../shared/base.css">
+<script>
+  var q = new URLSearchParams(location.search);
+  document.write('<link rel="stylesheet" href="../' + (q.get('v') || 'v01-obsidian') + '/style.css">');
+  document.documentElement.style.setProperty('--probe-accent', q.get('a') || '#ffffff');
+</script>
+<style>
+  body { margin: 0; background: #050505; padding: 24px; }
+  .probe { position: relative; width: 390px; height: 260px; overflow: hidden; isolation: isolate; background: #101014; color: var(--text, #fff); font-family: var(--font-ui, 'Inter', system-ui, sans-serif); }
+  /* Keine Rundung am Rahmen: overflow:hidden mit border-radius beschneidet den backdrop-filter der Glaselemente eckig (Chromium). */
+  /* bunter Grund */
+  .probe .pb-bg { position: absolute; inset: 0; z-index: -1; background:
+      radial-gradient(120px 90px at 12% 18%, #ff8a3d 0, transparent 70%),
+      radial-gradient(150px 110px at 88% 22%, #ff3d8b 0, transparent 70%),
+      radial-gradient(160px 120px at 64% 100%, #3d6bff 0, transparent 70%),
+      radial-gradient(120px 90px at 8% 100%, #19d3c5 0, transparent 70%), #1b1130; }
+  .probe .pb-card { position: absolute; left: 18px; top: 112px; width: 180px; height: 76px; border-radius: 12px; background: #fff; color: #111; padding: 12px 14px; font: 700 15px/1.25 var(--font-ui, 'Inter', sans-serif); }
+  .probe .pb-card span { display: block; font: 500 11px/1.4 var(--font-ui, 'Inter', sans-serif); color: #555; margin-top: 4px; }
+  .probe .pb-band { position: absolute; left: 206px; top: 112px; right: 18px; height: 76px; border-radius: 12px; background: #ffe14d; color: #000; padding: 12px 14px; font: 800 30px/1 var(--font-ui, 'Inter', sans-serif); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .probe .pb-band span { display: block; font: 600 11px var(--font-ui, 'Inter', sans-serif); letter-spacing: 0; margin-top: 6px; }
+  .probe .pb-head { position: absolute; left: 18px; top: 14px; font: 800 20px/1 var(--font-ui, 'Inter', sans-serif); letter-spacing: -.02em; text-shadow: 0 1px 8px rgba(0, 0, 0, .35); }
+  /* Glas: Stepper oben, Navigation und Hauptknopf unten */
+  .probe .pb-stepper { position: absolute; left: 18px; right: 18px; top: 44px; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; --r: 26px; }
+  .probe .pb-stepper button { width: 38px; height: 38px; border-radius: 50%; background: rgba(255, 255, 255, .12); font: 700 13px var(--font-ui, 'Inter', sans-serif); }
+  .probe .pb-stepper b { font: 800 22px var(--font-ui, 'Inter', sans-serif); font-variant-numeric: tabular-nums; }
+  .probe .pb-stepper b small { font: 600 12px var(--font-ui, 'Inter', sans-serif); opacity: .75; margin-left: 4px; }
+  .probe .pb-nav { position: absolute; left: 18px; bottom: 14px; width: 278px; height: 56px; display: flex; align-items: center; justify-content: space-around; --r: 28px; padding: 0 6px; }
+  .probe .pb-nav span { display: flex; flex-direction: column; align-items: center; gap: 3px; font: 600 10px/1 var(--font-ui, 'Inter', sans-serif); min-width: 56px; opacity: .85; }
+  .probe .pb-nav span.on { opacity: 1; background: rgba(255, 255, 255, .16); border-radius: 22px; padding: 6px 8px; }
+  .probe .pb-nav .ic { --ic-size: 20px; --ic-stroke: 2; }
+  .probe .pb-fab { position: absolute; right: 18px; bottom: 14px; width: 56px; height: 56px; display: grid; place-items: center; color: #000; --r: 28px; --glass-fill: color-mix(in srgb, var(--probe-accent) 90%, transparent); --glass-blur: 6px; --halo-hi: 0; }
+  .probe .pb-fab .ic { --ic-size: 24px; --ic-stroke: 2.6; }
+  .probe .pb-fab-t { position: absolute; right: 18px; bottom: 74px; font: 600 10px var(--font-ui, 'Inter', sans-serif); color: #fff; text-shadow: 0 1px 6px rgba(0, 0, 0, .6); }
+</style>
+</head>
+<body>
+<div class="probe" data-screen="probe">
+  <div class="pb-bg"></div>
+  <div class="pb-head">Glasprobe</div>
+  <div class="glass pb-stepper"><button aria-label="2,5 kg weniger">−2,5</button><b>62,5<small>kg</small></b><button aria-label="2,5 kg mehr">+2,5</button></div>
+  <div class="pb-card">Bankdrücken<span>Letztes Mal 57,5 × 10 · 58,5 × 9 · 59,5 × 8</span></div>
+  <div class="pb-band">76,7 kg<span>Bestes 1RM</span></div>
+  <nav class="glass pb-nav" aria-label="Navigation"><span class="on"><i data-ic="dumbbell"></i>Training</span><span><i data-ic="calendar-check"></i>Daily</span><span><i data-ic="message-circle"></i>Chat</span><span><i data-ic="user"></i>Profil</span></nav>
+  <button class="glass pb-fab" aria-label="Satz abhaken"><i data-ic="check"></i></button>
+</div>
+<script src="../shared/icons.js"></script>
+<script src="../shared/glass.js"></script>
+</body>
+</html>

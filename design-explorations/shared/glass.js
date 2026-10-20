@@ -15,6 +15,12 @@
  *   --lens-chroma   Stärke der Farbsäume 0…1                                                     Standard 0
  *   --glass-blur (höchstens 14 px), --glass-sat, --glass-bright, --glass-contrast
  *   Faustregel: Versatz höchstens 22 % der kleineren Seite, Rand höchstens 45 %.
+ *
+ * Glasstärke (nach Apples Regler „ultraklar … voll getönt“, iOS 27): 0 … 100, Standard 50 = die Werte der Variante unverändert.
+ *   ?glass=NN in der Adresse, Glass.setStrength(NN) oder window.postMessage({ glassStrength: NN }); ?ui=1 blendet einen Regler ein.
+ *   Unter 50: weniger Tönung und Weichzeichnung (klarer). Über 50: das Glas wird zur deckenden dunklen Fläche in der Tönung der Variante.
+ *   Akzentfarbene Flächen (Deckkraft ≥ 0,75, z. B. der Hauptknopf) bleiben Akzent: bei klarem Glas leicht durchscheinend, bei getöntem deckend.
+ *   Apple nennt keine Zahlen; die Kurven sind Näherungen.
  */
 (function () {
   'use strict';
@@ -87,13 +93,49 @@
     return n;
   }
 
+  var strength = 50;
+  var probe;
+  /** Beliebige CSS-Farbe → [r, g, b, a] */
+  function parseColor(str) {
+    if (!probe) { probe = document.createElement('i'); probe.style.cssText = 'position:absolute;visibility:hidden'; document.body.appendChild(probe); }
+    probe.style.color = '';
+    probe.style.color = str;
+    var col = getComputedStyle(probe).color, m = col.match(/-?[\d.]+(?:e-?\d+)?/g) || [0, 0, 0, 1];
+    var k = /^color\(/.test(col) ? 255 : 1; // color-mix() u. ä. kommt als color(srgb 0…1 …) zurück
+    return [+m[0] * k, +m[1] * k, +m[2] * k, m[3] === undefined ? 1 : +m[3]];
+  }
+  var lerp = function (a, b, t) { return a + (b - a) * t; };
+
+  /** Wendet die Glasstärke auf die Werte des Elements an; gibt Faktoren für Weichzeichnung zurück. */
+  function applyStrength(node, cs) {
+    node.style.removeProperty('--glass-fill');
+    if (strength === 50) return 1;
+    var t = (strength - 50) / 50; // -1 … 1
+    var raw = cs.getPropertyValue('--glass-fill').trim() || 'rgba(255,255,255,.05)'; // Standard aus base.css
+    {
+      var c = parseColor(raw), a = c[3], out;
+      if (a >= 0.75) { // Akzent
+        a = t < 0 ? a * (1 + 0.45 * t) : lerp(a, 1, t);
+        out = [c[0], c[1], c[2], a];
+      } else if (t < 0) { // klarer: Tönung nimmt ab
+        out = [c[0], c[1], c[2], a * (1 + 0.9 * t)];
+      } else { // getönter: deckend, dunkel, Farbton der Variante bleibt anklingen
+        var k = Math.min(1, t * 1.5) * 0.92; // helle Fläche wird rasch dunkel, ein Rest vom Farbton bleibt
+        out = [lerp(c[0], 14, k), lerp(c[1], 14, k), lerp(c[2], 16, k), lerp(a, 0.94, t)];
+      }
+      node.style.setProperty('--glass-fill', 'rgba(' + out.map(function (v, i) { return i < 3 ? Math.round(v) : v.toFixed(3); }).join(',') + ')');
+    }
+    return t < 0 ? 1 + 0.4 * t : 1 + 0.3 * t; // klarer = weniger diffus (0,6×), getönter = diffuser (1,3×, bleibt bei 14 px gedeckelt)
+  }
+
   function build(node) {
     var cs = getComputedStyle(node);
     var w = Math.round(node.offsetWidth), h = Math.round(node.offsetHeight);
     if (!w || !h) return;
+    var blurK = applyStrength(node, cs);
     // Der Renderer der Screenshot-Umgebung (Chromium ohne GPU) verliert oberhalb von etwa 14 px an Weichzeichnung (Aliasing, gemessen:
     // Streuung 0,6 bei 12 px, 6 bei 22 px, 34 bei 40 px). Größeres Milchglas entsteht deshalb über Tönung und Sättigung.
-    var blur = Math.min(14, num(cs, '--glass-blur', 12)), sat = num(cs, '--glass-sat', 1.6);
+    var blur = Math.min(14, Math.round(num(cs, '--glass-blur', 12) * blurK * 10) / 10), sat = num(cs, '--glass-sat', 1.6);
     var bright = num(cs, '--glass-bright', 1), contrast = num(cs, '--glass-contrast', 1);
     var scale = num(cs, '--lens-scale', 14) * 2; // feDisplacementMap verschiebt um scale * (Kanalwert - 0,5), der Kartenwert reicht nur bis ±0,5
     var r = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, w / 2, h / 2);
@@ -145,7 +187,36 @@
     document.documentElement.setAttribute('data-glass', 'ready');
   }
 
-  window.Glass = { rebuild: run };
+  function setStrength(n) {
+    n = Math.max(0, Math.min(100, Number(n)));
+    if (!isFinite(n)) return;
+    strength = n;
+    document.documentElement.setAttribute('data-glass-strength', String(n));
+    var r = document.getElementById('glass-ui-range'), o = document.getElementById('glass-ui-out');
+    if (r) r.value = n;
+    if (o) o.textContent = label(n);
+    if (document.documentElement.getAttribute('data-glass') === 'ready') run();
+  }
+  function label(n) { return n + ' · ' + (n <= 10 ? 'ultraklar' : n < 40 ? 'klar' : n <= 60 ? 'Standard der Variante' : n < 90 ? 'getönt' : 'voll getönt'); }
+
+  var q = new URLSearchParams(location.search);
+  if (q.has('glass')) { var qs = Number(q.get('glass')); if (isFinite(qs)) strength = Math.max(0, Math.min(100, qs)); }
+  document.documentElement.setAttribute('data-glass-strength', String(strength));
+  window.addEventListener('message', function (e) { if (e.data && e.data.glassStrength !== undefined) setStrength(e.data.glassStrength); });
+
+  // Regler (nur mit ?ui=1, damit Screenshots frei davon bleiben)
+  function ui() {
+    var d = document.createElement('div');
+    d.setAttribute('role', 'group'); d.setAttribute('aria-label', 'Glasstärke');
+    d.style.cssText = 'position:fixed;z-index:99999;left:50%;top:10px;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:10px 18px;border-radius:14px;background:rgba(24,24,28,.92);border:1px solid rgba(255,255,255,.18);font:600 13px Inter,system-ui,sans-serif;color:#fff;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+    d.innerHTML = '<label for="glass-ui-range">Glasstärke</label><span style="color:#9a9aa2;font-weight:500">klar</span><input id="glass-ui-range" type="range" min="0" max="100" step="1" style="width:280px;accent-color:#fff"><span style="color:#9a9aa2;font-weight:500">getönt</span><output id="glass-ui-out" style="min-width:170px;font-variant-numeric:tabular-nums"></output>';
+    document.body.appendChild(d);
+    var r = d.querySelector('input'); r.value = strength; document.getElementById('glass-ui-out').textContent = label(strength);
+    r.addEventListener('input', function () { setStrength(r.value); });
+  }
+  if (q.get('ui') === '1') { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ui); else ui(); }
+
+  window.Glass = { rebuild: run, setStrength: setStrength, get strength() { return strength; } };
   var go = function () { (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function () { requestAnimationFrame(run); }); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
 })();

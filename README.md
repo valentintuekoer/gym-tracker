@@ -314,3 +314,9 @@ Daten gespeichert und nie mit Freunden geteilt.
   Rangliste, offline, Freund entfernen, Abmelden, Konto löschen sowie der Chat und die Gruppen/Direktnachrichten mit zwei Geräten: Echtzeit,
   Gym-Karte, mitkommen, Fehler mit Erneut-Senden, melden/blockieren, Nachladen, Wiener Zeit).
   Screenshots des Chats: `CHAT_SHOTS=/pfad npm run test:ui`. Einmalig vorher `npx playwright install chromium`.
+  Dazu gehören auch die Anmeldeseite (Fehlermeldungen, „Passwort vergessen?“) und ein Layout-Test mit extrem langen Namen und Notizen.
+- Von Hand ausprobieren mit **Playwright MCP** (steht in `.mcp.json`, startet headless): Emulatoren mit
+  `cd tests/emulator && npx firebase emulators:start --project demo-gym --config ../../firebase.json` starten, die App von einem
+  kleinen Webserver ausliefern und `firebase-config.js` auf den Emulator zeigen lassen (`useEmulator: true`, siehe `tests/emulator/ui.test.mjs`).
+  Das Firebase-SDK lädt die App von `gstatic.com`; ist das gesperrt, im Browser per `page.route` auf `tests/emulator/node_modules/firebase` umleiten.
+  In einer Umgebung als root braucht Chromium `--no-sandbox`, und Playwright MCP sucht standardmäßig Chrome unter `/opt/google/chrome/chrome`.

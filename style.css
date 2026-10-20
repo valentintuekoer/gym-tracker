@@ -1329,6 +1329,9 @@ input[type="date"].in { min-height: 48px; }
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 
 .break { overflow-wrap: anywhere; }
+/* Eigene Texte (Tag- und Übungsnamen, Notizen, Mahlzeiten): lange Wörter und eingefügte Links umbrechen,
+   statt die Seite seitlich zu verschieben */
+.day-name, .day-ex, .pv-name, .pv-note span, .ex-note span, .st-note, .li-title, .ex-head h2, .summary-hero p { overflow-wrap: anywhere; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
 
 /* =========================================================

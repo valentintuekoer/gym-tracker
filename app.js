@@ -28,6 +28,9 @@
   const MAX_REST = 1800;
   const DEFAULT_SETS = 3;  // Sätze pro Übung, wenn nichts anderes eingestellt ist
   const MAX_SETS = 20;
+  const MAX_WEIGHT = 2000; // kg pro Satz – darüber ist es ein Tippfehler und der Wert zählt als leer
+  const MAX_REPS = 999;
+  const BODY_MAX = { weight: 500, bodyfat: 100, waist: 300, chest: 300, hips: 300, arm: 300, thigh: 300 }; // kg bzw. % bzw. cm
 
   const DEFAULT_SETTINGS = {
     defaultRest: 90,   // Standardpause für neue Übungen (Sekunden)
@@ -66,12 +69,12 @@
   }
 
   /** Liest eine Zahl aus einem Eingabefeld (Komma oder Punkt). Leer/ungültig → null. */
-  function parseNum(v) {
+  function parseNum(v, max) {
     if (v === null || v === undefined) return null;
     const s = String(v).trim().replace(',', '.');
     if (s === '') return null;
     const n = Number(s);
-    return Number.isFinite(n) && n >= 0 ? n : null;
+    return Number.isFinite(n) && n >= 0 && (max === undefined || n <= max) ? n : null;
   }
 
   /** Zahl im deutschen Format (Komma), max. 2 Nachkommastellen. */
@@ -293,8 +296,8 @@
 
   function normSet(st, withId) {
     const out = {
-      weight: parseNum(st && st.weight),
-      reps: parseNum(st && st.reps),
+      weight: parseNum(st && st.weight, MAX_WEIGHT),
+      reps: parseNum(st && st.reps, MAX_REPS),
       note: String((st && st.note) || ''),
       done: !!(st && st.done),
     };
@@ -318,7 +321,7 @@
   function normBodyEntry(e) {
     const out = { id: String(e.id || uid()), date: Number(e.date), note: String(e.note || '') };
     for (const [k] of BODY_FIELDS) {
-      const v = parseNum(e[k]);
+      const v = parseNum(e[k], BODY_MAX[k]);
       out[k] = v === null ? null : Math.round(v * 10) / 10;
     }
     return out;
@@ -782,7 +785,7 @@
    * opts: { inc (Schritt, Standard 2,5), bar (Stangengewicht oder null) }. Rückgabe: [{ weight, reps }]
    */
   Core.warmupPlan = function (work, opts) {
-    const w = parseNum(work);
+    const w = parseNum(work, MAX_WEIGHT);
     if (w === null || w <= 0) return [];
     const inc = (opts && opts.inc) || 2.5;
     const bar = opts && opts.bar ? opts.bar : null;
@@ -829,8 +832,8 @@
     const se = Core.findSessionExercise(db, seId);
     const st = se && se.sets.find((x) => x.id === setId);
     if (!st) return false;
-    if (field === 'weight') st.weight = parseNum(value);
-    else if (field === 'reps') { const n = parseNum(value); st.reps = n === null ? null : Math.round(n); }
+    if (field === 'weight') st.weight = parseNum(value, MAX_WEIGHT);
+    else if (field === 'reps') { const n = parseNum(value, MAX_REPS); st.reps = n === null ? null : Math.round(n); }
     else if (field === 'note') st.note = String(value);
     else if (field === 'rir' || field === 'rpe') {
       const v = clampEffort(value);
@@ -875,7 +878,7 @@
     const ctx = Core.exerciseContext(db, se);
     const base = st[field] !== null ? st[field] : Core.placeholderFor(ctx.prev, se, index, ctx)[field];
     let v = (base === null ? 0 : base) + delta;
-    v = field === 'reps' ? Math.max(0, Math.round(v)) : Math.max(0, Math.round(v * 100) / 100);
+    v = field === 'reps' ? Math.min(MAX_REPS, Math.max(0, Math.round(v))) : Math.min(MAX_WEIGHT, Math.max(0, Math.round(v * 100) / 100));
     st[field] = v;
     return v;
   };
@@ -1007,16 +1010,15 @@
   Core.decodePlan = function (code) {
     let p;
     try { p = JSON.parse(b64urlDecode(String(code).trim())); } catch (e) { throw new Error('Der Code ist ungültig oder unvollständig.'); }
-    if (!p || typeof p !== 'object' || !Array.isArray(p.e) || !p.e.length) throw new Error('Der Code enthält keinen Trainingsplan.');
-    return {
-      name: String(p.n || 'Geteiltes Training').slice(0, 60),
-      exercises: p.e.slice(0, 40).filter((e) => e && e.n).map((e) => ({
-        name: String(e.n).slice(0, 80),
-        sets: clampSets(e.s),
-        rest: clampRest(e.r),
-        ...repTargetFields(e.a, e.b),
-      })),
-    };
+    if (!p || typeof p !== 'object' || !Array.isArray(p.e)) throw new Error('Der Code enthält keinen Trainingsplan.');
+    const exercises = p.e.slice(0, 40).filter((e) => e && e.n).map((e) => ({
+      name: String(e.n).slice(0, 80),
+      sets: clampSets(e.s),
+      rest: clampRest(e.r),
+      ...repTargetFields(e.a, e.b),
+    }));
+    if (!exercises.length) throw new Error('Der Code enthält keinen Trainingsplan.'); // nur leere/ungültige Einträge
+    return { name: String(p.n || 'Geteiltes Training').slice(0, 60), exercises };
   };
 
   /** Geteilten Plan als neuen Trainingstag anlegen. */
@@ -7258,11 +7260,14 @@
       });
       if (email === null) return;
       if (!window.GymCloud) { toast(authErrorText({ code: 'no-cloud' })); return; }
+      // Nicht verraten, ob es zu der Adresse ein Konto gibt (wie Firebase mit Schutz vor E-Mail-Enumeration)
+      const sent = () => toast('Falls es zu dieser Adresse ein Konto gibt, ist eine E-Mail unterwegs – schau in dein Postfach (auch im Spam).');
       try {
         await window.GymCloud.resetPassword(email);
-        toast('E-Mail verschickt – schau in dein Postfach (auch im Spam).');
+        sent();
       } catch (e) {
-        toast(authErrorText(e));
+        if (e && e.code === 'auth/user-not-found') sent();
+        else toast(authErrorText(e));
       }
     },
     'sync-now': () => {
@@ -7486,7 +7491,7 @@
       okBtn.disabled = !list.length;
       preview.innerHTML = list.length
         ? '<ol class="set-table">' + list.map((x) => '<li class="warm"><span class="st-val">' + esc(fmtSet(x)) + '</span><span class="st-e1">' + Math.round((x.weight / parseNum(input.value)) * 100) + ' %</span></li>').join('') + '</ol>'
-        : '<p class="muted">' + (parseNum(input.value) ? 'Bei so wenig Gewicht reicht ein lockerer Satz – nutze „Leeren Aufwärmsatz hinzufügen“.' : 'Gib dein Gewicht für den ersten Arbeitssatz ein.') + '</p>';
+        : '<p class="muted">' + (parseNum(input.value, MAX_WEIGHT) ? 'Bei so wenig Gewicht reicht ein lockerer Satz – nutze „Leeren Aufwärmsatz hinzufügen“.' : 'Gib dein Gewicht für den ersten Arbeitssatz ein.') + '</p>';
     };
     draw();
     input.addEventListener('input', draw);

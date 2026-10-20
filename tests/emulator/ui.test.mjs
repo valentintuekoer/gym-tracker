@@ -360,6 +360,40 @@ test('Daily: Gewicht eintragen, Mealplan anlegen, jeden Tag abhaken', async () =
   await ctx.close();
 });
 
+test('Lange Namen und Notizen ohne Leerzeichen (z. B. eingefügte Links) schieben keine Seite auseinander', async () => {
+  const { ctx, page } = await device('lang', { cloud: false });
+  await openApp(page);
+  await page.locator('[data-action="auth-guest"]').click();
+  await waitHash(page, /#\/setup/);
+  for (let i = 0; i < 3; i++) await page.locator('[data-action="setup-next"]').click();
+  await waitHash(page, /#\/$/);
+  const ids = await page.evaluate(() => {
+    const A = window.GymApp, C = A.Core, db = A.db;
+    const day = C.addDay(db, 'D'.repeat(60));
+    const ex = C.addExercise(db, day.id, 'E'.repeat(80), 90, 3, null);
+    C.setExerciseNote(db, day.id, ex.id, 'https://example.com/' + 'n'.repeat(180));
+    const s = C.startSession(db, day.id, Date.now() - 3600000);
+    const se = s.exercises[0];
+    se.sets.forEach((st, k) => {
+      C.updateSet(db, se.id, st.id, 'weight', String(50 + k)); C.updateSet(db, se.id, st.id, 'reps', '8');
+      C.updateSet(db, se.id, st.id, 'note', 'https://example.com/' + 's'.repeat(180)); C.toggleSet(db, se.id, st.id, Date.now());
+    });
+    const done = C.finishSession(db, Date.now());
+    C.addMeal(db, { name: 'M'.repeat(60), time: '08:00', note: 'm'.repeat(200), kcal: 500 });
+    A.save(); A.render();
+    return { day: day.id, sess: done.id };
+  });
+  const routes = ['#/', '#/day/' + ids.day, '#/preview/' + ids.day, '#/summary/' + ids.sess, '#/history', '#/history/session/' + ids.sess,
+    '#/history/ex/' + encodeURIComponent('e'.repeat(80)), '#/daily/plan'];
+  for (const route of routes) {
+    await page.evaluate((h) => { location.hash = h; }, route);
+    await waitHash(page, new RegExp('^' + route.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&') + '$'));
+    const w = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, view: window.innerWidth }));
+    assert.ok(w.scroll <= w.view, `${route.slice(0, 30)}: Seite ist ${w.scroll} px breit, sichtbar sind ${w.view} px`);
+  }
+  await ctx.close();
+});
+
 test('Nach einem Update mit alter Cloud-Anbindung im Cache: einmal neu laden, dann klarer Hinweis', async () => {
   const OLD = process.env.OLD_CLOUD_JS; // cloud.js der Vorversion (ohne Freunde)
   if (!OLD || !fs.existsSync(OLD)) return;
@@ -383,6 +417,22 @@ test('Nach einem Update mit alter Cloud-Anbindung im Cache: einmal neu laden, da
   await page.locator('.profile-hero h2', { hasText: '@updater' }).waitFor();
   await page.waitForTimeout(1500);
   assert.equal(await page.locator('.offline-note').count(), 0);
+  await ctx.close();
+});
+
+test('Anmeldung: klare Fehlermeldungen, „Passwort vergessen“ verrät nicht, ob es ein Konto gibt', async () => {
+  const { ctx, page } = await device('login');
+  await openApp(page);
+  await page.fill('input[name="email"]', 'gibtsnicht@test.de');
+  await page.fill('input[name="password"]', 'geheim123');
+  await page.locator('#auth-submit').click();
+  await page.locator('#auth-error', { hasText: 'E-Mail oder Passwort ist falsch.' }).waitFor();
+  // „Passwort vergessen?“ übernimmt die eingetippte Adresse. Auch für ein unbekanntes Konto kommt dieselbe neutrale Meldung
+  await page.locator('[data-action="auth-reset"]').click();
+  assert.equal(await page.locator('.modal:not(.closing) input').inputValue(), 'gibtsnicht@test.de');
+  await dlgButton(page, 'E-Mail senden').click();
+  await toastText(page).filter({ hasText: 'Falls es zu dieser Adresse ein Konto gibt' }).waitFor();
+  assert.doesNotMatch(await toastText(page).innerText(), /falsch/);
   await ctx.close();
 });
 

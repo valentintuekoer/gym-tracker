@@ -1128,12 +1128,12 @@ test('Liquid-Glass-Regler: 0…100, ganze Zahl, Vorgabe 50; kaputte Werte fallen
   assert.equal(util.clampGlass(37.6), 38);
   assert.equal(util.clampGlass(-20), 0);
   assert.equal(util.clampGlass(250), 100);
-  for (const bad of [undefined, null, '', 'abc', NaN]) assert.equal(util.clampGlass(bad), 50, String(bad));
+  for (const bad of [undefined, null, '', 'abc', NaN]) assert.equal(util.clampGlass(bad), 0, String(bad));
   const db = Core.normalize({ days: [], settings: { glass: 999 } });
   assert.equal(db.settings.glass, 100);
-  assert.equal(Core.normalize({ days: [], settings: {} }).settings.glass, 50);
-  assert.equal(Core.normalize({ days: [], settings: { glass: 'x' } }).settings.glass, 50);
-  assert.equal(Core.emptyData().settings.glass, 50);
+  assert.equal(Core.normalize({ days: [], settings: {} }).settings.glass, 0);
+  assert.equal(Core.normalize({ days: [], settings: { glass: 'x' } }).settings.glass, 0);
+  assert.equal(Core.emptyData().settings.glass, 0);
 });
 
 test('Buchstaben-Avatare: Anfangsbuchstabe groß, Farbe stabil pro Name und breit gestreut', () => {

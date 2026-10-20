@@ -168,15 +168,17 @@ Speicherorte: `usernames/{name}`, `publicProfiles/{uid}`, `users/{uid}/friends/{
 
 ## Erscheinungsbild „Liquid Glass“
 
-Die App sieht aus wie die [Liquid-Glass-Demo](#liquid-glass-demo): blauer Verlauf mit drei Farbflecken, darauf Glas aus
-fünf Schichten (Unschärfe, getönte Fläche, Glanz, Lichtkante, Schatten), einfarbig – weiß im dunklen, tiefblau im hellen
-Design. Es ist nur das Aussehen – Inhalte und Aufbau der Bildschirme sind unverändert. Die schwebende Tab-Leiste
-schrumpft beim Herunterscrollen auf reine Icons und lässt sich mit dem Finger über die Reiter ziehen. Wie in iOS 27 reagiert Glas auf
+Dunkel (Standard): tiefes Schwarz mit feinem Raster, darauf klares Liquid Glass aus fünf Schichten (Glanz, Lichtkante,
+Schatten; Unschärfe und Tönung folgen dem Regler, Vorgabe „ultraklar“), Akzent Blau `#0061fe` nur für Hauptaktion und Zustände,
+Nunito als Fließtextschrift (lokal eingebunden, läuft offline), Überschriften in der Systemschrift, kompakte Karten mit
+24 px Radius und eine Tab-Leiste nur mit Symbolen (Tippflächen weiter ≥ 44 pt). Hell: blauer Verlauf mit drei Farbflecken wie in der [Liquid-Glass-Demo](#liquid-glass-demo),
+tiefblauer Akzent. Die Auswahl stammt aus dem Design-Builder; es ist nur das Aussehen – Inhalte und Aufbau der Bildschirme sind
+unverändert. Die schwebende Tab-Leiste lässt sich mit dem Finger über die Reiter ziehen. Wie in iOS 27 reagiert Glas auf
 Berührung (es hebt sich, federt, leuchtet unter dem Finger auf und breitet das Licht auf nahes Glas aus), Sheets und Dialoge wachsen aus
 dem gedrückten Knopf, und unter Einstellungen → Darstellung gibt es den Regler „Klar ↔ Getönt“ (Quellen und Näherungen:
 [`DESIGN.md`](DESIGN.md#liquid-glass-wie-in-ios-27)). Farben, Radien und Regeln
 stehen in [`DESIGN.md`](DESIGN.md); alle Werte sind Tokens am Anfang von `style.css` (Dunkel und Hell getrennt, Textkontrast
-≥ 4,5:1 per Pixel gegen die Farbflecken geprüft). Neue Bildschirme prüfst du mit `node scripts/screenshots.mjs` (Bilder, hell + dunkel)
+≥ 4,5:1 per Pixel gegen den echten Hintergrund geprüft, bei Reglerstellung 0, 50 und 100). Neue Bildschirme prüfst du mit `node scripts/screenshots.mjs` (Bilder, hell + dunkel)
 und `node scripts/contrast-pixels.mjs` (Textkontrast jedes sichtbaren Textes gegen den echten Hintergrund).
 
 ## Liquid-Glass-Demo

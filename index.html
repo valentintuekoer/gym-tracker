@@ -8,7 +8,7 @@
 
   <!-- PWA / iOS -->
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#081120">
+  <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark light">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -35,13 +35,14 @@
         d.setAttribute('data-theme', dark ? 'dark' : 'light');
         var g = (localStorage.getItem(key) || '').match(/"glass":(\d+)/);
         if (g) d.style.setProperty('--lg-tint', (Math.min(100, +g[1]) / 100).toFixed(2));
-        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#081120' : '#f1f4fb');
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#000000' : '#f1f4fb');
         document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').setAttribute('content', dark ? 'black-translucent' : 'default');
         if (navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) d.classList.add('standalone');
       } catch (e) { /* Standard: dunkel */ }
     })();
   </script>
 
+  <link rel="preload" href="fonts/nunito-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>

@@ -1,0 +1,132 @@
+[
+  {
+    "nr": "01",
+    "dir": "v01-obsidian",
+    "name": "Obsidian",
+    "idea": "Ruhig und nahezu monochrom: Glas ist nur die Navigationsebene (Tab-Leiste, Knöpfe, Pausenleiste), der Inhalt besteht aus flachen dunklen Flächen mit Haarlinien und leichter Inter-Schrift. Kein Farbakzent außer Weiß.",
+    "accent": "#ffffff",
+    "tags": [
+      "Regular-Glas, leicht",
+      "Inter 300",
+      "Liste mit Haarlinien",
+      "klassische Kapsel-Leiste"
+    ]
+  },
+  {
+    "nr": "02",
+    "dir": "v02-volt",
+    "name": "Volt",
+    "idea": "Laut und sportlich: schmale Versalschrift, riesige Zahlen, Bento-Kacheln und eine einzige Signalfarbe (Limette). Das Glas liegt in einem breiten Dock mit abgesetztem Start-Knopf und in der Hauptaktion.",
+    "accent": "#c8ff2e",
+    "tags": [
+      "Regular-Glas, dunkel + Limette",
+      "Barlow Condensed",
+      "Bento-Kacheln",
+      "breites Dock mit Start-Knopf"
+    ]
+  },
+  {
+    "nr": "03",
+    "dir": "v03-tiefsee",
+    "name": "Tiefsee",
+    "idea": "Fließend und klar: sehr transparentes Glas mit kräftiger Lichtbrechung vor türkisem Licht, runde Formen und ein Ring als Hauptmotiv. Auch die Inhaltskacheln sind Glas, die Navigation ist eine kompakte Kapsel mit getönter Auswahl.",
+    "accent": "#2de2d0",
+    "tags": [
+      "Clear-Glas, auch im Inhalt",
+      "Nunito (rund)",
+      "Ring + Glaskacheln",
+      "kompakte Kapsel, aktives Label"
+    ]
+  },
+  {
+    "nr": "04",
+    "dir": "v04-glut",
+    "name": "Glut",
+    "idea": "Redaktionell und warm: Serifenschrift für Titel und Zahlen, nummerierte Einträge zwischen Haarlinien statt Karten. Rauchglas in Bernstein nur für Navigation, Knöpfe und Pausenleiste; die Navigation besteht aus reinen Text-Tabs.",
+    "accent": "#ff9a3d",
+    "tags": [
+      "Rauchglas, bernstein",
+      "Fraunces (Serif) + Inter",
+      "Magazin-Layout, keine Karten",
+      "Text-Tabs ohne Icons"
+    ]
+  },
+  {
+    "nr": "05",
+    "dir": "v05-prisma",
+    "name": "Prisma",
+    "idea": "Präzise und optisch: ein feines Gitter als optische Bank, klares Glas mit starker Lichtbrechung und echten Farbsäumen, riesige leichte Zahlen und versetzte Glaspaneele. Akzent ist reines Weiß, die einzige Farbe ist das gebrochene Licht.",
+    "accent": "#ffffff",
+    "tags": [
+      "Clear-Glas + Dispersion",
+      "Sora 200–300",
+      "Gitter, versetzte Paneele",
+      "Kapsel + Auswahl-Linse + Kreis"
+    ]
+  },
+  {
+    "nr": "06",
+    "dir": "v06-messwerk",
+    "name": "Messwerk",
+    "idea": "Cockpit für Daten: Monospace-Zahlen, Tabellen, Sparklines und strenge Linien, dazu eckigeres Glas. Die Navigation sitzt oben als segmentierte Glasleiste, unten liegt eine Aktionsleiste mit der Hauptaktion des Screens. Signalfarbe ist Rot.",
+    "accent": "#ff4d4d",
+    "tags": [
+      "Regular-Glas, eckiger (Radius 14–20)",
+      "JetBrains Mono + Inter",
+      "Tabellen, Sparklines",
+      "Tabs oben + Aktionsleiste unten"
+    ]
+  },
+  {
+    "nr": "07",
+    "dir": "v07-quarz",
+    "name": "Quarz",
+    "idea": "Weich und sanft: milchiges Rosé-Glas mit viel Tönung und wenig Lichtbrechung, leichte Schrift, großzügige Abstände und runde Kiesel-Formen. Die Navigation besteht aus vier getrennten Kreisknöpfen statt einer Leiste.",
+    "accent": "#ff7aa8",
+    "tags": [
+      "Frosted-Glas, rosé getönt",
+      "DM Sans 300–500",
+      "weiche runde Karten",
+      "vier getrennte Kreisknöpfe"
+    ]
+  },
+  {
+    "nr": "08",
+    "dir": "v08-zenit",
+    "name": "Zenit",
+    "idea": "Klar und kontraststark, nah am Systemlook: gruppierte Listen, kräftige Manrope-Schrift, extragroße Bedienelemente mit deutlichem Rand und Kobaltblau nur für die Hauptaktion. Die Navigation zeigt drei Tabs in einer Kapsel und den vierten als abgesetzten, getönten „prominenten“ Tab.",
+    "accent": "#2a62ff",
+    "tags": [
+      "Regular-Glas mit starkem Rand",
+      "Manrope 600–800",
+      "gruppierte Listen, XL-Knöpfe",
+      "Kapsel + prominenter Tab"
+    ]
+  },
+  {
+    "nr": "09",
+    "dir": "v09-moos",
+    "name": "Moos",
+    "idea": "Organisch und ruhig: gedämpftes Salbeigrün, feine Konturlinien wie auf einer Geländekarte und weiche Steinkarten. Das Glas ist klar und grün abgedunkelt, die Navigation steht als senkrechte Leiste am rechten Rand, gut mit dem Daumen erreichbar.",
+    "accent": "#a8d5a2",
+    "tags": [
+      "Clear-Glas mit grüner Dimm-Ebene",
+      "Figtree 500–700",
+      "Steinkarten, Konturlinien",
+      "senkrechte Leiste rechts"
+    ]
+  },
+  {
+    "nr": "10",
+    "dir": "v10-signal",
+    "name": "Signal",
+    "idea": "Hart und eindeutig: Signalgelb auf tiefem Schwarz, fette Archivo, eckige Flächen und weiße Haarlinien statt Karten. Das Glas steckt nur in den Bedienelementen – ein eingeklapptes Navigations-Pill und ein gelber Hauptknopf, der beim Training zur Kapsel mit Text aufklappt.",
+    "accent": "#ffe14d",
+    "tags": [
+      "Regular-Glas, dunkel, scharfer Rand",
+      "Archivo 700–800",
+      "Haarlinien, Blöcke, eckig",
+      "eingeklapptes Pill + Hauptknopf"
+    ]
+  }
+]

@@ -1,0 +1,63 @@
+@import url('../fonts/fonts.css');
+
+/* Gemeinsame Grundlage aller zehn Prototypen: Rücksetzung, Handy-Rahmen, Glas-Material.
+   Alles Gestalterische (Farben, Schrift, Radien, Glas-Stärke) liegt in der jeweiligen Variante. */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: #050505; color-scheme: dark; }
+body { font-family: var(--font-ui, 'Inter', system-ui, sans-serif); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+ul, ol { list-style: none; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* Icons (icons.js): Größe und Strichstärke je Variante */
+.ic { display: block; width: var(--ic-size, 24px); height: var(--ic-size, 24px); stroke-width: var(--ic-stroke, 1.75); flex: none; }
+i[data-ic] { display: inline-flex; flex: none; }
+
+/* Bühne mit den vier Hauptscreens */
+.stage { display: flex; gap: 56px; padding: 48px; width: max-content; }
+.cell { display: flex; flex-direction: column; gap: 14px; }
+.cell > h2 { font: 600 12px/1 'Inter', sans-serif; letter-spacing: .12em; text-transform: uppercase; color: #8c8c92; }
+
+/* Ein iPhone-Bildschirm: 390 × 844 Punkte, Inhalt läuft unter Status- und Navigationsleiste durch */
+.phone { position: relative; width: 390px; height: 844px; overflow: hidden; isolation: isolate; background: var(--bg, #000); color: var(--text, #fff); font-family: var(--font-ui, 'Inter', system-ui, sans-serif); }
+.statusbar { position: absolute; z-index: 90; top: 0; left: 0; right: 0; height: 54px; padding: 19px 32px 0 40px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; font: 600 16px/1 'Inter', sans-serif; letter-spacing: -.01em; color: #fff; }
+.statusbar .sb-right { display: flex; gap: 6px; align-items: center; }
+.statusbar svg { display: block; height: 12px; width: auto; fill: #fff; }
+.homebar { position: absolute; z-index: 95; bottom: 8px; left: 50%; width: 134px; height: 5px; margin-left: -67px; border-radius: 3px; background: rgba(255, 255, 255, .92); pointer-events: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Glas-Material ----------
+   Aufbau (von hinten nach vorn): 1. Hintergrund wird verschoben und weichgezeichnet (backdrop-filter auf .glass-bd, glass.js)
+   2. leichte Tönung (--glass-fill)  3. abgedunkelter äußerer Rand und Schatten  4. Glanzlicht am Rand (::before) und Schimmer (::after).
+   Variablen: --r Radius, --glass-fill, --glass-blur, --glass-sat, --rim (Randstärke), --rim-hi/--rim-lo (Glanz oben links / unten rechts),
+   --sheen (Schimmer oben), --spot (Lichtfleck oben links), --halo-hi/--halo-lo (Innenglanz), --edge-dark (abgedunkelter Rand), --shadow. */
+.glass {
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--r, 999px);
+  background: var(--glass-fill, rgba(255, 255, 255, .05));
+  box-shadow:
+    0 0 0 .5px rgba(0, 0, 0, var(--edge-dark, .6)),                                   /* abgedunkelter äußerer Rand (iOS 27) */
+    inset 0 0 0 .5px rgba(255, 255, 255, var(--inset-line, .1)),
+    inset 1.5px 2px 5px -2px rgba(255, 255, 255, var(--halo-hi, .35)),                 /* Licht von oben links */
+    inset -1.5px -2px 5px -3px rgba(255, 255, 255, var(--halo-lo, .18)),               /* Rücklicht unten rechts */
+    0 12px 32px -8px rgba(0, 0, 0, var(--shadow, .6));
+}
+.glass::before {
+  content: ''; position: absolute; inset: 0; z-index: 0; border-radius: inherit; pointer-events: none;
+  padding: var(--rim, 1.25px);
+  background: linear-gradient(var(--rim-angle, 140deg), rgba(255, 255, 255, var(--rim-hi, .85)) 0%, rgba(255, 255, 255, .08) 30%, rgba(255, 255, 255, .03) 62%, rgba(255, 255, 255, var(--rim-lo, .4)) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.glass::after {
+  content: ''; position: absolute; inset: 0; z-index: 0; border-radius: inherit; pointer-events: none;
+  background:
+    radial-gradient(60px 28px at 9% 0%, rgba(255, 255, 255, var(--spot, .22)), rgba(255, 255, 255, 0) 100%),
+    radial-gradient(130% 160% at 12% -10%, rgba(255, 255, 255, var(--sheen, .12)), rgba(255, 255, 255, 0) 55%);
+}
+.glass > * { position: relative; z-index: 1; }
+/* Hilfsebene <glass-bd> für den backdrop-filter (glass.js): größer als das Glas, auf dessen Form zugeschnitten */
+.glass > glass-bd { display: block; position: absolute; inset: calc(var(--bd, 0px) * -1); z-index: -1; pointer-events: none; clip-path: inset(var(--bd, 0px) round var(--bd-r, 0px)); }

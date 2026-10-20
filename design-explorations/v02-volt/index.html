@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Variante 02 · Volt</title>
+<link rel="stylesheet" href="../shared/base.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="stage">
+
+  <!-- 1 · Training -->
+  <section class="cell"><h2>Training</h2>
+    <div class="phone" data-screen="training">
+      <div class="scroll">
+        <header class="top"><div><span class="label">Dienstag, 20. Oktober</span><h1 class="display">Training</h1></div></header>
+        <div class="bento">
+          <section class="tile lime span2 week">
+            <span class="label">Diese Woche · Wochenziel 3×</span>
+            <div class="big"><span class="num">2</span><small>von 3</small></div>
+            <div class="bars" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></div>
+          </section>
+          <section class="tile streak"><span class="label"><i data-ic="flame"></i>Serie</span><span class="num">6</span><span class="label" style="margin-top:8px;display:block">Wochen in Folge</span></section>
+          <section class="tile gymt"><i data-ic="map-pin"></i><div><b>Mein Gym festlegen</b><p>Dann zeigt dir ein Tipp die schnellste Route.</p></div></section>
+          <section class="tile span2 day"><span class="arrow"><i data-ic="arrow-up-right"></i></span><h2>Push</h2><p class="meta">3 Übungen · zuletzt gestern</p>
+            <div class="chips"><span class="chip">Bankdrücken</span><span class="chip">Schulterdrücken</span><span class="chip">Trizepsdrücken am Kabel</span></div></section>
+          <section class="tile day small"><h2>Pull</h2><p class="meta">3 Übungen · vor 3 Tagen</p><div class="chips"><span class="chip">Klimmzüge</span><span class="chip">Rudern vorgebeugt</span></div></section>
+          <section class="tile day small"><h2>Beine</h2><p class="meta">3 Übungen · noch nicht trainiert</p><div class="chips"><span class="chip">Kniebeugen</span><span class="chip">Wadenheben</span></div></section>
+        </div>
+      </div>
+      <nav class="dock glass" aria-label="Hauptnavigation">
+        <a aria-current="page"><i data-ic="dumbbell"></i>Training</a><a><i data-ic="calendar-check"></i>Daily</a><span class="gap"></span><a><i data-ic="message-circle"></i>Chat</a><a><i data-ic="user"></i>Profil</a>
+      </nav>
+      <button class="go glass" aria-label="Training starten"><i data-ic="zap" data-fill="currentColor"></i></button>
+    </div>
+  </section>
+
+  <!-- 2 · Laufendes Training -->
+  <section class="cell"><h2>Laufendes Training</h2>
+    <div class="phone" data-screen="workout">
+      <div class="scroll">
+        <header class="wk-top"><div><span class="label">Läuft</span><h1 class="display">Push</h1></div><div class="clock"><span class="label">Dauer</span><span class="num">42 min</span></div></header>
+        <div class="pager" aria-label="Übung 1 von 3"><i class="on"></i><i></i><i></i></div>
+        <h2 class="exname">Bankdrücken</h2>
+        <p class="exmeta">1 von 3 Sätzen · Pause 2 min</p>
+        <p class="lastbox"><span class="label">Letztes Mal</span><b>57,5 × 10</b>·<b>58,5 × 9</b>·<b>59,5 × 8</b></p>
+        <div class="setrow">
+          <div class="s done"><span class="label">Satz 1<i data-ic="check"></i></span><span class="num">60<small>kg</small></span><span class="x">× 10 Wdh.</span></div>
+          <div class="s act"><span class="label">Satz 2</span><span class="num">62,5<small>kg</small></span><span class="x">× 9 Wdh.</span></div>
+          <div class="s open"><span class="label">Satz 3</span><span class="num">62,5<small>kg</small></span><span class="x">× 8 Wdh.</span></div>
+        </div>
+        <div class="ctrl">
+          <div class="blk"><div class="val">62,5<small>kg</small></div><div class="btns"><button class="glass st" aria-label="2,5 kg weniger">−2,5</button><button class="glass st" aria-label="2,5 kg mehr">+2,5</button></div></div>
+          <div class="blk"><div class="val">9<small>Wdh.</small></div><div class="btns"><button class="glass st" aria-label="1 Wiederholung weniger">−1</button><button class="glass st" aria-label="1 Wiederholung mehr">+1</button></div></div>
+        </div>
+        <button class="glass big-go"><i data-ic="check"></i>Satz abhaken</button>
+        <div class="next"><span>Weiter: Schulterdrücken</span><i data-ic="chevron-right"></i></div>
+      </div>
+      <div class="rest glass">
+        <div class="t"><span class="label">Pause · Bankdrücken</span><span class="num">1:24</span></div>
+        <button>−15</button><button>+15</button><button class="p" aria-label="Überspringen"><i data-ic="skip-forward"></i></button>
+      </div>
+      <nav class="dock glass" aria-label="Hauptnavigation">
+        <a aria-current="page"><i data-ic="dumbbell"></i>Training</a><a><i data-ic="calendar-check"></i>Daily</a><span class="gap"></span><a><i data-ic="message-circle"></i>Chat</a><a><i data-ic="user"></i>Profil</a>
+      </nav>
+      <button class="go glass" aria-label="Training starten"><i data-ic="zap" data-fill="currentColor"></i></button>
+    </div>
+  </section>
+
+  <!-- 3 · Verlauf -->
+  <section class="cell"><h2>Verlauf</h2>
+    <div class="phone" data-screen="verlauf">
+      <div class="scroll">
+        <header class="top"><div><h1 class="display">Verlauf</h1></div></header>
+        <div class="tabs"><span>Einheiten</span><span>Kalender</span><span class="on">Übungen</span><span>Körper</span></div>
+        <div class="exh"><h2>Bankdrücken</h2><span class="label">8× trainiert</span></div>
+        <div class="kpi">
+          <div class="tile lime"><span class="label">Bestes 1RM (geschätzt)</span><span class="num">76,7<small style="color:rgba(0,0,0,.6)">kg</small></span></div>
+          <div class="tile"><span class="label">Zuletzt</span><span class="num" style="font-size:44px;display:block;margin-top:14px">19.10.</span><span class="label" style="margin-top:8px;display:block">Push · 59,5 kg × 8</span></div>
+        </div>
+        <div class="tile chartbox"><span class="label" style="padding-left:6px">1RM pro Woche · kg</span><div class="chart" data-series="oneRm" data-style="bars" data-w="326" data-h="150"></div></div>
+        <div class="sets3">
+          <div class="r">57,5 kg × 10<span>≈ 76,7 kg 1RM</span></div>
+          <div class="r">58,5 kg × 9<span>≈ 76,1 kg 1RM</span></div>
+          <div class="r">59,5 kg × 8<span>≈ 75,4 kg 1RM</span></div>
+        </div>
+      </div>
+      <nav class="dock glass" aria-label="Hauptnavigation">
+        <a><i data-ic="dumbbell"></i>Training</a><a><i data-ic="calendar-check"></i>Daily</a><span class="gap"></span><a><i data-ic="message-circle"></i>Chat</a><a aria-current="page"><i data-ic="user"></i>Profil</a>
+      </nav>
+      <button class="go glass" aria-label="Training starten"><i data-ic="zap" data-fill="currentColor"></i></button>
+    </div>
+  </section>
+
+  <!-- 4 · Daily -->
+  <section class="cell"><h2>Daily</h2>
+    <div class="phone" data-screen="daily">
+      <div class="scroll">
+        <header class="top"><div><span class="label">Dienstag, 20. Oktober</span><h1 class="display">Daily</h1></div></header>
+        <div class="dstrip"><div>Mi<b>14</b></div><div>Do<b>15</b></div><div>Fr<b>16</b></div><div>Sa<b>17</b></div><div>So<b>18</b></div><div>Mo<b>19</b></div><div class="on">Di<b>20</b></div></div>
+        <section class="tile">
+          <div class="wtile">
+            <div><span class="label">Gewicht</span><span class="num">82,0<small> kg</small></span><span class="delta">+0,1 seit gestern</span></div>
+            <div class="chart" data-series="weight" data-style="bars" data-w="160" data-h="84" data-axis="none"></div>
+          </div>
+          <div class="fieldrow"><div class="fld">82,0<small>KG</small></div><button class="sv">Speichern</button></div>
+        </section>
+        <div class="mealhead"><h2>Mealplan</h2><span>3 / 4 · 1.540 von 2.190 kcal</span></div>
+        <div class="meals">
+          <div class="meal on"><span class="label">08:00<i data-ic="check"></i></span><b>Frühstück</b><p class="k">520 kcal</p></div>
+          <div class="meal on"><span class="label">12:30<i data-ic="check"></i></span><b>Mittagessen</b><p class="k">780 kcal</p></div>
+          <div class="meal on"><span class="label">16:00<i data-ic="check"></i></span><b>Snack</b><p class="k">240 kcal</p></div>
+          <div class="meal"><span class="label">19:00<span class="circ"></span></span><b>Abendessen</b><p class="k">650 kcal</p></div>
+        </div>
+      </div>
+      <nav class="dock glass" aria-label="Hauptnavigation">
+        <a><i data-ic="dumbbell"></i>Training</a><a aria-current="page"><i data-ic="calendar-check"></i>Daily</a><span class="gap"></span><a><i data-ic="message-circle"></i>Chat</a><a><i data-ic="user"></i>Profil</a>
+      </nav>
+      <button class="go glass" aria-label="Training starten"><i data-ic="zap" data-fill="currentColor"></i></button>
+    </div>
+  </section>
+
+</main>
+<script src="../shared/icons.js"></script>
+<script src="../shared/charts.js"></script>
+<script src="../shared/phone.js"></script>
+<script src="../shared/glass.js"></script>
+</body>
+</html>

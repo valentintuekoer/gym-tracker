@@ -44,6 +44,41 @@ test('parseNum akzeptiert Komma und Punkt, leer/ungültig → null', () => {
   assert.equal(util.parseNum('abc'), null);
   assert.equal(util.parseNum('-5'), null);
   assert.equal(util.parseNum(null), null);
+  assert.equal(util.parseNum('80', 80), 80, 'Obergrenze gilt einschließlich');
+  assert.equal(util.parseNum('80,5', 80), null, 'darüber → null');
+  assert.equal(util.parseNum('1e30', 2000), null);
+});
+
+test('Unmögliche Werte (Tippfehler) zählen als leer – in Sätzen, ±-Tasten, Import und Körpermaßen', () => {
+  const { db, push } = freshDb();
+  const s = Core.startSession(db, push.id, T0);
+  const se = s.exercises[0];
+  const [a, b] = se.sets;
+  Core.updateSet(db, se.id, a.id, 'weight', '99999999');
+  Core.updateSet(db, se.id, a.id, 'reps', '99999');
+  assert.deepEqual([a.weight, a.reps], [null, null]);
+  Core.updateSet(db, se.id, b.id, 'weight', '1e30');
+  assert.equal(b.weight, null);
+  Core.updateSet(db, se.id, b.id, 'weight', '2000');
+  Core.updateSet(db, se.id, b.id, 'reps', '999');
+  assert.deepEqual([b.weight, b.reps], [2000, 999], 'die Grenzen selbst sind erlaubt');
+  // ±-Tasten laufen nicht über die Grenze hinaus
+  assert.equal(Core.stepSet(db, se.id, b.id, 'weight', 2.5), 2000);
+  assert.equal(Core.stepSet(db, se.id, b.id, 'reps', 1), 999);
+  // Import: auch Altdaten und Backups werden bereinigt, nichts davon landet im Verlauf oder in den Rekorden
+  const done = doSession(db, push.id, T0, { 'Bankdrücken': [[80, 10]] });
+  const raw = JSON.parse(JSON.stringify(db));
+  raw.sessions[0].exercises[0].sets[0].weight = 1e30;
+  raw.sessions[0].exercises[0].sets[0].reps = 123456;
+  const n = Core.normalize(raw);
+  assert.deepEqual([n.sessions[0].exercises[0].sets[0].weight, n.sessions[0].exercises[0].sets[0].reps], [null, null]);
+  assert.ok(done);
+  // Körpermaße: Körperfett höchstens 100 %, Umfänge höchstens 300 cm, Gewicht höchstens 500 kg
+  const body = Core.emptyData();
+  const e = Core.saveBodyEntry(body, { date: T0, weight: '82', bodyfat: '1e3', chest: '99999', waist: '85', hips: '300', arm: '301' });
+  assert.deepEqual([e.weight, e.bodyfat, e.chest, e.waist, e.hips, e.arm], [82, null, null, 85, 300, null]);
+  assert.equal(Core.saveBodyEntry(body, { date: T0 + 1, bodyfat: '150' }), null, 'nur ungültige Werte → nichts speichern');
+  assert.equal(Core.saveBodyEntry(body, { date: T0 + 2, weight: '501' }), null);
 });
 
 test('Formatierung', () => {
@@ -636,6 +671,9 @@ test('Trainingsplan teilen und bei jemand anderem übernehmen', () => {
 
   assert.throws(() => Core.decodePlan('kaputt!!'), /ungültig/);
   assert.throws(() => Core.decodePlan(Core.encodePlan({ v: 1, n: 'x', e: [] })), /keinen Trainingsplan/);
+  // nur leere oder ungültige Einträge ergeben keinen leeren Trainingstag
+  assert.throws(() => Core.decodePlan(Core.encodePlan({ v: 1, n: 'x', e: [null, {}, { n: '' }, 'Bankdrücken'] })), /keinen Trainingsplan/);
+  assert.equal(Core.decodePlan(Core.encodePlan({ v: 1, n: 'x', e: [null, { n: 'Kniebeugen' }] })).exercises.length, 1, 'gültige Übungen bleiben, ungültige fallen weg');
 });
 
 test('Im Training umsortieren und überspringen, ohne den Plan zu ändern', () => {

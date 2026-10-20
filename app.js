@@ -38,7 +38,7 @@
     vibrate: true,     // Vibration am Pausenende (wo unterstützt)
     loudMode: false,   // iOS: Ton auch bei Lautlos-Schalter
     theme: 'dark',     // 'dark' | 'light' | 'system'
-    glass: 50,         // Liquid Glass: 0 = ganz klar … 100 = voll getönt (wie der Regler in iOS 27)
+    glass: 0,          // Liquid Glass: 0 = ganz klar … 100 = voll getönt (wie der Regler in iOS 27); Vorgabe klar
     lastBackup: null,  // Zeitstempel des letzten Exports
     increment: 2.5,    // Gewichtsschritt (kg) für Steigerungsvorschläge und +/−-Buttons
     weeklyGoal: 3,     // Trainings pro Woche (für Wochenziel & Serie)
@@ -185,7 +185,7 @@
     return n + (n === 1 ? ' Satz' : ' Sätze');
   }
 
-  /** Regler „Klar ↔ Getönt“: ganze Zahl 0…100 (Vorgabe 50). */
+  /** Regler „Klar ↔ Getönt“: ganze Zahl 0…100 (Vorgabe 0 = klar). */
   function clampGlass(v) {
     if (v === null || v === undefined || v === '') return DEFAULT_SETTINGS.glass;
     const n = Math.round(Number(v));
@@ -6346,7 +6346,7 @@
     const t = db.settings.theme;
     const dark = t === 'dark' || (t === 'system' && darkQuery.matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    $('meta[name="theme-color"]').setAttribute('content', dark ? '#081120' : '#f1f4fb');
+    $('meta[name="theme-color"]').setAttribute('content', dark ? '#000000' : '#f1f4fb');
     // Statusleiste der Home-Bildschirm-App (wirkt ab dem nächsten Start der App)
     const bar = $('meta[name="apple-mobile-web-app-status-bar-style"]');
     if (bar) bar.setAttribute('content', dark ? 'black-translucent' : 'default');

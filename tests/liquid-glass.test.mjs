@@ -149,14 +149,17 @@ function fillAt(block, name, tint) {
 const darkBlock = appCss.slice(appCss.indexOf(':root,'), appCss.indexOf(':root[data-theme="light"] {'));
 const lightBlock = appCss.slice(appCss.indexOf(':root[data-theme="light"] {'), appCss.indexOf(':root[data-theme="light"] {') + 6000);
 
-test('Regler: Füllung wird mit dem Regler deckender, bleibt im sinnvollen Bereich und der Mittelwert entspricht dem bisherigen Look', () => {
-  for (const [block, name, mid] of [[darkBlock, '--lg-fill', 0.73], [darkBlock, '--lg-card-fill', 0.8], [lightBlock, '--lg-fill', 0.55], [lightBlock, '--lg-card-fill', 0.72]]) {
+test('Regler: Füllung wird mit dem Regler deckender, bleibt im sinnvollen Bereich und der Mittelwert entspricht dem Look', () => {
+  // dunkel: „klar“ ist fast durchsichtig (Vorgabe 0, Auswahl im Design-Builder); hell: wie bisher
+  for (const [block, name, mid, min] of [[darkBlock, '--lg-fill', 0.462, 0.01], [darkBlock, '--lg-card-fill', 0.47, 0.01], [lightBlock, '--lg-fill', 0.55, 0.38], [lightBlock, '--lg-card-fill', 0.72, 0.38]]) {
     const lo = fillAt(block, name, 0), m = fillAt(block, name, 0.5), hi = fillAt(block, name, 1);
     assert.ok(lo < m && m < hi, name + ' wächst nicht mit dem Regler');
-    assert.ok(lo >= 0.38 && hi <= 0.96, `${name}: ${lo}…${hi} außerhalb 0,38…0,96`);
+    assert.ok(lo >= min && hi <= 0.96, `${name}: ${lo}…${hi} außerhalb ${min}…0,96`);
     assert.ok(Math.abs(m - mid) < 0.011, `${name} Mitte ${m} ≠ ${mid}`);
   }
-  assert.match(appCss, /--lg-tint:\s*0\.5;/);
+  assert.match(appCss, /--lg-tint:\s*0;/);
+  // Sheets, Toast und Timer bleiben deckend genug zum Lesen, auch bei „ultraklar“
+  assert.ok(fillAt(darkBlock, '--lg-overlay-fill', 0) >= 0.8, 'Überlagerungen (Sheet, Toast, Timer) zu durchsichtig');
 });
 
 test('Material iOS 27: dunkle Kante und hellere Glanzlichter sind in beiden Designs definiert', () => {
@@ -164,7 +167,7 @@ test('Material iOS 27: dunkle Kante und hellere Glanzlichter sind in beiden Desi
     assert.match(block, /--lg-edge-dark:/);
     assert.match(block, /--gt-a1:/);
   }
-  assert.ok(Number(darkBlock.match(/--lg-spec-spot:\s*rgba\(255, 255, 255, ([\d.]+)\)/)[1]) >= 0.2, 'Glanzpunkt dunkel zu schwach');
+  assert.ok(Number(darkBlock.match(/--lg-spec-spot:\s*rgba\(255, 255, 255, ([\d.]+)\)/)[1]) >= 0.1, 'Glanzpunkt dunkel zu schwach');
   assert.match(appCss, /inset 0 0 14px -3px var\(--lg-edge-dark\)/, 'Kantenabdunklung fehlt im Material');
   assert.match(appCss, /at var\(--spec-x, 11%\) 6%/, 'Glanzpunkt reagiert nicht auf --spec-x');
 });

@@ -1,9 +1,20 @@
 /* Gym Tracker – Design-System „Liquid Glass“
- * Blauer Verlauf mit drei Farbflecken, darauf Glas (Unschärfe, Glanz, Lichtkante),
- * einfarbig: weiß im dunklen, tiefblau im hellen Design. Alle Farben, Abstände, Radien,
- * Dauern und Kurven sind Tokens. Animiert wird nur transform & opacity (einzige Ausnahme:
+ * Dunkel: tiefes Schwarz mit feinem Raster, darauf klares Glas (Glanz, Lichtkante), Akzent Blau #0061fe für
+ * Hauptaktion und Zustände. Hell: blauer Verlauf mit drei Farbflecken, tiefblauer Akzent. Alle Farben,
+ * Abstände, Radien, Dauern und Kurven sind Tokens. Animiert wird nur transform & opacity (einzige Ausnahme:
  * die Höhe der Tab-Leiste).
  */
+
+/* Fließtext: Nunito (variabel, 200–1000), lokal eingebunden – kein Webfont-Server, läuft offline.
+   Überschriften bleiben Systemschrift (SF Pro). */
+@font-face {
+  font-family: "Nunito";
+  src: url("fonts/nunito-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 1000;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 /* =========================================================
  *  Tokens
@@ -12,7 +23,7 @@
 /* „Liquid Glass“ – Werte wie in der Demo unter liquid-glass/ (Material, Farbflecken, Text, Akzent) */
 :root,
 :root[data-theme="dark"] {
-  --bg: #081120;
+  --bg: #000000;
   --bg-a: #060d1c;
   --bg-b: #0b1626;
   --orb-1: #1b6dff;
@@ -25,52 +36,57 @@
   --border: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.26);
   --text: #ffffff;
-  --text-2: #f2f2f7;
-  --muted: #e0e4ee;          /* Kontrast ≥ 4,5:1 auch vor den hellsten Farbflecken (geprüft per Pixel) */
+  --text-2: #9d9d9d;
+  --muted: #9d9d9d;          /* Zweittext: 62 % hell, 7,7:1 auf Schwarz, ≥ 4,5:1 auch auf Glas, Pillen und Rasterlinien (geprüft per Pixel) */
   --faint: #7f8596;
-  --inv: #ffffff;            /* aktive/primäre Fläche: im dunklen Design weiß … */
-  --on-inv: #0b1220;
-  --accent-ink: #ffffff;
-  --accent-soft: rgba(255, 255, 255, 0.1);
-  --accent-line: rgba(255, 255, 255, 0.34);
-  --accent-glow: rgba(255, 255, 255, 0.22);
+  --inv: #0061fe;            /* aktive/primäre Fläche: im dunklen Design Akzentblau (weißer Text darauf: 5,1:1) … */
+  --on-inv: #ffffff;
+  --accent-ink: #3d8bff;     /* … Text und Symbole in Akzent: aufgehellt, damit sie auf Schwarz ≥ 4,5:1 erreichen (6,3:1) */
+  --accent-soft: rgba(0, 97, 254, 0.16);
+  --accent-line: rgba(0, 97, 254, 0.55);
+  --accent-glow: rgba(0, 97, 254, 0.38);
   --danger: #ff8fa3;
   --on-danger: #2a0610;
   --input-bg: rgba(255, 255, 255, 0.07);
   --input-border: rgba(255, 255, 255, 0.2);
-  --glass: rgba(8, 17, 32, 0.82);
+  --glass: rgba(10, 10, 12, 0.84);
   --backdrop: rgba(0, 0, 0, 0.62);
   --sk: rgba(255, 255, 255, 0.07);
   --sk-hi: rgba(255, 255, 255, 0.16);
   --ring-track: rgba(255, 255, 255, 0.2);
 
   /* Material */
-  --lg-blur: 44px;
-  --lg-tint: 0.5;
+  --lg-tint: 0;
+  --lg-blur: calc(34px * var(--lg-tint));        /* klar: 0 px, getönt: bis 34 px */
+  --lg-card-blur: calc(28px * var(--lg-tint));
+  --lg-overlay-blur: 40px;                        /* Sheets, Toast, Timer: immer diffus und deckend genug zum Lesen */
   --lg-saturate: 1.7;
   --lg-brightness: 1.04;
-  /* Regler „Klar ↔ Getönt“ (Einstellungen → Darstellung, wie in iOS 27): --lg-tint 0 … 1, Vorgabe 0,5 */
-  --lg-fill: rgba(28, 28, 32, calc(0.58 + 0.3 * var(--lg-tint)));
-  --lg-card-fill: rgba(28, 28, 32, calc(0.66 + 0.28 * var(--lg-tint)));
-  --lg-fill-press: rgba(48, 48, 56, calc(0.7 + 0.28 * var(--lg-tint)));
-  --lg-pill-fill: rgba(255, 255, 255, calc(0.05 + 0.06 * var(--lg-tint)));
+  /* Regler „Klar ↔ Getönt“ (Einstellungen → Darstellung, wie in iOS 27): --lg-tint 0 … 1, Vorgabe 0 (ultraklar).
+     Leisten und Karten sind bei 0 fast durchsichtig; Lesbarkeit sichern der Ausblend-Verlauf unter den Leisten und
+     die deckenden Überlagerungen (Sheet, Toast, Timer: --lg-overlay-fill). */
+  --lg-fill: rgba(22, 22, 26, calc(0.012 + 0.9 * var(--lg-tint)));
+  --lg-card-fill: rgba(22, 22, 26, calc(0.02 + 0.9 * var(--lg-tint)));
+  --lg-overlay-fill: rgba(18, 18, 22, calc(0.84 + 0.12 * var(--lg-tint)));
+  --lg-fill-press: rgba(48, 48, 56, calc(0.2 + 0.7 * var(--lg-tint)));
+  --lg-pill-fill: rgba(255, 255, 255, calc(0.06 + 0.03 * var(--lg-tint)));
   --lg-pill-spec: rgba(255, 255, 255, 0.03);
   --lg-fill-solid: rgb(34, 34, 38);
   --lg-card-fill-solid: rgb(30, 30, 34);
   --lg-text: #ffffff;
-  --lg-text-active: #ffffff;
-  --lg-edge-top: rgba(255, 255, 255, 0.52);
-  --lg-edge-mid: rgba(255, 255, 255, 0.12);
+  --lg-text-active: #3d8bff;
+  --lg-edge-top: rgba(255, 255, 255, 0.34);
+  --lg-edge-mid: rgba(255, 255, 255, 0.08);
   --lg-edge-bottom: rgba(0, 0, 0, 0.6);
-  --lg-edge-corner: rgba(255, 255, 255, 0.34);
+  --lg-edge-corner: rgba(255, 255, 255, 0.22);
   --lg-edge-dark: rgba(0, 0, 0, 0.34);
-  --lg-rim-top: rgba(255, 255, 255, 0.28);
+  --lg-rim-top: rgba(255, 255, 255, 0.16);
   --lg-rim-bottom: rgba(0, 0, 0, 0.5);
   --lg-glow: rgba(255, 255, 255, 0.05);
   --lg-hairline: rgba(255, 255, 255, 0.08);
-  --lg-spec-dome: rgba(255, 255, 255, 0.17);
-  --lg-spec-spot: rgba(255, 255, 255, 0.2);
-  --lg-spec-sheen: rgba(255, 255, 255, 0.05);
+  --lg-spec-dome: rgba(255, 255, 255, 0.1);
+  --lg-spec-spot: rgba(255, 255, 255, 0.12);
+  --lg-spec-sheen: rgba(255, 255, 255, 0.04);
   /* Berührung: Licht unter dem Finger (Weiß, additiv) */
   --gt-a1: 0.3;
   --gt-a2: 0.1;
@@ -126,6 +142,10 @@
   --sk-hi: rgba(255, 255, 255, 0.7);
   --ring-track: rgba(29, 29, 31, 0.14);
 
+  --lg-blur: 44px;
+  --lg-card-blur: 32px;
+  --lg-overlay-blur: 44px;
+  --lg-overlay-fill: rgba(255, 255, 255, calc(0.58 + 0.28 * var(--lg-tint)));
   --lg-fill: rgba(255, 255, 255, calc(0.4 + 0.3 * var(--lg-tint)));
   --lg-card-fill: rgba(255, 255, 255, calc(0.58 + 0.28 * var(--lg-tint)));
   --lg-fill-press: rgba(255, 255, 255, calc(0.74 + 0.24 * var(--lg-tint)));
@@ -184,10 +204,10 @@
   --r-pill: 999px;
 
   /* Maße */
-  --tap: 44px;
+  --tap: 40px;               /* Auswahl im Design-Builder: 40 pt (Apple HIG empfiehlt 44) */
   --gutter: 16px;
   --hdr-h: 44px;
-  --tabbar-h: 62px;
+  --tabbar-h: 54px;
   --tabbar-bottom: max(12px, calc(var(--safe-bottom) - 6px));
   --timer-h: 128px;
   --safe-top: env(safe-area-inset-top, 0px);
@@ -196,7 +216,7 @@
   --safe-right: env(safe-area-inset-right, 0px);
 
   /* Schrift */
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+  --font: "Nunito", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
 
   /* Bewegung – Ausblenden immer schneller als Einblenden */
@@ -3294,8 +3314,8 @@ input, textarea { caret-color: var(--lg-text-active); }
 /* Flächen mit Fließtext (.lg-card): deckender */
 .card, .profile-card, .day-card, .week-card, .gym-card:not(.gym-empty), .stats div {
   background: var(--lg-card-fill);
-  -webkit-backdrop-filter: blur(32px) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
-  backdrop-filter: blur(32px) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  -webkit-backdrop-filter: blur(var(--lg-card-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  backdrop-filter: blur(var(--lg-card-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
   border: 0;
   color: var(--text);
   box-shadow:
@@ -3378,9 +3398,9 @@ input, textarea { caret-color: var(--lg-text-active); }
 
 /* Sheets: Material ohne Pseudo-Elemente (die Karte scrollt) */
 .modal-card {
-  background: var(--lg-card-fill);
-  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
-  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  background: var(--lg-overlay-fill);
+  -webkit-backdrop-filter: blur(var(--lg-overlay-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  backdrop-filter: blur(var(--lg-overlay-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
   border: 0;
   box-shadow:
     inset 0 1px 0 var(--lg-rim-top),
@@ -3391,8 +3411,8 @@ input, textarea { caret-color: var(--lg-text-active); }
     0 14px 28px var(--lg-shadow-c),
     0 28px 56px var(--lg-shadow-d);
 }
-.toast { background: var(--lg-card-fill); }
-.timer-bar { background: var(--lg-card-fill); }
+.toast { background: var(--lg-overlay-fill); }
+.timer-bar { background: var(--lg-overlay-fill); }
 .timer-bar.done { background: var(--inv); color: var(--on-inv); }
 
 /* ---------- Titel & Beschriftungen ---------- */
@@ -3653,8 +3673,8 @@ body.kb-open.tabs-compact .tabbar { height: var(--tabbar-h); }
 /* ---------- Formen: fest · Kapsel · konzentrisch ---------- */
 
 :root {
-  --r-card: 26px;             /* Abschnitte/Karten: größerer Radius als vorher (Apple: „increased corner radius“) */
-  --r-card-sm: 22px;
+  --r-card: 24px;             /* Abschnitte/Karten: größerer Radius (Apple: „increased corner radius“); Auswahl im Design-Builder: 24 */
+  --r-card-sm: 20px;
   --r-sheet: 40px;            /* Halb-Sheet: Ecke des Displays minus 8 pt Abstand – schmiegt sich an die runden Ecken */
   --r-dialog: 30px;           /* Dialoge auf großen Bildschirmen */
   --r-capsule: 999px;         /* Kapsel: Radius = halbe Höhe (Leisten, Knöpfe, Chips, Segmente) */
@@ -3938,3 +3958,80 @@ body.kb-open .toast.show { transform: translate(-50%, 0); }
 .pick-row .avatar { flex: none; }
 .pick-row .pick-main { min-width: 0; }
 .modal-card .section-label { margin-top: var(--s-4); }
+
+/* =========================================================
+ *  Design-Auswahl aus dem Design-Builder
+ *  Schwarz · Raster · klares Glas (Stärke 0) · Akzent Blau #0061fe · Nunito · Kapsel · nur Symbole in der Navigation.
+ *  Farben, Hintergrund und Glas gelten für das dunkle Design (Tokens oben); Schrift, Maße, Navigation und
+ *  Diagramme für beide Themes. Das helle Design behält Verlauf und tiefblauen Akzent.
+ * ========================================================= */
+
+/* ---------- Hintergrund: tiefes Schwarz mit feinem Raster (dunkel) ---------- */
+:root:not([data-theme="light"]) {
+  --stage:
+    linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px) 0 0 / 26px 26px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px) 0 0 / 26px 26px,
+    #000000;
+}
+:root:not([data-theme="light"]) body::after {
+  height: calc(var(--tabbar-h) + var(--tabbar-bottom) + 56px);
+  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--bg) 72%, transparent) 30%, color-mix(in srgb, var(--bg) 97%, transparent) 55%, var(--bg) 100%);
+}
+.theme-mock.dark { background: #000000; }
+.theme-mock.dark i:first-child { background: #0061fe; }
+.theme-mock.system { background: linear-gradient(135deg, #eaf3ff 50%, #000000 50%); }
+
+/* ---------- Glas: Sheets, Toast und Timer bleiben deckend genug zum Lesen, auch bei „ultraklar“ ---------- */
+.timer-bar, .toast {
+  -webkit-backdrop-filter: blur(var(--lg-overlay-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+  backdrop-filter: blur(var(--lg-overlay-blur)) saturate(var(--lg-saturate)) brightness(var(--lg-brightness));
+}
+
+/* ---------- Schrift ---------- */
+.large-title { font-size: clamp(34px, 9.4vw, 46px); font-weight: 700; letter-spacing: -0.01em; }
+.day-name { font-weight: 700; }
+.large-title, .day-name, .welcome h2, .summary-hero h2, .profile-hero h2, .auth-title, .setup-title, .intro-title,
+.modal-title, .ex-head h2, .card-title, .records-title, .social-cta h2 { letter-spacing: -0.01em; }
+/* Zahlen in der Text-Schrift (Nunito); die großen Ziffern auf 70 % */
+.stats strong, .chart-head strong, .week-summary strong, .timer-time, .ia-timer-time, .lb-rank, .ia-ring text { font-family: var(--font); }
+.timer-time { font-size: clamp(24px, 7.4vw, 31px); letter-spacing: -0.02em; }
+.ia-timer-time { font-size: 28px; letter-spacing: -0.02em; }
+
+/* ---------- Karten: Dichte „kompakt“ ---------- */
+.card { padding: var(--s-3); margin-bottom: var(--s-2); }
+.card.flush { padding: 0; }
+.day-list { gap: var(--s-2); }
+.day-card { padding: var(--s-4) var(--s-2) var(--s-4) var(--s-4); }
+.week-card { padding: var(--s-3) var(--s-4); margin-bottom: var(--s-2); }
+/* Fortschritt als Balken (Wochenziel) */
+.week-dots { gap: 3px; }
+.week-dots i { width: 14px; height: 6px; border: 0; border-radius: var(--r-pill); background: var(--ring-track); }
+.week-dots i.on { background: var(--inv); }
+
+/* ---------- Navigation: nur Symbole (Beschriftung bleibt für Screenreader) ---------- */
+.tab span { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.tab { gap: 0; }
+.tab svg { width: 22px; height: 22px; }
+.tab.active svg { stroke-width: 1.5; }
+:root:not([data-theme="light"]) .tab { color: var(--muted); }
+:root:not([data-theme="light"]) .tab.active, :root:not([data-theme="light"]) .tab.over { color: var(--lg-text-active); }
+.tab-dot { top: 11px; left: calc(50% + 9px); }
+
+/* ---------- Symbole und Diagramme: Strich 1,5 ---------- */
+svg.i { stroke-width: 1.5; }
+.chart .c-line { stroke-width: 1.5; }
+
+/* ---------- Auswahl und Hauptaktion in Akzentblau (dunkel) ---------- */
+/* Gewähltes Segment: gefüllte Pille in --inv (weißer Text darauf 5,1:1) statt blauem Text auf Glas (< 4,5:1) */
+:root:not([data-theme="light"]) .seg-thumb {
+  background: var(--inv);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 4px 12px -2px var(--accent-glow);
+}
+:root:not([data-theme="light"]) .segmented button[aria-selected="true"] { color: var(--on-inv); }
+/* Der Glanz auf blauen Flächen ist dezenter, sonst fällt der weiße Text am oberen Rand unter 4,5:1 */
+:root:not([data-theme="light"]) .btn.primary,
+:root:not([data-theme="light"]) .hdr-btn.accent,
+:root:not([data-theme="light"]) .active-banner,
+:root:not([data-theme="light"]) .timer-bar.done {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 45%), var(--inv);
+}

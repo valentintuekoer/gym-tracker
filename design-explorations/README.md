@@ -28,6 +28,15 @@ Die Beschreibungen stehen in `variants.json`; je Variante gibt es ein Blatt unte
   in Safari und Firefox bleibt das Glas ohne Brechung (Unschärfe, Tönung, Rand und Glanz bleiben).
 - `RESEARCH.md` – Zusammenfassung der Recherche (Apple HIG, WWDC25/26, technische Funktionsweise, Barrierefreiheit) mit Quellen.
 
+## Design-Builder
+
+`builder/index.html` ist eine einzelne Seite, in der jede Norm des Designs einzeln gewählt wird: Akzentfarbe und ihr Einsatz, Hintergrund,
+Glas (Art, Stärke, Weichzeichnung, Lichtbrechung, Farbsäume, Randlicht, Form), Typografie, Kartenstil, Dichte, Navigation, Hauptknopf,
+Mindest-Tippfläche, Diagramme, Symbole und simulierte Systemeinstellungen (Transparenz reduzieren, Kontrast erhöhen, Fetter Text).
+Die zehn Richtungen dienen als optionale Startpunkte. Ein Norm-Check prüft die Auswahl live (WCAG-Kontraste, 44 pt, 11 pt, Apples Glas-Regeln),
+drei Entwurfsplätze (A, B, C) speichern Stände, und „Auswahl kopieren“ liefert Text und Daten. Läuft ohne Build direkt im Browser
+(Linsenbrechung nur in Chromium); als Artifact veröffentlicht, speichert es die Entwürfe in der Artifact-Ablage.
+
 ## Glasstärke (ultraklar … voll getönt)
 
 Apple bringt mit iOS 27 einen Regler für die Glasstärke. Die Prototypen haben dafür einen Regler von 0 (ultraklar: kaum Tönung, wenig Weichzeichnung)

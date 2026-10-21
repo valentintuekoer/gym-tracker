@@ -1,4 +1,4 @@
-/* Gym Tracker – Freunde (Cloud Firestore + Cloud Storage)
+/* Anchor – Freunde (Cloud Firestore + Cloud Storage)
  *
  * Wird von cloud.js mit dem Firebase-SDK aufgerufen (im Test mit dem npm-Paket gegen den Emulator).
  * Datenablage (Zugriff regeln firestore.rules und storage.rules):

@@ -1,4 +1,4 @@
-/* Gym Tracker – Mitglieder-Chat (Cloud Firestore)
+/* Anchor – Mitglieder-Chat (Cloud Firestore)
  *
  * Wird von cloud.js mit dem Firebase-SDK aufgerufen (im Test mit dem npm-Paket gegen den Emulator).
  * Datenablage (Zugriff regeln firestore.rules):

@@ -1,4 +1,4 @@
-/* Gym Tracker – Cloud-Anbindung (Firebase Authentication + Cloud Firestore)
+/* Anchor – Cloud-Anbindung (Firebase Authentication + Cloud Firestore)
  *
  * Wird nur aktiv, wenn in firebase-config.js ein Firebase-Projekt eingetragen ist.
  * Stellt window.GymCloud bereit (Anmelden, Registrieren, …) und meldet den

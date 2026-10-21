@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Sicherheitsregeln für den Gym Tracker
+// Sicherheitsregeln für Anchor
 //
 //   users/{uid}                  → Trainingstage, Einstellungen, laufendes Training (nur der Nutzer selbst)
 //   users/{uid}/sessions/{id}    → abgeschlossene Einheiten                          (nur der Nutzer selbst)

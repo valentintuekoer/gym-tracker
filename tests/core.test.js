@@ -408,7 +408,7 @@ test('Export → Import ergibt dieselben Daten', () => {
 });
 
 test('Import lehnt fremde Dateien ab und bereinigt kaputte Werte', () => {
-  assert.throws(() => Core.normalize({ foo: 1 }), /keine Gym-Tracker-Daten/);
+  assert.throws(() => Core.normalize({ foo: 1 }), /keine Anchor-Daten/);
   assert.throws(() => Core.normalize(null));
   const db = Core.normalize({
     days: [{ name: 'A', exercises: [{ name: 'X', rest: 'abc' }, null] }, null],

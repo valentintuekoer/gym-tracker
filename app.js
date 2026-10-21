@@ -1,4 +1,4 @@
-/* Gym Tracker – App-Logik
+/* Anchor – App-Logik
  *
  * Aufbau der Datei:
  *   1. Hilfsfunktionen
@@ -334,7 +334,7 @@
   Core.normalize = function (raw) {
     if (raw && raw.app === 'gym-tracker' && raw.data) raw = raw.data; // Export-Hülle
     if (!raw || typeof raw !== 'object' || !Array.isArray(raw.days)) {
-      throw new Error('Die Datei enthält keine Gym-Tracker-Daten.');
+      throw new Error('Die Datei enthält keine Anchor-Daten.');
     }
     const db = Core.emptyData();
     db.settings = { ...DEFAULT_SETTINGS, ...(raw.settings && typeof raw.settings === 'object' ? raw.settings : {}) };
@@ -3382,7 +3382,7 @@
       <h1 class="hdr-title">${esc(title)}</h1>
       <div class="hdr-side right">${actions || ''}</div>`;
     ui.hdr = { title, back: back || null, large: !!large, eyebrow: eyebrow || '', set: true };
-    document.title = title === 'Training' || title === 'Gym Tracker' ? 'Gym Tracker' : title + ' · Gym Tracker';
+    document.title = title === 'Training' || title === 'Anchor' ? 'Anchor' : title + ' · Anchor';
   }
 
   /* ---------- Kopfzeile beim Scrollen (Hintergrund einblenden, großer Titel schrumpft) ---------- */
@@ -4867,7 +4867,7 @@
     return location.origin + location.pathname + '#/import/' + Core.encodePlan(plan);
   }
 
-  const IMPORT_HOWTO = 'Training nachmachen? In der Gym-Tracker-App auf „Geteilten Plan einfügen“ tippen und diesen Link einfügen:';
+  const IMPORT_HOWTO = 'Training nachmachen? In der Anchor-App auf „Geteilten Plan einfügen“ tippen und diesen Link einfügen:';
 
   function fmtSetShort(st) {
     if (st.weight !== null && st.reps !== null) return fmtNum(st.weight) + '×' + st.reps;
@@ -5119,7 +5119,7 @@
 
   const INTRO_SLIDES = [
     {
-      title: 'Willkommen bei Gym Tracker',
+      title: 'Willkommen bei Anchor',
       text: 'Plane dein Training, trage jeden Satz ein und sieh, wie du stärker wirst – schnell, übersichtlich und auch ohne Internet.',
       art: '<div class="ia-logo"><img src="icons/icon.svg" alt=""></div>',
     },
@@ -5318,13 +5318,13 @@
     const reg = ui.authMode === 'register';
     // Ohne Konto unterwegs und über die Einstellungen hierher gekommen → Zurück-Knopf
     if (account) setHeader({ title: 'Konto', back: '#/settings/account' });
-    else setHeader({ title: 'Gym Tracker', hidden: true });
+    else setHeader({ title: 'Anchor', hidden: true });
 
     if (!cloudConfigured) {
       view.innerHTML = `
         <div class="auth">
           <img class="auth-logo" src="icons/icon.svg" alt="">
-          <h1 class="auth-title">Gym Tracker</h1>
+          <h1 class="auth-title">Anchor</h1>
           <div class="notice warn">
             <strong>Konten sind noch nicht eingerichtet</strong>
             Damit man sich registrieren und anmelden kann, muss einmalig ein kostenloses Firebase-Projekt
@@ -5815,7 +5815,7 @@
           ${menuRow('#/settings/backup', ICON.inbox, 'Datensicherung', backupOld ? ICON.warn : '', isUser() ? 'In der Cloud · Export als Datei' : 'Letztes Backup: ' + lastBackup)}
           ${menuRow('#/settings/data', ICON.list, 'Daten', `${db.days.length} Tage`, `${db.sessions.length} Einheiten gespeichert`)}
         </section>
-        <p class="hint center">Gym Tracker · ${isUser() ? 'Daten in deinem Konto gespeichert.' : 'Daten bleiben nur auf diesem Gerät.'}</p>`;
+        <p class="hint center">Anchor · ${isUser() ? 'Daten in deinem Konto gespeichert.' : 'Daten bleiben nur auf diesem Gerät.'}</p>`;
       return;
     }
 
@@ -6371,7 +6371,7 @@
     // Auf dem iPhone: Teilen-Menü → "In Dateien sichern" (zuverlässiger als ein Download in der Home-Bildschirm-App).
     if (touch && navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: 'Gym Tracker Backup' });
+        await navigator.share({ files: [file], title: 'Anchor Backup' });
         markBackup();
         return;
       } catch (e) {
@@ -7199,7 +7199,7 @@
       render();
     },
     'notif-test': async () => {
-      const ok = await Notify.show('Gym Tracker', 'So sieht die Pausen-Benachrichtigung aus.');
+      const ok = await Notify.show('Anchor', 'So sieht die Pausen-Benachrichtigung aus.');
       if (!ok) toast('Benachrichtigung konnte nicht angezeigt werden.');
     },
     'theme': (el) => {
@@ -8729,7 +8729,7 @@
     'lb-metric': (el) => { ui.lbMetric = el.dataset.value; Haptics.tap(); render(); },
     'invite-share': () => {
       if (!Social.ready()) return;
-      shareText('Gym Tracker', 'Lass uns im Gym Tracker unsere Trainings vergleichen! Füge mich hinzu: @' + Social.profile.username + '\n\n' + inviteLink());
+      shareText('Anchor', 'Lass uns in Anchor unsere Trainings vergleichen! Füge mich hinzu: @' + Social.profile.username + '\n\n' + inviteLink());
     },
     'invite-retry': () => { ui.invite = null; render(); },
     'social-retry': () => {
@@ -8745,7 +8745,7 @@
         const m = String(code || '').match(/#\/invite\/([^/?#\s]+)/);
         let name = '';
         try { name = Core.normUsername(m ? decodeURIComponent(m[1]) : code); } catch (e) { name = ''; }
-        if (!name || Core.usernameError(name)) { toast('Das ist kein Gym-Tracker-Einladungscode.'); return; }
+        if (!name || Core.usernameError(name)) { toast('Das ist kein Anchor-Einladungscode.'); return; }
         ui.invite = null;
         go('#/invite/' + encodeURIComponent(name));
       };

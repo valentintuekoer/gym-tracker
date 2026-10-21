@@ -1,6 +1,6 @@
 {
-  "name": "Gym Tracker",
-  "short_name": "Gym",
+  "name": "Anchor",
+  "short_name": "Anchor",
   "description": "Trainingstage planen, Sätze tracken und Satzpausen timen – offline.",
   "lang": "de",
   "start_url": "./",

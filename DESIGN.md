@@ -1,5 +1,5 @@
 ---
-name: Gym Tracker
+name: Anchor
 description: Training, Pausen-Timer, Daily (Gewicht & Mealplan) und Fortschritt – „Liquid Glass“ auf tiefem Schwarz mit feinem Raster, klares Glas aus fünf Schichten, Akzent Blau nur für Hauptaktion und Zustände, nah an iOS, gebaut für eine Hand im Gym.
 colors:
   bg-dark: "#000000"
@@ -149,7 +149,7 @@ components:
     height: "54px"
 ---
 
-# Gym Tracker – Designsystem
+# Anchor – Designsystem
 
 Quelle der Wahrheit sind die Tokens in `style.css` (`:root`). Diese Datei beschreibt, wie sie eingesetzt werden. Neue Bildschirme müssen sich so anfühlen, als hätte es sie immer gegeben.
 

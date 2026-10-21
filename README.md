@@ -1,8 +1,11 @@
-# Gym Tracker
+# Anchor
 
 Gym-Tracking-Web-App (PWA) für das iPhone: Trainingstage, Sätze, Satzpausen-Timer, Verlauf mit Graph –
 wahlweise **mit Konto** (Daten in der Cloud, auf allen Geräten) oder **ohne Konto** (nur auf dem Gerät).
 Reines HTML/CSS/JavaScript, kein Build-Schritt.
+
+Name: **Anchor** (früher „Gym Tracker“). Der alte Name steckt nur noch in internen Kennungen – Speicherschlüssel `gymtracker.*`,
+Export-Marker `gym-tracker`, Cache-Name und Repository –, damit bestehende Daten, Backups und Einladungslinks weiter funktionieren.
 
 | Datei | Inhalt |
 |---|---|
@@ -34,7 +37,7 @@ Ohne diesen Schritt funktioniert die App trotzdem – dann eben ohne Konto.
    von [`firestore.rules`](firestore.rules) → *Veröffentlichen*.
    (Damit kann jeder Nutzer nur seine eigenen Daten lesen und schreiben.)
 5. **Web-App registrieren:** Zahnrad oben links → *Projekteinstellungen* → unten bei *Meine Apps* auf `</>` (Web) →
-   Name z. B. `Gym Tracker` → *App registrieren* (Firebase Hosting **nicht** nötig).
+   Name z. B. `Anchor` → *App registrieren* (Firebase Hosting **nicht** nötig).
    Es erscheint ein Code-Block mit `const firebaseConfig = { apiKey: ..., ... }`.
 6. **Konfiguration eintragen:** öffne `firebase-config.js` und ersetze
    `window.GYM_FIREBASE_CONFIG = null;` durch die Werte aus Schritt 5, z. B.:

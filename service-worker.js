@@ -1,4 +1,4 @@
-/* Gym Tracker – Service Worker
+/* Anchor – Service Worker
  * - Cacht die App-Dateien, damit die App komplett offline läuft.
  * - Zeigt Benachrichtigungen für den Pausentimer (best effort: iOS pausiert
  *   Web-Apps im Hintergrund, Android/Desktop halten den Worker einige Minuten wach).
@@ -6,7 +6,7 @@
 'use strict';
 
 // Bei jeder Änderung an den App-Dateien hochzählen, damit Nutzer die neue Version bekommen.
-const CACHE = 'gym-tracker-v27';
+const CACHE = 'gym-tracker-v28';
 const SDK_CACHE = 'gym-tracker-firebase-sdk';   // Firebase-Bibliothek (versionierte, unveränderliche URLs)
 const SDK_PREFIX = 'https://www.gstatic.com/firebasejs/';
 const AVATAR_CACHE = 'gym-tracker-avatars';     // Profilfotos von Freunden (für die Offline-Ansicht)

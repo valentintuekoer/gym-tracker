@@ -1,0 +1,52 @@
+[
+  {
+    "slug": "11-hantel",
+    "name": "Hantel",
+    "idea": "Die klassische Kurzhantel, schräg wie im Gym-Piktogramm, mit blauen und weißen Scheiben."
+  },
+  {
+    "slug": "12-kettlebell",
+    "name": "Kettlebell",
+    "idea": "Eine Kugelhantel in Weiß auf Akzentblau, mit blauem Schild auf dem Körper."
+  },
+  {
+    "slug": "13-scheibe",
+    "name": "Scheibe",
+    "idea": "Eine Hantelscheibe von oben, der blaue Bogen wirkt wie ein Fortschrittsring."
+  },
+  {
+    "slug": "14-langhantel",
+    "name": "Langhantel",
+    "idea": "Die Langhantel von vorn, große weiße und blaue Scheiben auf der Stange."
+  },
+  {
+    "slug": "15-lifter",
+    "name": "Lifter",
+    "idea": "Eine Figur beim Überkopfdrücken, die Scheiben in Blau und Weiß."
+  },
+  {
+    "slug": "16-stoppuhr",
+    "name": "Stoppuhr",
+    "idea": "Die Satzpause als Stoppuhr, der blaue Bogen ist die ablaufende Zeit."
+  },
+  {
+    "slug": "17-saetze",
+    "name": "Sätze",
+    "idea": "Die Satzliste der App: zwei abgehakte Sätze in Blau, der dritte noch offen."
+  },
+  {
+    "slug": "18-stack",
+    "name": "Stack",
+    "idea": "Der Gewichtsstapel an der Maschine: Der Stift wählt das Gewicht, die oberen Scheiben heben ab."
+  },
+  {
+    "slug": "19-a-hantel",
+    "name": "A-Hantel",
+    "idea": "Ein A, dessen Querbalken eine Hantel ist: der Name und das Training in einem Zeichen."
+  },
+  {
+    "slug": "20-rack",
+    "name": "Rack",
+    "idea": "Das Kniebeugengestell mit eingelegter Langhantel, von vorn gesehen."
+  }
+]

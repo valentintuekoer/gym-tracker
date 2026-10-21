@@ -1,0 +1,191 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Anchor Gym-Logos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Auswahlseite für zehn Gym-Logo-Entwürfe der App Anchor. Neutrale Oberfläche (Grau, Weiß, IBM Plex), damit sie keinen Entwurf bevorzugt. */
+:root {
+  color-scheme: dark;
+  --bg: #0b0b0d; --panel: #131316; --raise: #1b1b20; --line: #2a2a31; --t1: #f2f2f4; --t2: #a3a3ad; --ok: #5fd08a;
+  --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --gl: max(16px, env(safe-area-inset-left, 0px)); --gr: max(16px, env(safe-area-inset-right, 0px));
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--t1); font: 400 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p { margin: 0; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 20px 48px; padding-left: var(--gl); padding-right: var(--gr); }
+header h1 { font: 600 22px/1.2 var(--font); letter-spacing: -.01em; }
+header p { color: var(--t2); margin-top: 6px; max-width: 62ch; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 28px; margin-top: 24px; align-items: start; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px 16px; min-width: 0; }
+.card { text-align: left; display: grid; align-content: start; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); min-width: 0; }
+.card:hover { background: var(--raise); }
+.card[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 1px #fff; background: var(--raise); }
+.ico { position: relative; width: 100%; aspect-ratio: 1; border-radius: 22.37%; overflow: hidden; box-shadow: 0 0 0 1px rgba(255,255,255,.12); background: #000; }
+.ico img { display: block; width: 100%; height: 100%; }
+.card .nm { display: flex; gap: 8px; align-items: baseline; }
+.card .nm b { font: 500 12px var(--mono); color: var(--t2); }
+.card .nm span { font-weight: 600; font-size: 15px; }
+.card p { color: var(--t2); font-size: 12.5px; line-height: 1.4; }
+.detail { position: sticky; top: 16px; display: grid; gap: 18px; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); min-width: 0; }
+.hero { display: flex; gap: 18px; align-items: center; }
+.hero .ico { width: 132px; flex: none; }
+.hero h2 { font: 600 20px/1.2 var(--font); }
+.hero h2 b { font: 500 13px var(--mono); color: var(--t2); margin-right: 8px; }
+.hero p { color: var(--t2); margin-top: 6px; font-size: 13px; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { height: 38px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--raise); font-weight: 500; }
+.btn.solid { background: #fff; color: #0b0b0d; border-color: #fff; }
+.btn:disabled { opacity: .5; cursor: default; }
+.state { font-size: 13px; color: var(--t2); min-height: 20px; }
+.state.ok { color: var(--ok); }
+.sec h3 { font: 600 12px var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--t2); margin-bottom: 10px; }
+.sizes { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.sizes figure { margin: 0; display: grid; gap: 6px; justify-items: center; }
+.sizes figcaption { font: 400 11px var(--mono); color: var(--t2); }
+.sizes .ico { box-shadow: 0 0 0 1px rgba(255,255,255,.14); }
+.seg { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--raise); border: 1px solid var(--line); }
+.seg button { height: 28px; padding: 0 12px; border-radius: 7px; font-size: 13px; color: var(--t2); }
+.seg button[aria-pressed="true"] { background: #fff; color: #0b0b0d; font-weight: 500; }
+.row { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px; }
+.row h3 { margin: 0; }
+.phone { border-radius: 34px; padding: 22px 16px 18px; border: 1px solid #2c2c33; position: relative; overflow: hidden; }
+.phone.dark { background: radial-gradient(120% 80% at 20% 0%, #1b2748 0%, #0a0c14 60%, #05060a 100%); }
+.phone.light { background: radial-gradient(120% 80% at 20% 0%, #cfe0ff 0%, #e9eefb 55%, #f6f3ee 100%); }
+.apps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 8px; }
+.apps.many { grid-template-columns: repeat(5, 1fr); gap: 14px 6px; }
+.app { display: grid; gap: 5px; justify-items: center; min-width: 0; }
+.app .ico { width: 100%; max-width: 62px; box-shadow: none; }
+.app .ph { width: 100%; max-width: 62px; aspect-ratio: 1; border-radius: 22.37%; }
+.app span { font-size: 10.5px; line-height: 1.1; color: #f3f4f8; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phone.light .app span { color: #1a1d28; }
+.app.me span { font-weight: 600; }
+.dockbar { margin-top: 20px; padding: 10px 12px; border-radius: 26px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; justify-items: center; }
+.phone.dark .dockbar { background: rgba(255,255,255,.1); }
+.phone.light .dockbar { background: rgba(255,255,255,.55); }
+.dockbar .ph { width: 100%; max-width: 54px; aspect-ratio: 1; border-radius: 22.37%; }
+.num { font: 500 10px var(--mono); color: #aeb4c6; }
+.phone.light .num { color: #55607a; }
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: #fff; color: #0b0b0d; padding: 9px 16px; border-radius: 10px; font-weight: 500; z-index: 50; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .detail { position: static; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero .ico { width: 104px; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Anchor · Gym-Logos</h1>
+    <p>Zehn Entwürfe zum Thema Gym für das App-Symbol: Hantel, Kettlebell, Scheibe, Langhantel und mehr. Tippe auf einen, sieh ihn groß, in kleinen Größen und auf dem Home-Bildschirm, und wähle dann dein Logo. Die Reihenfolge ist nur die Nummerierung, keine Wertung.</p>
+  </header>
+  <div class="layout">
+    <section class="grid" id="grid" aria-label="Logo-Entwürfe"></section>
+    <aside class="detail" id="detail" aria-live="polite"></aside>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+  var LOGOS = [{"slug": "11-hantel", "nr": "11", "name": "Hantel", "idea": "Die klassische Kurzhantel, schräg wie im Gym-Piktogramm, mit blauen und weißen Scheiben.", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><defs><radialGradient id=\"bg\" cx=\"0.5\" cy=\"0.35\" r=\"0.9\"><stop offset=\"0\" stop-color=\"#14203f\"/><stop offset=\"1\" stop-color=\"#000\"/></radialGradient></defs><rect width=\"1024\" height=\"1024\" fill=\"url(#bg)\"/><g transform=\"translate(512 512) rotate(-40) scale(1.22) translate(-512 -512)\"><rect x=\"352\" y=\"488\" width=\"320\" height=\"48\" rx=\"24\" fill=\"#fff\" /><rect x=\"296\" y=\"396.0\" width=\"56\" height=\"232\" rx=\"22\" fill=\"#3d8bff\" /><rect x=\"672\" y=\"396.0\" width=\"56\" height=\"232\" rx=\"22\" fill=\"#3d8bff\" /><rect x=\"232\" y=\"344.0\" width=\"64\" height=\"336\" rx=\"22\" fill=\"#fff\" /><rect x=\"728\" y=\"344.0\" width=\"64\" height=\"336\" rx=\"22\" fill=\"#fff\" /></g></svg>"}, {"slug": "12-kettlebell", "nr": "12", "name": "Kettlebell", "idea": "Eine Kugelhantel in Weiß auf Akzentblau, mit blauem Schild auf dem Körper.", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><defs><linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"0.4\" y2=\"1\"><stop offset=\"0\" stop-color=\"#2f80ff\"/><stop offset=\"1\" stop-color=\"#0050d8\"/></linearGradient><clipPath id=\"flat\"><rect x=\"0\" y=\"0\" width=\"1024\" height=\"884\"/></clipPath>\n<radialGradient id=\"hl\" cx=\"0.34\" cy=\"0.3\" r=\"0.8\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\"1\" stop-color=\"#cfdcff\"/></radialGradient></defs><rect width=\"1024\" height=\"1024\" fill=\"url(#bg)\"/><path d=\"M322 520 C 296 300 340 190 512 190 C 684 190 728 300 702 520\" fill=\"none\" stroke=\"#fff\" stroke-width=\"96\" stroke-linecap=\"round\"/><g clip-path=\"url(#flat)\"><circle cx=\"512\" cy=\"672\" r=\"286\" fill=\"url(#hl)\"/></g><circle cx=\"512\" cy=\"690\" r=\"92\" fill=\"none\" stroke=\"#0061fe\" stroke-width=\"26\"/></svg>"}, {"slug": "13-scheibe", "nr": "13", "name": "Scheibe", "idea": "Eine Hantelscheibe von oben, der blaue Bogen wirkt wie ein Fortschrittsring.", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><defs></defs><rect width=\"1024\" height=\"1024\" fill=\"#000\"/><circle cx=\"512\" cy=\"512\" r=\"392\" fill=\"#fff\"/><circle cx=\"512\" cy=\"512\" r=\"344\" fill=\"#0c0c10\"/><circle cx=\"512\" cy=\"512\" r=\"282\" fill=\"none\" stroke=\"#fff\" stroke-opacity=\"0.16\" stroke-width=\"30\"/><path d=\"M512.0 230.0 A 282 282 0 1 1 371.0 756.2\" fill=\"none\" stroke=\"#3d8bff\" stroke-width=\"30\" stroke-linecap=\"round\"/><circle cx=\"512\" cy=\"512\" r=\"150\" fill=\"#fff\"/><circle cx=\"512\" cy=\"512\" r=\"58\" fill=\"#0c0c10\"/></svg>"}, {"slug": "14-langhantel", "nr": "14", "name": "Langhantel", "idea": "Die Langhantel von vorn, große weiße und blaue Scheiben auf der Stange.", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><defs></defs><rect width=\"1024\" height=\"1024\" fill=\"#000\"/><rect x=\"80\" y=\"498\" width=\"864\" height=\"28\" rx=\"14\" fill=\"#cfd6e6\"/><rect x=\"262\" y=\"277.0\" width=\"58\" height=\"470\" rx=\"20\" fill=\"#fff\" /><rect x=\"704\" y=\"277.0\" width=\"58\" height=\"470\" rx=\"20\" fill=\"#fff\" /><rect x=\"326\" y=\"332.0\" width=\"46\" height=\"360\" rx=\"20\" fill=\"#0061fe\" /><rect x=\"652\" y=\"332.0\" width=\"46\" height=\"360\" rx=\"20\" fill=\"#0061fe\" /><rect x=\"378\" y=\"471.0\" width=\"24\" height=\"82\" rx=\"20\" fill=\"#9aa3b8\" /><rect x=\"622\" y=\"471.0\" width=\"24\" height=\"82\" rx=\"20\" fill=\"#9aa3b8\" /></svg>"}, {"slug": "15-lifter", "nr": "15", "name": "Lifter", "idea": "Eine Figur beim Überkopfdrücken, die Scheiben in Blau und Weiß.", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><defs><linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"0.4\" y2=\"1\"><stop offset=\"0\" stop-color=\"#1a74ff\"/><stop offset=\"1\" stop-color=\"#00287a\"/></linearGradient></defs><rect width=\"1024\" height=\"1024\" fill=\"url(#bg)\"/><g fill=\"none\" stroke=\"#fff\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M150 232 H 874\" stroke=\"#3d8bff\" stroke-width=\"28\"/><circle cx=\"512\" cy=\"352\" r=\"54\" fill=\"#fff\" stroke=\"none\"/><path d=\"M512 470 V 650\" stroke-width=\"84\"/><path d=\"M466 466 L 404 248\" stroke-width=\"40\"/><path d=\"M558 466 L 620 248\" stroke-width=\"40\"/><path d=\"M488 650 L 430 860\" stroke-width=\"48\"/><path d=\"M536 650 L 594 860\" stroke-width=\"48\"/></g><rect x=\"112\" y=\"132\" width=\"36\" height=\"200\" rx=\"14\" fill=\"#fff\" /><rect x=\"152\" y=\"132\" width=\"28\" height=\"200\" rx=\"14\" fill=\"#3d8bff\" /><rect x=\"876\" y=\"132\" width=\"36\" height=\"200\" rx=\"14\" fill=\"#fff\" /><rect x=\"844\" y=\"132\" width=\"28\" height=\"200\" rx=\"14\" fill=\"#3d8bff\" /></svg>"}, {"slug": "16-stoppuhr", "nr": "16", "name": "Stoppuhr", "idea": "Die Satzpause als Stoppuhr, der blaue Bogen ist die ablaufende Zeit.", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><defs></defs><rect width=\"1024\" height=\"1024\" fill=\"#000\"/><circle cx=\"512\" cy=\"580\" r=\"292\" fill=\"none\" stroke=\"#fff\" stroke-width=\"44\"/><path d=\"M512.0 346.4 A 233.6 233.6 0 1 1 292.5 659.9\" fill=\"none\" stroke=\"#3d8bff\" stroke-width=\"40\" stroke-linecap=\"round\"/><rect x=\"452\" y=\"150\" width=\"120\" height=\"56\" rx=\"20\" fill=\"#fff\" /><path d=\"M512 206 V 262\" stroke=\"#fff\" stroke-width=\"40\" stroke-linecap=\"round\"/><g transform=\"rotate(42 512 580)\"><path d=\"M512 214 v 0\" stroke=\"#fff\"/><rect x=\"486\" y=\"196\" width=\"52\" height=\"48\" rx=\"14\" fill=\"#fff\" /></g><path d=\"M512 580 L 608 460\" stroke=\"#fff\" stroke-width=\"30\" stroke-linecap=\"round\"/><circle cx=\"512\" cy=\"580\" r=\"30\" fill=\"#fff\"/></svg>"}, {"slug": "17-saetze", "nr": "17", "name": "Sätze", "idea": "Die Satzliste der App: zwei abgehakte Sätze in Blau, der dritte noch offen.", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><defs><radialGradient id=\"o1\" cx=\"0.2\" cy=\"0.1\" r=\"0.9\"><stop offset=\"0\" stop-color=\"#0061fe\" stop-opacity=\"0.75\"/><stop offset=\"1\" stop-color=\"#0061fe\" stop-opacity=\"0\"/></radialGradient></defs><rect width=\"1024\" height=\"1024\" fill=\"#02060f\"/><rect width=\"1024\" height=\"1024\" fill=\"url(#o1)\"/><rect x=\"170\" y=\"196\" width=\"684\" height=\"176\" rx=\"88\" fill=\"#fff\" fill-opacity=\"0.12\" stroke=\"#fff\" stroke-opacity=\"0.28\" stroke-width=\"4\"/><circle cx=\"270\" cy=\"284\" r=\"60\" fill=\"#0061fe\"/><path d=\"M242 286 L262 306 L302 264\" fill=\"none\" stroke=\"#fff\" stroke-width=\"18\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><rect x=\"386\" y=\"254\" width=\"330\" height=\"30\" rx=\"15\" fill=\"#fff\" fill-opacity=\"0.95\"/><rect x=\"386\" y=\"296\" width=\"200\" height=\"22\" rx=\"11\" fill=\"#fff\" fill-opacity=\"0.5\"/><rect x=\"170\" y=\"424\" width=\"684\" height=\"176\" rx=\"88\" fill=\"#fff\" fill-opacity=\"0.12\" stroke=\"#fff\" stroke-opacity=\"0.28\" stroke-width=\"4\"/><circle cx=\"270\" cy=\"512\" r=\"60\" fill=\"#0061fe\"/><path d=\"M242 514 L262 534 L302 492\" fill=\"none\" stroke=\"#fff\" stroke-width=\"18\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><rect x=\"386\" y=\"482\" width=\"330\" height=\"30\" rx=\"15\" fill=\"#fff\" fill-opacity=\"0.95\"/><rect x=\"386\" y=\"524\" width=\"200\" height=\"22\" rx=\"11\" fill=\"#fff\" fill-opacity=\"0.5\"/><rect x=\"170\" y=\"652\" width=\"684\" height=\"176\" rx=\"88\" fill=\"#fff\" fill-opacity=\"0.06\" stroke=\"#fff\" stroke-opacity=\"0.14\" stroke-width=\"4\"/><circle cx=\"270\" cy=\"740\" r=\"56\" fill=\"none\" stroke=\"#fff\" stroke-opacity=\"0.55\" stroke-width=\"10\"/><rect x=\"386\" y=\"710\" width=\"270\" height=\"30\" rx=\"15\" fill=\"#fff\" fill-opacity=\"0.45\"/><rect x=\"386\" y=\"752\" width=\"200\" height=\"22\" rx=\"11\" fill=\"#fff\" fill-opacity=\"0.25\"/></svg>"}, {"slug": "18-stack", "nr": "18", "name": "Stack", "idea": "Der Gewichtsstapel an der Maschine: Der Stift wählt das Gewicht, die oberen Scheiben heben ab.", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><defs><linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"/><stop offset=\"1\" stop-color=\"#dfe5f2\"/></linearGradient></defs><rect width=\"1024\" height=\"1024\" fill=\"url(#bg)\"/><rect x=\"505\" y=\"96\" width=\"28\" height=\"840\" rx=\"14\" fill=\"#8a93a8\"/><rect x=\"282\" y=\"136\" width=\"460\" height=\"84\" rx=\"20\" fill=\"#0061fe\" /><rect x=\"282\" y=\"242\" width=\"460\" height=\"84\" rx=\"20\" fill=\"#0061fe\" /><rect x=\"282\" y=\"348\" width=\"460\" height=\"84\" rx=\"20\" fill=\"#0061fe\" /><rect x=\"282\" y=\"454\" width=\"460\" height=\"84\" rx=\"20\" fill=\"#0061fe\" /><rect x=\"282\" y=\"584\" width=\"460\" height=\"84\" rx=\"20\" fill=\"#0c1020\" /><rect x=\"282\" y=\"690\" width=\"460\" height=\"84\" rx=\"20\" fill=\"#0c1020\" /><rect x=\"282\" y=\"796\" width=\"460\" height=\"84\" rx=\"20\" fill=\"#0c1020\" /><rect x=\"150\" y=\"613\" width=\"140\" height=\"28\" rx=\"14\" fill=\"#3d8bff\" /><circle cx=\"150\" cy=\"627\" r=\"36\" fill=\"none\" stroke=\"#3d8bff\" stroke-width=\"22\"/></svg>"}, {"slug": "19-a-hantel", "nr": "19", "name": "A-Hantel", "idea": "Ein A, dessen Querbalken eine Hantel ist: der Name und das Training in einem Zeichen.", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><defs></defs><rect width=\"1024\" height=\"1024\" fill=\"#000\"/><g fill=\"none\" stroke=\"#fff\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"60\"><path d=\"M512 214 L276 830\"/><path d=\"M512 214 L748 830\"/></g><rect x=\"353.3896103896104\" y=\"609\" width=\"317.22077922077915\" height=\"38\" rx=\"19\" fill=\"#3d8bff\"/><rect x=\"333.3896103896104\" y=\"513.0\" width=\"44\" height=\"230\" rx=\"14\" fill=\"#0061fe\" /><rect x=\"650.6103896103896\" y=\"513.0\" width=\"44\" height=\"230\" rx=\"14\" fill=\"#0061fe\" /><rect x=\"297.3896103896104\" y=\"553.0\" width=\"30\" height=\"150\" rx=\"14\" fill=\"#fff\" /><rect x=\"696.6103896103896\" y=\"553.0\" width=\"30\" height=\"150\" rx=\"14\" fill=\"#fff\" /></svg>"}, {"slug": "20-rack", "nr": "20", "name": "Rack", "idea": "Das Kniebeugengestell mit eingelegter Langhantel, von vorn gesehen.", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\"><defs><linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"0.2\" y2=\"1\"><stop offset=\"0\" stop-color=\"#0f1d3d\"/><stop offset=\"1\" stop-color=\"#02040a\"/></linearGradient></defs><rect width=\"1024\" height=\"1024\" fill=\"url(#bg)\"/><rect x=\"262\" y=\"140\" width=\"60\" height=\"744\" rx=\"14\" fill=\"#fff\" /><rect x=\"702\" y=\"140\" width=\"60\" height=\"744\" rx=\"14\" fill=\"#fff\" /><rect x=\"262\" y=\"140\" width=\"500\" height=\"60\" rx=\"14\" fill=\"#fff\" /><path d=\"M322 700 H 702\" stroke=\"#fff\" stroke-opacity=\"0.45\" stroke-width=\"26\" stroke-linecap=\"round\"/><path d=\"M322 452 h 62 v -64\" fill=\"none\" stroke=\"#3d8bff\" stroke-width=\"30\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M702 452 h -62 v -64\" fill=\"none\" stroke=\"#3d8bff\" stroke-width=\"30\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><rect x=\"96\" y=\"360\" width=\"832\" height=\"26\" rx=\"13\" fill=\"#cfd6e6\"/><rect x=\"110\" y=\"298.0\" width=\"36\" height=\"150\" rx=\"12\" fill=\"#fff\" /><rect x=\"878\" y=\"298.0\" width=\"36\" height=\"150\" rx=\"12\" fill=\"#fff\" /><rect x=\"150\" y=\"318.0\" width=\"28\" height=\"110\" rx=\"12\" fill=\"#3d8bff\" /><rect x=\"846\" y=\"318.0\" width=\"28\" height=\"110\" rx=\"12\" fill=\"#3d8bff\" /></svg>"}];
+  var LS = 'anchor-gymlogo-choice-v1';
+  var sel = 0, mode = 'single', wall = 'dark', chosen = null, db = null, saving = false;
+  var $ = function (id) { return document.getElementById(id); };
+  var uri = function (l) { return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(l.svg); };
+  var esc = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var icon = function (l, extra) { return '<div class="ico"' + (extra || '') + '><img alt="" src="' + uri(l) + '"></div>'; };
+  var PLACEHOLDERS = [['#3a3f52', 'Notizen'], ['#2d4a3a', 'Karten'], ['#5a3a3a', 'Musik'], ['#3a4a5a', 'Wetter'], ['#4a3a5a', 'Fotos'], ['#55503a', 'Uhr'], ['#3a5555', 'Kamera']];
+
+  function renderGrid() {
+    $('grid').innerHTML = LOGOS.map(function (l, i) {
+      return '<button class="card" type="button" data-i="' + i + '" aria-pressed="' + (i === sel) + '">' + icon(l) +
+        '<div class="nm"><b>' + l.nr + '</b><span>' + esc(l.name) + '</span></div><p>' + esc(l.idea) + '</p></button>';
+    }).join('');
+  }
+
+  function phoneHTML() {
+    var l = LOGOS[sel], h = '<div class="phone ' + wall + '">';
+    if (mode === 'single') {
+      h += '<div class="apps">';
+      var ph = PLACEHOLDERS.slice(0, 3), i;
+      for (i = 0; i < 3; i++) h += '<div class="app"><div class="ph" style="background:' + ph[i][0] + '"></div><span>' + ph[i][1] + '</span></div>';
+      h += '<div class="app me">' + icon(l) + '<span>Anchor</span></div>';
+      for (i = 3; i < 7; i++) h += '<div class="app"><div class="ph" style="background:' + PLACEHOLDERS[i][0] + '"></div><span>' + PLACEHOLDERS[i][1] + '</span></div>';
+      h += '</div><div class="dockbar">' + [0, 1, 2, 3].map(function (k) { return '<div class="ph" style="background:' + PLACEHOLDERS[(k * 2) % 7][0] + '"></div>'; }).join('') + '</div>';
+    } else {
+      h += '<div class="apps many">' + LOGOS.map(function (x, i) {
+        return '<div class="app me">' + icon(x) + '<span class="num">' + x.nr + '</span></div>';
+      }).join('') + '</div>';
+    }
+    return h + '</div>';
+  }
+
+  function renderDetail() {
+    var l = LOGOS[sel], sizes = [120, 76, 60, 40, 29];
+    var isChosen = chosen && chosen.slug === l.slug;
+    $('detail').innerHTML =
+      '<div class="hero">' + icon(l) + '<div><h2><b>' + l.nr + '</b>' + esc(l.name) + '</h2><p>' + esc(l.idea) + '</p></div></div>' +
+      '<div class="btns"><button class="btn solid" type="button" id="b-choose"' + (saving ? ' disabled' : '') + '>' + (isChosen ? 'Gewählt' : 'Als Logo wählen') + '</button><button class="btn" type="button" id="b-copy">Auswahl kopieren</button></div>' +
+      '<div class="state' + (chosen ? ' ok' : '') + '" id="state">' + (chosen ? 'Dein gewähltes Logo: ' + chosen.nr + ' ' + esc(chosen.name) + '.' : 'Noch nichts gewählt.') + '</div>' +
+      '<div class="sec"><h3>Größen</h3><div class="sizes">' + sizes.map(function (s) { return '<figure><div class="ico" style="width:' + s + 'px"><img alt="" src="' + uri(l) + '"></div><figcaption>' + s + '</figcaption></figure>'; }).join('') + '</div></div>' +
+      '<div class="sec"><div class="row"><h3>Home-Bildschirm</h3><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<div class="seg" role="group" aria-label="Ansicht"><button type="button" data-mode="single" aria-pressed="' + (mode === 'single') + '">Einzeln</button><button type="button" data-mode="all" aria-pressed="' + (mode === 'all') + '">Alle zehn</button></div>' +
+        '<div class="seg" role="group" aria-label="Hintergrund"><button type="button" data-wall="dark" aria-pressed="' + (wall === 'dark') + '">Dunkel</button><button type="button" data-wall="light" aria-pressed="' + (wall === 'light') + '">Hell</button></div>' +
+      '</div></div>' + phoneHTML() + '</div>';
+  }
+
+  function toast(m) { var t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { t.hidden = true; }, 2200); }
+
+  function summary() {
+    var l = LOGOS[sel];
+    return 'Anchor-Gym-Logo: ' + l.nr + ' ' + l.name + '\n' + l.idea + '\nDatei: brand/logos-gym/' + l.slug + '.svg';
+  }
+
+  async function choose() {
+    var l = LOGOS[sel]; saving = true; renderDetail();
+    var rec = { slug: l.slug, nr: l.nr, name: l.name, idea: l.idea, chosenAt: new Date().toISOString() };
+    chosen = rec;
+    try { localStorage.setItem(LS, JSON.stringify(rec)); } catch (e) { /* ohne Speicher weiter */ }
+    var where = 'in diesem Browser';
+    if (db) { try { await db.doc('gymlogo/choice').set(rec); where = 'gespeichert und für Claude lesbar'; } catch (e) { where = 'nur in diesem Browser'; } }
+    saving = false; renderDetail(); toast('Logo ' + l.nr + ' ' + l.name + ' gewählt (' + where + ')');
+  }
+
+  function copy() {
+    var text = summary();
+    function fb() { toast('Kopieren nicht möglich. Text: ' + text.split('\n')[0]); }
+    try { navigator.clipboard.writeText(text).then(function () { toast('Auswahl kopiert'); }, fb); } catch (e) { fb(); }
+  }
+
+  function bind() {
+    $('grid').addEventListener('click', function (e) {
+      var c = e.target.closest('.card'); if (!c) return;
+      sel = Number(c.getAttribute('data-i')); renderGrid(); renderDetail();
+      if (window.innerWidth <= 900) $('detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    $('detail').addEventListener('click', function (e) {
+      var t = e.target.closest('button'); if (!t) return;
+      if (t.id === 'b-choose') choose(); else if (t.id === 'b-copy') copy();
+      else if (t.hasAttribute('data-mode')) { mode = t.getAttribute('data-mode'); renderDetail(); }
+      else if (t.hasAttribute('data-wall')) { wall = t.getAttribute('data-wall'); renderDetail(); }
+    });
+  }
+
+  async function init() {
+    try { var r = JSON.parse(localStorage.getItem(LS) || 'null'); if (r && r.slug) { chosen = r; var i = LOGOS.findIndex(function (x) { return x.slug === r.slug; }); if (i >= 0) sel = i; } } catch (e) { /* ignorieren */ }
+    renderGrid(); renderDetail(); bind();
+    try {
+      if (window.claude && window.claude.use) db = await window.claude.use('db');
+      if (db) { var s = await db.doc('gymlogo/choice').get(); if (s.exists) { var d = s.data(); if (d && d.slug) { chosen = d; var j = LOGOS.findIndex(function (x) { return x.slug === d.slug; }); if (j >= 0) sel = j; renderGrid(); renderDetail(); } } }
+    } catch (e) { db = null; }
+  }
+  init();
+})();
+</script>

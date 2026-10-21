@@ -1,5 +1,7 @@
 # Anchor – Logo-Entwürfe
 
+Zwei Runden: `logos/` (Runde 1, Anker) und `logos-gym/` (Runde 2, Gym-Motive). Beide haben `overview.png`, `picker.html` und `logos.json`.
+
 Zehn Entwürfe für das App-Symbol unter `logos/` (SVG, 1024 × 1024, randlos wie für den App Store; iOS rundet die Ecken selbst).
 Es ist noch keiner ausgewählt oder eingebaut; die App verwendet weiter die Symbole in `icons/`.
 
@@ -19,3 +21,18 @@ Es ist noch keiner ausgewählt oder eingebaut; die App verwendet weiter die Symb
 - `logos/overview.png` – alle zehn nebeneinander
 - `logos/picker.html` – Auswahlseite mit Größen und Home-Bildschirm-Vorschau (eine Datei, läuft im Browser; die Auswahl wird im Browser gespeichert)
 - `logos/logos.json` – Namen und Ideen
+
+## Runde 2: Gym-Motive (`logos-gym/`)
+
+| Nr. | Name | Idee |
+|---|---|---|
+| 11 | Hantel | Die klassische Kurzhantel, schräg, mit blauen und weißen Scheiben |
+| 12 | Kettlebell | Kugelhantel in Weiß auf Akzentblau |
+| 13 | Scheibe | Hantelscheibe von oben, der blaue Bogen wirkt wie ein Fortschrittsring |
+| 14 | Langhantel | Die Langhantel von vorn, weiße und blaue Scheiben |
+| 15 | Lifter | Figur beim Überkopfdrücken |
+| 16 | Stoppuhr | Die Satzpause als Stoppuhr mit ablaufendem blauem Bogen |
+| 17 | Sätze | Die Satzliste der App, zwei abgehakt, einer offen |
+| 18 | Stack | Gewichtsstapel an der Maschine, der Stift wählt das Gewicht |
+| 19 | A-Hantel | Ein A, dessen Querbalken eine Hantel ist |
+| 20 | Rack | Kniebeugengestell mit eingelegter Langhantel |

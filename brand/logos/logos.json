@@ -1,0 +1,52 @@
+[
+  {
+    "slug": "01-linie",
+    "name": "Linie",
+    "idea": "Feine Linie, weiß auf Schwarz, der Ring in Akzentblau."
+  },
+  {
+    "slug": "02-fest",
+    "name": "Fest",
+    "idea": "Kräftige weiße Silhouette auf Akzentblau, laut und eindeutig."
+  },
+  {
+    "slug": "03-glas",
+    "name": "Glas",
+    "idea": "Der Anker als durchscheinendes Liquid Glass mit Lichtkante vor blauem Leuchten."
+  },
+  {
+    "slug": "04-hantel",
+    "name": "Hantel",
+    "idea": "Der Querbalken ist eine Langhantel mit blauen Scheiben, Anker und Training in einem."
+  },
+  {
+    "slug": "05-monogramm",
+    "name": "Monogramm",
+    "idea": "Ein A, dessen Spitze der Anker-Ring ist; der blaue Schaft in der Mitte macht es zum Anker."
+  },
+  {
+    "slug": "06-siegel",
+    "name": "Siegel",
+    "idea": "Rundes Abzeichen mit Skala wie ein Kompass, der Anker in der Mitte."
+  },
+  {
+    "slug": "07-hell",
+    "name": "Hell",
+    "idea": "Heller Grund, schwarzer Anker, blauer Ring: fällt zwischen dunklen Symbolen auf."
+  },
+  {
+    "slug": "08-raster",
+    "name": "Raster",
+    "idea": "Das feine Raster der App als Hintergrund, der Anker in weißer Linie mit blauem Akzentpunkt."
+  },
+  {
+    "slug": "09-tau",
+    "name": "Tau",
+    "idea": "Der Anker als gedrehtes Seil, hell auf Schwarz."
+  },
+  {
+    "slug": "10-aufwind",
+    "name": "Aufwind",
+    "idea": "Die Spitze des Ankers ist ein Pfeil nach oben: halten und steigern."
+  }
+]

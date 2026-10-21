@@ -1328,6 +1328,19 @@ input[type="date"].in { min-height: 48px; }
 .auth-sub { margin: var(--s-2) 0 var(--s-5); text-align: center; color: var(--muted); font-size: 15px; }
 .auth .notice { margin: var(--s-5) 0 var(--s-2); }
 
+/* E-Mail bestätigen */
+.verify-icon {
+  display: grid; place-items: center; width: 80px; height: 80px; margin: 0 auto var(--s-4);
+  border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  animation: hero-pop 700ms var(--spring) both;
+}
+.verify-icon svg { width: 36px; height: 36px; }
+.verify .auth-sub { margin-bottom: var(--s-4); }
+.verify .auth-sub b { color: var(--text); font-weight: 650; }
+.verify .hint { margin: 0 0 var(--s-5); }
+.verify .form-error { margin-bottom: var(--s-4); }
+.verify .btn.block + .btn.block { margin-top: var(--s-3); }
+
 .auth-form { display: grid; gap: var(--s-4); }
 .auth-form .btn.block { margin-top: var(--s-1); }
 .lbl { display: grid; gap: 6px; font-size: 14px; font-weight: 600; color: var(--muted); }

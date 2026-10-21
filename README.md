@@ -305,6 +305,14 @@ Daten gespeichert und nie mit Freunden geteilt.
   geteilte Kennzahlen und alle Cloud-Daten endgültig. Die Trainingsdaten auf dem Gerät bleiben erhalten.
 - Export/Import (Einstellungen → Datensicherung) funktioniert immer, mit und ohne Konto.
 - *Passwort vergessen?* auf der Anmeldeseite schickt eine E-Mail zum Zurücksetzen.
+- **E-Mail bestätigen:** Beim Erstellen eines Kontos mit E-Mail und Passwort schickt Firebase eine Bestätigungs-E-Mail
+  (Absender und Text lassen sich in der Firebase-Konsole unter *Authentication → Vorlagen* anpassen). Bis zum Tippen auf den
+  Link bleibt die App auf dem Bildschirm „E-Mail bestätigen“; die Prüfung läuft von selbst, sobald man zurückkehrt, oder per
+  „Ich habe bestätigt“. Dort lässt sich die E-Mail erneut senden oder – bei einem Tippfehler – eine andere Adresse verwenden.
+  Gilt für Konten ab dem 21.10.2026 (`VERIFY_FROM` in `cloud.js`); ältere Konten und „Mit Apple anmelden“ sind nicht betroffen.
+  Hinweis: Die Sperre wirkt in der App. Die Firestore-Regeln prüfen die Bestätigung nicht (sonst wären ältere Konten ausgesperrt);
+  wer sie erzwingen will, ergänzt in `signedIn()` zusätzlich `request.auth.token.email_verified == true` – dann müssen alle
+  Konten bestätigt sein.
 
 ## Tests
 

@@ -90,13 +90,35 @@ async function openApp(page) {
   await waitHash(page, /#\/login/);
 }
 
-async function register(page, email) {
-  await openApp(page);
+/** Bestätigungs-E-Mails, die der Emulator „verschickt“ hat (neueste zuletzt) */
+async function verifyMails(email) {
+  const r = await fetch(`http://127.0.0.1:9099/emulator/v1/projects/${PROJECT}/oobCodes`).then((x) => x.json());
+  return r.oobCodes.filter((c) => c.requestType === 'VERIFY_EMAIL' && c.email === email);
+}
+
+/** Wie ein Tipp auf den Link in der E-Mail: Adresse im Emulator bestätigen */
+async function openVerifyLink(email) {
+  const mails = await verifyMails(email);
+  assert.ok(mails.length, 'keine Bestätigungs-E-Mail an ' + email);
+  const res = await fetch(mails[mails.length - 1].oobLink);
+  assert.equal(res.status, 200);
+}
+
+async function fillRegistration(page, email) {
   await page.locator('[data-action="auth-mode"][data-mode="register"]').click();
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', 'geheim123');
   await page.fill('input[name="password2"]', 'geheim123');
   await page.locator('#auth-submit').click();
+}
+
+async function register(page, email) {
+  await openApp(page);
+  await fillRegistration(page, email);
+  // E-Mail bestätigen (Link aus dem Emulator) → Konto wird freigegeben
+  await waitHash(page, /#\/verify/);
+  await openVerifyLink(email);
+  await page.locator('[data-action="verify-check"]').click();
   // Neues Konto → Einrichtung → „Später“ → danach die Profil-Einrichtung
   await waitHash(page, /#\/setup/);
   await page.locator('[data-action="setup-skip"]').click();
@@ -996,4 +1018,108 @@ test('Chats: Gruppe erstellen, Kontakte (Freunde) mit Direktnachricht, Mitgliede
   await Promise.all([A.ctx.close(), B.ctx.close()]);
   assert.deepEqual(errors.filter((e) => /grp-/.test(e)), [], JSON.stringify(errors));
   assert.deepEqual(toastLog.filter((t) => /Fehler|fehlgeschlagen|nicht geklappt|Berechtigung|Nicht erlaubt/.test(t)), []);
+});
+
+/** Konto direkt im Auth-Emulator anlegen (z. B. ein älteres oder schon bestätigtes Konto) */
+async function seedUser(email, { createdAt, emailVerified }) {
+  const res = await fetch(`http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/projects/${PROJECT}/accounts:batchCreate`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ users: [{ localId: 'seed-' + email.split('@')[0], email, emailVerified, rawPassword: 'geheim123', createdAt: String(createdAt), lastLoginAt: String(createdAt) }] }),
+  });
+  assert.equal(res.status, 200);
+}
+
+async function login(page, email) {
+  await openApp(page);
+  await page.fill('input[name="email"]', email);
+  await page.fill('input[name="password"]', 'geheim123');
+  await page.locator('#auth-submit').click();
+}
+
+const accountMode = (page) => page.evaluate(() => { try { return JSON.parse(localStorage.getItem('gymtracker.account.v1')).mode; } catch (e) { return null; } });
+
+test('E-Mail-Bestätigung: Konto erst nach dem Link, übersteht Neustart und fragt von selbst nach', async () => {
+  const email = 'verify1@test.de';
+  const { ctx, page } = await device('verify1');
+  await openApp(page);
+  await fillRegistration(page, email);
+  await waitHash(page, /#\/verify/);
+  await page.locator('.verify .auth-sub b', { hasText: email }).waitFor();
+  assert.equal(await page.evaluate(() => document.body.classList.contains('no-tabbar')), true);
+  assert.equal((await verifyMails(email)).length, 1);                    // Bestätigungs-E-Mail beim Registrieren verschickt
+  await page.locator('#verify-resend:disabled', { hasText: /Erneut senden in \d+ s/ }).waitFor(); // gerade erst gesendet → kurze Sperre
+
+  // Der Weg in die App ist versperrt, solange die Adresse nicht bestätigt ist
+  await page.evaluate(() => { location.hash = '#/'; });
+  await waitHash(page, /#\/verify/);
+  await page.locator('[data-action="verify-check"]').click();
+  await page.locator('#verify-error', { hasText: 'Noch nicht bestätigt' }).waitFor();
+  assert.equal(await accountMode(page), null);
+
+  // Neustart der App: weiter auf dem Bestätigungsbildschirm, „erneut senden“ verschickt eine zweite E-Mail
+  await page.reload();
+  await waitHash(page, /#\/verify/);
+  await page.waitForFunction(() => window.GymCloud && window.GymCloud.currentUser());
+  await page.locator('#verify-resend:not([disabled])').click();
+  await toastText(page).filter({ hasText: 'E-Mail gesendet' }).waitFor();
+  await page.waitForFunction(async (e) => (await (await fetch('http://127.0.0.1:9099/emulator/v1/projects/demo-gym/oobCodes')).json()).oobCodes.filter((c) => c.requestType === 'VERIFY_EMAIL' && c.email === e).length === 2, email);
+  assert.equal(await page.locator('#verify-resend').isDisabled(), true);
+
+  // Link in der E-Mail antippen (z. B. am Computer): die App merkt es von selbst und startet die Einrichtung
+  await openVerifyLink(email);
+  await waitHash(page, /#\/setup/);
+  assert.equal(await accountMode(page), 'user');
+  assert.equal(await page.evaluate(() => localStorage.getItem('gymtracker.verify.v1')), null);
+
+  for (const p of pages) toastLog.push(...await p.page.evaluate(() => window.__toasts || []).catch(() => []));
+  await ctx.close();
+  assert.deepEqual(errors.filter((e) => /^verify1/.test(e)), [], JSON.stringify(errors));
+});
+
+test('E-Mail-Bestätigung: andere Adresse verwenden; ältere und bestätigte Konten kommen direkt rein', async () => {
+  // Tippfehler in der Adresse → unbestätigtes Konto verwerfen, dieselbe Adresse lässt sich danach neu registrieren
+  const typo = await device('verify2');
+  await openApp(typo.page);
+  await fillRegistration(typo.page, 'tippfehler@test.de');
+  await waitHash(typo.page, /#\/verify/);
+  await typo.page.locator('[data-action="verify-other"]').click();
+  await waitHash(typo.page, /#\/login/);
+  await typo.page.locator('input[name="password2"]').waitFor(); // Registrierung ist wieder offen
+  assert.equal(await typo.page.inputValue('input[name="email"]'), '');
+  assert.equal(await typo.page.evaluate(() => localStorage.getItem('gymtracker.verify.v1')), null);
+  await fillRegistration(typo.page, 'tippfehler@test.de');
+  await waitHash(typo.page, /#\/verify/);
+  await typo.ctx.close();
+
+  // Konto von vor der Einführung (unbestätigt) → wie bisher direkt nutzbar
+  await seedUser('alt@test.de', { createdAt: Date.parse('2023-11-14T22:13:20Z'), emailVerified: false });
+  const old = await device('verify-alt');
+  await login(old.page, 'alt@test.de');
+  await old.page.waitForFunction(() => { try { return JSON.parse(localStorage.getItem('gymtracker.account.v1')).mode === 'user'; } catch (e) { return false; } });
+  assert.notEqual(await old.page.evaluate(() => location.hash), '#/verify');
+  await old.ctx.close();
+
+  // Neues, aber schon bestätigtes Konto (z. B. am Computer bestätigt) → direkt rein
+  await seedUser('bestaetigt@test.de', { createdAt: Date.now(), emailVerified: true });
+  const done = await device('verify-ok');
+  await login(done.page, 'bestaetigt@test.de');
+  await done.page.waitForFunction(() => { try { return JSON.parse(localStorage.getItem('gymtracker.account.v1')).mode === 'user'; } catch (e) { return false; } });
+  assert.notEqual(await done.page.evaluate(() => location.hash), '#/verify');
+  await done.ctx.close();
+
+  // Neues, unbestätigtes Konto meldet sich an → Bestätigungsbildschirm, nach dem Link geht es weiter
+  await seedUser('offen@test.de', { createdAt: Date.now(), emailVerified: false });
+  const open = await device('verify-offen');
+  await login(open.page, 'offen@test.de');
+  await waitHash(open.page, /#\/verify/);
+  assert.equal(await accountMode(open.page), null);
+  await open.page.locator('#verify-resend:not([disabled])').click();
+  await toastText(open.page).filter({ hasText: 'E-Mail gesendet' }).waitFor();
+  await openVerifyLink('offen@test.de');
+  await open.page.locator('[data-action="verify-check"]').click();
+  await open.page.waitForFunction(() => { try { return JSON.parse(localStorage.getItem('gymtracker.account.v1')).mode === 'user'; } catch (e) { return false; } });
+  assert.notEqual(await open.page.evaluate(() => location.hash), '#/verify');
+  await open.ctx.close();
+  assert.deepEqual(errors.filter((e) => /^verify/.test(e)), [], JSON.stringify(errors));
 });

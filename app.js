@@ -2184,6 +2184,7 @@
   const ACCOUNT_KEY = 'gymtracker.account.v1';   // { mode: 'guest' } | { mode: 'user', uid, email }
   const SYNC_PREFIX = 'gymtracker.sync.v1.';     // + uid → Abgleich-Stand ("base")
   const GUEST_FROM_KEY = 'gymtracker.guestfrom.v1'; // uid, aus dessen Konto die Daten ohne Konto stammen (nach Abmelden)
+  const VERIFY_KEY = 'gymtracker.verify.v1';     // { uid, email, isNew } – Konto wartet auf die E-Mail-Bestätigung
 
   // Auch akzeptieren, wenn der Firebase-Codeblock unverändert als `const firebaseConfig = {…}` eingefügt wurde
   /* global firebaseConfig */
@@ -2228,6 +2229,7 @@
     inbox: svgI('<path d="M12 4v10M8 10l4 4 4-4M4.5 15v3.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V15"/>'),
     close: svgI('<path d="M6 6l12 12M18 6 6 18"/>'),
     reload: svgI('<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/>'),
+    mail: svgI('<rect x="3.5" y="5.5" width="17" height="13" rx="3"/><path d="M4.5 8l7.5 5.5L19.5 8"/>'),
   };
 
   /* ---------- Speicher ---------- */
@@ -2240,6 +2242,11 @@
   function lsGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
   function lsSet(key, val) { try { localStorage.setItem(key, val); return true; } catch (e) { return false; } }
   function lsDel(key) { try { localStorage.removeItem(key); } catch (e) { /* ignorieren */ } }
+
+  /** Konto, das auf die E-Mail-Bestätigung wartet (bleibt über Neustarts erhalten), sonst null. */
+  function pendingVerify() {
+    try { const v = JSON.parse(lsGet(VERIFY_KEY)); return v && v.uid ? v : null; } catch (e) { return null; }
+  }
 
   function loadAccount() {
     try { return JSON.parse(lsGet(ACCOUNT_KEY)); } catch (e) { return null; }
@@ -3361,6 +3368,7 @@
       case 'admin': return { name: 'admin', id: parts[1] || null, tab: 'profile' };
       case 'body': return { name: 'body', id: parts[1] || 'new', tab: extraTab() };
       case 'login': return { name: 'login', tab: 'profile' };
+      case 'verify': return { name: 'verify', tab: 'profile' };
       case 'intro': return { name: 'intro', tab: 'profile' };
       case 'setup': return { name: 'setup', tab: 'home' };
       default: return { name: 'home', tab: 'home' };
@@ -3741,8 +3749,12 @@
 
   function renderNow() {
     const route = parseRoute();
+    // E-Mail-Adresse noch nicht bestätigt? → dort weitermachen (auch nach einem Neustart der App)
+    const verifying = pendingVerify();
+    if (verifying && !account && route.name !== 'verify') { location.replace('#/verify'); return; }
+    if (route.name === 'verify' && (!verifying || isUser())) { location.replace(isUser() ? '#/' : '#/login'); return; }
     // Noch nicht entschieden (Konto oder ohne Konto)? → Anmeldeseite
-    if (!account && route.name !== 'login' && route.name !== 'intro') {
+    if (!account && route.name !== 'login' && route.name !== 'intro' && route.name !== 'verify') {
       if (route.name === 'import') ui.pendingImport = route.code; // nach dem Anmelden weitermachen
       if (route.name === 'invite') ui.pendingInvite = Core.normUsername(route.id);
       location.replace(introSeen() ? '#/login' : '#/intro');
@@ -3752,7 +3764,7 @@
     if (!account && route.name === 'login' && !introSeen()) { location.replace('#/intro'); return; }
     if (account && route.name === 'intro') { location.replace('#/'); return; }
     if (isUser() && route.name === 'login') { location.replace('#/'); return; }
-    document.body.classList.toggle('no-tabbar', !account || route.name === 'setup');
+    document.body.classList.toggle('no-tabbar', !account || route.name === 'setup' || route.name === 'verify');
 
     const key = location.hash || '#/';
     const sameRoute = key === ui.lastRoute;
@@ -3789,6 +3801,7 @@
       case 'chat': renderChat(view); break;
       case 'chat-room': renderChatRoom(view, route); break;
       case 'login': renderLogin(view); break;
+      case 'verify': renderVerify(view); break;
       case 'intro': renderIntro(view); break;
       case 'setup': renderSetup(view); break;
       default: renderHome(view);
@@ -5378,6 +5391,113 @@
       </div>`;
   }
 
+  /* ---------- Ansicht: E-Mail-Adresse bestätigen ---------- */
+
+  const VERIFY_RESEND_WAIT = 30; // Sekunden zwischen zwei Bestätigungs-E-Mails (Firebase begrenzt den Versand)
+  let verifyTimer = null;
+  let verifyBusy = false;
+
+  function renderVerify(view) {
+    const pv = pendingVerify();
+    setHeader({ title: 'Anchor', hidden: true });
+    view.innerHTML = `
+      <div class="auth verify">
+        <div class="verify-icon">${ICON.mail}</div>
+        <h1 class="auth-title">E-Mail bestätigen</h1>
+        <p class="auth-sub">Wir haben einen Bestätigungslink an <b class="break">${esc(pv.email)}</b> geschickt.
+          Öffne die E-Mail und tippe auf den Link – danach kannst du loslegen. Schau auch im Spam-Ordner nach.</p>
+        <p class="hint center" id="verify-status" role="status">Warte auf Bestätigung …</p>
+        <p class="form-error" id="verify-error" role="alert" hidden></p>
+        <button class="btn primary block lg" id="verify-check" data-action="verify-check">Ich habe bestätigt</button>
+        <button class="btn soft block" id="verify-resend" data-action="verify-resend">E-Mail erneut senden</button>
+        <button class="btn ghost block" data-action="verify-other">Andere E-Mail-Adresse verwenden</button>
+      </div>`;
+    updateVerifyResend();
+    startVerifyTicker();
+  }
+
+  function showVerifyError(msg) {
+    const el = $('#verify-error');
+    if (!el) { if (msg) toast(msg); return; }
+    el.textContent = msg || '';
+    el.hidden = !msg;
+  }
+
+  /** „Erneut senden“ ist kurz nach dem Versand gesperrt und zählt herunter. */
+  function updateVerifyResend() {
+    const btn = $('#verify-resend');
+    if (!btn) return;
+    const left = Math.ceil(((ui.verifySentAt || 0) + VERIFY_RESEND_WAIT * 1000 - Date.now()) / 1000);
+    btn.disabled = left > 0;
+    btn.textContent = left > 0 ? `Erneut senden in ${left} s` : 'E-Mail erneut senden';
+  }
+
+  /** Solange der Bestätigungsbildschirm offen ist: Countdown und alle 5 s beim Server nachfragen. */
+  function startVerifyTicker() {
+    if (verifyTimer) return;
+    let n = 0;
+    verifyTimer = setInterval(() => {
+      if (parseRoute().name !== 'verify') { clearInterval(verifyTimer); verifyTimer = null; return; }
+      updateVerifyResend();
+      if (++n % 5 === 0 && !document.hidden) checkVerify(true);
+    }, 1000);
+  }
+  // Zurück aus dem Mail-Programm: sofort nachsehen
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && parseRoute().name === 'verify') checkVerify(true);
+  });
+
+  /** Fragt nach, ob die Adresse bestätigt wurde. Bei Erfolg meldet GymCloud den freigegebenen Nutzer an onAuthState(). */
+  async function checkVerify(silent) {
+    if (verifyBusy || entering) return; // entering: Konto wird gerade freigegeben (z. B. Rückfrage zu Gastdaten offen)
+    if (!window.GymCloud) { if (!silent) showVerifyError(authErrorText({ code: 'no-cloud' })); return; }
+    verifyBusy = true;
+    const btn = $('#verify-check');
+    if (!silent && btn) { btn.disabled = true; btn.textContent = 'Einen Moment …'; }
+    try {
+      const ok = await window.GymCloud.checkVerified();
+      if (!ok && !silent) showVerifyError('Noch nicht bestätigt. Tippe zuerst auf den Link in der E-Mail.');
+    } catch (e) {
+      if (/user-not-found|user-disabled|user-token-expired|invalid-user-token/.test((e && e.code) || '')) {
+        // Konto gelöscht oder gesperrt → zurück zur Anmeldung
+        lsDel(VERIFY_KEY);
+        try { await window.GymCloud.signOut(); } catch (x) { /* egal */ }
+        ui.authMode = 'login';
+        go('#/login');
+        toast('Bitte melde dich erneut an.');
+      } else if (!silent) showVerifyError(authErrorText(e));
+    } finally {
+      verifyBusy = false;
+      const b = $('#verify-check');
+      if (b) { b.disabled = false; b.textContent = 'Ich habe bestätigt'; }
+    }
+  }
+
+  async function resendVerify() {
+    if (!window.GymCloud) return showVerifyError(authErrorText({ code: 'no-cloud' }));
+    showVerifyError('');
+    ui.verifySentAt = Date.now(); // sperrt den Knopf sofort
+    updateVerifyResend();
+    try {
+      await window.GymCloud.sendVerification();
+      toast('E-Mail gesendet');
+    } catch (e) {
+      ui.verifySentAt = 0;
+      updateVerifyResend();
+      showVerifyError(authErrorText(e));
+    }
+  }
+
+  /** Falsche Adresse eingegeben: das unbestätigte Konto verwerfen und neu registrieren. */
+  async function verifyOther() {
+    lsDel(VERIFY_KEY);
+    ui.authMode = 'register';
+    ui.authEmail = '';
+    ui.verifySentAt = 0;
+    if (window.GymCloud) { try { await window.GymCloud.discardUnverified(); } catch (e) { /* egal */ } }
+    go('#/login');
+  }
+
   /** Verständliche deutsche Meldungen für Firebase-Fehlercodes. */
   function authErrorText(e) {
     const code = (e && e.code) || '';
@@ -5438,8 +5558,13 @@
     try {
       // Nach Erfolg meldet Firebase den Nutzer über onAuthState → enterAccount()
       ui.afterRegister = reg;
-      if (reg) await window.GymCloud.signUp(email, pw);
-      else await window.GymCloud.signIn(email, pw);
+      if (reg) {
+        // Konto wird erst nach der E-Mail-Bestätigung freigegeben → onAuthState zeigt den Bestätigungsbildschirm
+        const { mailSent } = await window.GymCloud.signUp(email, pw);
+        ui.verifySentAt = mailSent ? Date.now() : 0;
+        updateVerifyResend();
+        if (!mailSent) toast('Die E-Mail konnte nicht gesendet werden. Tippe auf „E-Mail erneut senden“.');
+      } else await window.GymCloud.signIn(email, pw);
     } catch (e) {
       ui.afterRegister = false;
       showAuthError(authErrorText(e));
@@ -7251,6 +7376,9 @@
       render();
     },
     'open-login': () => { ui.authMode = 'login'; go('#/login'); },
+    'verify-check': () => checkVerify(false),
+    'verify-resend': () => resendVerify(),
+    'verify-other': () => verifyOther(),
     'auth-reset': async () => {
       const field = $('#auth-form input[name="email"]');
       const email = await promptText('Passwort zurücksetzen', {
@@ -10230,7 +10358,21 @@
 
   /** Firebase meldet den aktuellen Anmeldestatus (beim Start und nach jeder Änderung). */
   function onAuthState(user) {
+    if (user && !user.verified && !(isUser() && account.uid === user.uid)) {
+      // E-Mail-Adresse noch nicht bestätigt → Konto erst nach der Bestätigung freigeben
+      const prev = pendingVerify();
+      lsSet(VERIFY_KEY, JSON.stringify({
+        uid: user.uid, email: user.email, isNew: !!(user.isNew || (prev && prev.uid === user.uid && prev.isNew)),
+      }));
+      ui.afterRegister = false;
+      if (parseRoute().name === 'verify') render(); else go('#/verify');
+      return;
+    }
     if (user) {
+      // Frisch bestätigtes Konto: auch nach Neustart oder Wartezeit als neu behandeln (Einrichtung anbieten)
+      const prev = pendingVerify();
+      if (prev && prev.uid === user.uid) user = { ...user, isNew: user.isNew || prev.isNew };
+      lsDel(VERIFY_KEY);
       if (isUser() && account.uid === user.uid) {
         if (user.email && account.email !== user.email) { account.email = user.email; saveAccount(); }
         startSync();
@@ -10239,6 +10381,10 @@
         return;
       }
       enterAccount(user);
+    } else if (pendingVerify()) {
+      // Das unbestätigte Konto gibt es nicht mehr (abgemeldet, gelöscht oder Sitzung abgelaufen)
+      lsDel(VERIFY_KEY);
+      if (parseRoute().name === 'verify') go('#/login');
     } else if (isUser() && !ui.deleting) {
       // Sitzung abgelaufen oder auf einem anderen Gerät Passwort geändert / Konto gelöscht.
       // Die lokale Kopie bleibt erhalten und wird beim nächsten Anmelden weiter abgeglichen.

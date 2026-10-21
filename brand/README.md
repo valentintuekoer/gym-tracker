@@ -1,9 +1,11 @@
 # Anchor – Logo-Entwürfe
 
+**Gewählt: 13 Scheibe** (`logos-gym/13-scheibe.svg`) ist das App-Symbol. `icons/icon.svg` ist eine Kopie davon, die PNG-Größen in `icons/` entstehen mit `node scripts/make-icons.mjs`.
+
 Zwei Runden: `logos/` (Runde 1, Anker) und `logos-gym/` (Runde 2, Gym-Motive). Beide haben `overview.png`, `picker.html` und `logos.json`.
 
 Zehn Entwürfe für das App-Symbol unter `logos/` (SVG, 1024 × 1024, randlos wie für den App Store; iOS rundet die Ecken selbst).
-Es ist noch keiner ausgewählt oder eingebaut; die App verwendet weiter die Symbole in `icons/`.
+Runde 1 (Anker) ist nicht gewählt worden.
 
 | Nr. | Name | Idee |
 |---|---|---|

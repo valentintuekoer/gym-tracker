@@ -17,6 +17,13 @@ const SDK = 'https://www.gstatic.com/firebasejs/12.3.0/';
 const REDIRECT_KEY = 'gymtracker.appleRedirect'; // „Mit Apple anmelden“ per Weiterleitung gestartet
 const cfg = window.GYM_FIREBASE_CONFIG;
 
+// Die E-Mail-Bestätigung gilt für Konten mit Passwort, die ab diesem Zeitpunkt erstellt wurden.
+// Ältere Konten bleiben wie bisher nutzbar (Firestore-Regeln können das nicht unterscheiden).
+const VERIFY_FROM = Date.parse('2026-10-21T15:00:00Z');
+const needsVerify = (u) => !!u && !u.emailVerified && !!u.email
+  && u.providerData.some((p) => p.providerId === 'password')
+  && Date.parse(u.metadata.creationTime) >= VERIFY_FROM;
+
 let ready = false;
 
 function start() {
@@ -113,12 +120,47 @@ async function init() {
     return p;
   };
 
+  // Erste Anmeldung = Erstellung (auch bei „Mit Apple anmelden“)
+  const userInfo = (u) => ({
+    uid: u.uid,
+    email: u.email || '',
+    isNew: !!(u.metadata.creationTime && u.metadata.creationTime === u.metadata.lastSignInTime),
+    verified: !needsVerify(u),
+  });
+  let onVerified = null; // gesetzt unten: startet Profil, Sperr- und Admin-Prüfung, sobald die Adresse bestätigt ist
+
   window.GymCloud = {
     signIn: (email, password) => A.signInWithEmailAndPassword(auth, email, password),
-    signUp: (email, password) => A.createUserWithEmailAndPassword(auth, email, password),
+    /** Erstellt das Konto und schickt die Bestätigungs-E-Mail. Scheitert nur der Versand, lässt er sich auf dem Bestätigungsbildschirm wiederholen. */
+    async signUp(email, password) {
+      const cred = await A.createUserWithEmailAndPassword(auth, email, password);
+      let mailSent = true;
+      try { await A.sendEmailVerification(cred.user); } catch (e) { mailSent = false; console.warn('Bestätigungs-E-Mail nicht gesendet:', e); }
+      return { user: cred.user, mailSent };
+    },
     resetPassword: (email) => A.sendPasswordResetEmail(auth, email),
     signOut: () => A.signOut(auth),
     currentUser: () => auth.currentUser,
+    sendVerification() {
+      if (!auth.currentUser) return Promise.reject({ code: 'auth/user-not-found' });
+      return A.sendEmailVerification(auth.currentUser);
+    },
+    /** Fragt beim Server nach, ob die Adresse inzwischen bestätigt wurde (z. B. am Computer). true = ja, Konto wird freigegeben. */
+    async checkVerified() {
+      const u = auth.currentUser;
+      if (!u) return false;
+      await u.reload();
+      if (needsVerify(u)) return false;
+      await u.getIdToken(true).catch(() => {}); // Token mit email_verified aktualisieren
+      if (onVerified) onVerified(u);
+      return true;
+    },
+    /** Unbestätigtes Konto verwerfen (falsche Adresse eingegeben); wenn Löschen nicht klappt, wenigstens abmelden. */
+    async discardUnverified() {
+      const u = auth.currentUser;
+      if (u && needsVerify(u)) { try { await A.deleteUser(u); return; } catch (e) { /* abmelden genügt */ } }
+      await A.signOut(auth);
+    },
     social,
     chat,
 
@@ -257,12 +299,9 @@ async function init() {
     if (redirected) A.getRedirectResult(auth).catch((e) => { if (window.GymApp.onAuthError) window.GymApp.onAuthError(e); });
     window.GymApp.onCloudReady();
     let unwatchBlocked = null;
-    A.onAuthStateChanged(auth, (u) => {
+    // Alles, was ein Konto braucht: erst nach der E-Mail-Bestätigung (siehe needsVerify)
+    const watchAccount = (u) => {
       if (unwatchBlocked) { unwatchBlocked(); unwatchBlocked = null; }
-      // Neues Konto: erste Anmeldung = Erstellung (auch bei „Mit Apple anmelden“)
-      const isNew = !!(u && u.metadata.creationTime && u.metadata.creationTime === u.metadata.lastSignInTime);
-      window.GymApp.onAuthState(u ? { uid: u.uid, email: u.email || '', isNew } : null);
-      if (!u) { window.GymApp.setAdmin(false); return; }
       // Profil für die Nutzerverwaltung aktuell halten (schlägt still fehl, wenn gesperrt)
       F.setDoc(profileDoc(u.uid), {
         email: u.email || '', createdAt: Date.parse(u.metadata.creationTime) || null, lastSeen: Date.now(),
@@ -273,6 +312,15 @@ async function init() {
       }, () => {});
       // Administrator? Nur Admins dürfen admin/* lesen (siehe firestore.rules)
       F.getDoc(F.doc(fs, 'admin', 'probe')).then(() => window.GymApp.setAdmin(true), () => window.GymApp.setAdmin(false));
+    };
+    // Nach erfolgreicher Prüfung meldet Firebase nichts von selbst → der App den freigegebenen Nutzer nachreichen
+    onVerified = (u) => { window.GymApp.onAuthState(userInfo(u)); watchAccount(u); };
+    A.onAuthStateChanged(auth, (u) => {
+      if (unwatchBlocked) { unwatchBlocked(); unwatchBlocked = null; }
+      window.GymApp.onAuthState(u ? userInfo(u) : null);
+      if (!u) { window.GymApp.setAdmin(false); return; }
+      if (needsVerify(u)) { window.GymApp.setAdmin(false); return; }
+      watchAccount(u);
     });
   }
 }

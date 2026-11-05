@@ -229,8 +229,9 @@ fürs Training zu verabreden), darunter deine **Gruppen** und deine **Kontakte**
 - Verlauf wird gespeichert und beim Hochscrollen seitenweise nachgeladen. Neue Nachrichten scrollen automatisch mit;
   liest du weiter oben, erscheint „Neue Nachrichten“. Ungelesenes zeigt ein Punkt am Reiter.
 - Fehler sichtbar: offline oder fehlgeschlagen → „Nicht gesendet“ mit **Erneut senden** / **Verwerfen**.
-- Hinweis bei neuen Gym-Karten (*Einstellungen → Chat*, abschaltbar): als Meldung in der App bzw., wenn die App im Hintergrund
-  noch läuft und Benachrichtigungen erlaubt sind, als Mitteilung. **Echte Push-Nachrichten bei geschlossener App gibt es nicht** –
+- Hinweis bei neuen Nachrichten (*Einstellungen → Chat*, abschaltbar): im Gym-Chat, in Gruppen und in Direktnachrichten sowie bei neuen
+  Gym-Karten – als Meldung in der App bzw., wenn die App im Hintergrund noch läuft und Benachrichtigungen erlaubt sind, als Mitteilung
+  (ein Tipp darauf öffnet den jeweiligen Chat). **Echte Push-Nachrichten bei geschlossener App gibt es nicht** –
   dafür braucht es einen Server-Dienst (Firebase Cloud Messaging mit Cloud Functions, kostenpflichtiger Blaze-Tarif).
 
 **Einrichtung:** nur die neuen [`firestore.rules`](firestore.rules) veröffentlichen (siehe 1d) – **für Gruppen und Direktnachrichten erneut**

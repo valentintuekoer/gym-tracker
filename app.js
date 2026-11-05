@@ -2413,9 +2413,11 @@
       if (c) c.postMessage({ type: 'cancel-rest' });
     },
 
-    async show(title, body) {
+    /** opts.tag: gleiche Kennung ersetzt die vorige Meldung (Standard: Pausentimer); opts.url: Seite, die ein Tipp öffnet. */
+    async show(title, body, opts) {
       if (this.permission !== 'granted') return false;
-      const opts = { body, tag: 'rest-timer', renotify: true, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png' };
+      const { tag = 'rest-timer', url } = opts || {};
+      opts = { body, tag, renotify: true, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url: url || '' } };
       try {
         const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
         if (reg) { await reg.showNotification(title, opts); return true; }
@@ -6020,8 +6022,9 @@
       html = `
         <p class="section-label">Hinweise</p>
         <section class="card flush">
-          ${switchRow('chatNotify', 'Neue Gym-Karten', 'Hinweis, wenn jemand im Chat einen Besuch plant')}
+          ${switchRow('chatNotify', 'Neue Nachrichten', 'Im Gym-Chat, in Gruppen und Direktnachrichten – auch wenn jemand einen Besuch plant')}
         </section>
+        ${perm === 'default' ? '<button class="btn soft block" data-action="notif">Mitteilungen erlauben</button>' : ''}
         <p class="hint">Der Hinweis erscheint, solange die App geöffnet oder im Hintergrund aktiv ist${perm === 'granted' ? '' : ' (im Hintergrund nur mit erlaubten Benachrichtigungen)'}. Auf einem iPhone pausiert iOS Web-Apps im Hintergrund – Mitteilungen bei komplett geschlossener App gibt es erst mit einem Server-Dienst (Firebase Cloud Messaging).</p>
         <p class="section-label">Blockierte Nutzer</p>
         ${blocked.length ? `<section class="card flush">${blocked.map((b) => `
@@ -9261,7 +9264,7 @@
       const title = this.groupTitle(g);
       const text = (g.kind === 'dm' ? '@' + g.lastName : '@' + g.lastName + ' in ' + title) + ': ' + g.lastText;
       if (document.visibilityState === 'visible') toast(text, { action: 'Ansehen', onAction: () => go(this.hashFor(g)) });
-      else Notify.show(g.kind === 'dm' ? 'Neue Nachricht' : title, '@' + g.lastName + ': ' + g.lastText);
+      else Notify.show(g.kind === 'dm' ? 'Neue Nachricht' : title, '@' + g.lastName + ': ' + g.lastText, { tag: 'chat-' + g.room, url: this.hashFor(g) });
     },
 
     /** Anzeigename: Gruppenname; Direktchat = Name der anderen Person. */
@@ -9332,15 +9335,19 @@
 
     messages() { return Core.chatMerge([...this.store.values()]); },
 
-    /** Neue Gym-Karte von jemand anderem: Hinweis (Toast, wenn die App offen ist – sonst Benachrichtigung). */
+    /** Neue Nachricht oder Gym-Karte von jemand anderem im Gym-Chat: Hinweis (Toast, wenn die App offen ist – sonst Benachrichtigung). */
     announce(m) {
-      if (m.kind !== 'gym' || !db.settings.chatNotify || Core.chatCardPast(m, Date.now())) return;
-      const text = '@' + m.name + ': ' + Core.chatWhenLabel(m.when, Date.now()) + (m.workout ? ' · ' + Core.chatWorkoutLabel(m.workout) : '');
+      if (!db.settings.chatNotify) return;
+      const card = m.kind === 'gym';
+      if (card ? Core.chatCardPast(m, Date.now()) : !m.text) return;
+      const text = '@' + m.name + ': ' + (card
+        ? Core.chatWhenLabel(m.when, Date.now()) + (m.workout ? ' · ' + Core.chatWorkoutLabel(m.workout) : '')
+        : m.text.slice(0, 120));
       if (document.visibilityState === 'visible') {
         if (this.inRoom() && this.room === CHAT_ROOM) return; // steht schon vor den Augen
         toast(text, { action: 'Ansehen', onAction: () => go('#/chat/gym') });
       } else {
-        Notify.show('Neuer Gym-Besuch', text);
+        Notify.show(card ? 'Neuer Gym-Besuch' : 'Gym-Chat', text, { tag: 'chat-' + CHAT_ROOM, url: '#/chat/gym' });
       }
     },
 
@@ -10498,6 +10505,11 @@
         reloading = true;
         save();
         location.reload();
+      });
+      // Tipp auf eine Chat-Mitteilung: der Service Worker bittet die offene App, die Seite zu zeigen
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        const hash = e.data && e.data.type === 'open' && e.data.hash;
+        if (typeof hash === 'string' && /^#\/[\w.%/-]*$/.test(hash)) go(hash);
       });
       navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' })
         .then((reg) => reg.update())

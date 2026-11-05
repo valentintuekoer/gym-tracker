@@ -6,7 +6,7 @@
 'use strict';
 
 // Bei jeder Änderung an den App-Dateien hochzählen, damit Nutzer die neue Version bekommen.
-const CACHE = 'gym-tracker-v30';
+const CACHE = 'gym-tracker-v31';
 const SDK_CACHE = 'gym-tracker-firebase-sdk';   // Firebase-Bibliothek (versionierte, unveränderliche URLs)
 const SDK_PREFIX = 'https://www.gstatic.com/firebasejs/';
 const AVATAR_CACHE = 'gym-tracker-avatars';     // Profilfotos von Freunden (für die Offline-Ansicht)
@@ -160,13 +160,18 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Tipp auf die Benachrichtigung öffnet bzw. fokussiert die App.
+// Tipp auf die Benachrichtigung öffnet bzw. fokussiert die App (Chat-Mitteilungen zeigen den jeweiligen Chat).
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const hash = event.notification.data && event.notification.data.url;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      for (const c of clients) if ('focus' in c) return c.focus();
-      return self.clients.openWindow('./#/workout');
+      for (const c of clients) {
+        if (!('focus' in c)) continue;
+        if (hash) c.postMessage({ type: 'open', hash });
+        return c.focus();
+      }
+      return self.clients.openWindow('./' + (hash || '#/workout'));
     })
   );
 });

@@ -673,6 +673,8 @@ test('Chat: Nachrichten in Echtzeit, Gym-Karte, mitkommen, Wiener Zeit, Fehler m
   await A.page.fill('#chat-input', '');
 
   // --- B (auf dem Profil-Reiter): Punkt am Chat-Reiter, dann Nachricht links mit Name ---
+  // Hinweis auf eine ganz normale Nachricht (nicht nur auf Gym-Karten), solange B woanders in der App ist
+  await toastText(B.page).filter({ hasText: '@chatanna: Wer ist heute dabei?' }).waitFor();
   await B.page.locator('#tab-dot-chat:not([hidden])').waitFor().catch(async (e) => {
     throw new Error(e.message + ' | Chat-Zustand: ' + JSON.stringify(await B.page.evaluate(() => { const c = window.GymApp.Chat; return { uid: c.uid, verbunden: !!c.unsub, bereit: c.ready, fehler: c.error && (c.error.code || String(c.error)), aktiv: c.enabled(), gesehen: c.seenAt && c.seenAt.gym, anzahl: c.store.size, route: location.hash, cloud: !!(window.GymCloud && window.GymCloud.chat) }; })));
   });

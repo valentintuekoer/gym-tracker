@@ -6893,6 +6893,9 @@
         const root = document.documentElement.style;
         root.setProperty('--kb', (kb > 60 ? kb : 0) + 'px');
         root.setProperty('--vvh', Math.round(vv.height) + 'px');
+        // Unterkante der sichtbaren Fläche im Dokument: iOS schiebt sie beim Tippen in ein tiefer liegendes Feld nach unten
+        // (offsetTop > 0) – feststehende Seiten müssen bis dorthin reichen, sonst bleibt über der Tastatur eine leere Fläche
+        root.setProperty('--vvb', Math.round((vv.pageTop === undefined ? vv.offsetTop + window.scrollY : vv.pageTop) + vv.height) + 'px');
         if (ChatView.el) ChatView.keep(); // Chat: mit der Tastatur am Ende der Liste bleiben
         const a = document.activeElement;
         if (kb > 60 && a && a.closest && a.closest('.modal-card, .wk-slide')) {

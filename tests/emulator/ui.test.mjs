@@ -1125,3 +1125,39 @@ test('E-Mail-Bestätigung: andere Adresse verwenden; ältere und bestätigte Kon
   await open.ctx.close();
   assert.deepEqual(errors.filter((e) => /^verify/.test(e)), [], JSON.stringify(errors));
 });
+
+test('Training: Verschiebt iOS die sichtbare Fläche beim Tippen, reicht die Ansicht bis zur Tastatur', async () => {
+  const { ctx, page } = await device('tastatur', { cloud: false });
+  // iOS-Verhalten nachbilden: Tastatur verkleinert den sichtbaren Bereich (visualViewport) und iOS scrollt ihn nach unten (offsetTop)
+  await ctx.addInitScript(() => {
+    const listeners = {};
+    const vv = {
+      width: innerWidth, height: innerHeight, offsetTop: 0, offsetLeft: 0, pageTop: 0, pageLeft: 0, scale: 1,
+      addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+      removeEventListener() {},
+      set(o) { Object.assign(vv, o); (listeners.resize || []).forEach((f) => f()); },
+    };
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: vv });
+    window.__vv = vv;
+  });
+  await openApp(page);
+  await page.locator('[data-action="auth-guest"]').click();
+  await waitHash(page, /#\/setup/);
+  for (let i = 0; i < 3; i++) await page.locator('[data-action="setup-next"]').click();
+  await waitHash(page, /#\/$/);
+  await page.locator('.day-card', { hasText: 'Push' }).click();
+  await page.locator('[data-action="open-day"]').click();
+  await waitHash(page, /#\/workout/);
+  const input = page.locator('.wk-slide').first().locator('.set:not(.warm)').first().locator('input[data-field="weight"]');
+  await input.focus();
+  await page.waitForFunction(() => document.body.classList.contains('kb-open'));
+  // Tastatur 290 pt hoch, iOS hat 250 pt nach unten gescrollt, damit das Feld sichtbar bleibt
+  const H = await page.evaluate(() => innerHeight);
+  await page.evaluate(([h]) => window.__vv.set({ height: h - 290, offsetTop: 250, pageTop: 250 }), [H]);
+  await page.waitForFunction((b) => document.documentElement.style.getPropertyValue('--vvb') === b + 'px', H - 290 + 250);
+  // Die Ansicht endet an der Tastatur (Unterkante der sichtbaren Fläche), nicht 250 pt darüber
+  const bottom = await page.evaluate(() => document.querySelector('#view').getBoundingClientRect().bottom);
+  assert.ok(Math.abs(bottom - (H - 290 + 250)) <= 2, 'Ansicht reicht bis ' + Math.round(bottom) + ' statt ' + (H - 290 + 250));
+  await ctx.close();
+  assert.deepEqual(errors.filter((e) => /^tastatur/.test(e)), [], JSON.stringify(errors));
+});

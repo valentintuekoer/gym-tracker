@@ -2,11 +2,12 @@
  * - Cacht die App-Dateien, damit die App komplett offline läuft.
  * - Zeigt Benachrichtigungen für den Pausentimer (best effort: iOS pausiert
  *   Web-Apps im Hintergrund, Android/Desktop halten den Worker einige Minuten wach).
+ * - Zeigt Push-Nachrichten für neue Chat-Nachrichten, auch bei geschlossener App (Ereignis „push“).
  */
 'use strict';
 
 // Bei jeder Änderung an den App-Dateien hochzählen, damit Nutzer die neue Version bekommen.
-const CACHE = 'gym-tracker-v32';
+const CACHE = 'gym-tracker-v33';
 const SDK_CACHE = 'gym-tracker-firebase-sdk';   // Firebase-Bibliothek (versionierte, unveränderliche URLs)
 const SDK_PREFIX = 'https://www.gstatic.com/firebasejs/';
 const AVATAR_CACHE = 'gym-tracker-avatars';     // Profilfotos von Freunden (für die Offline-Ansicht)
@@ -19,6 +20,7 @@ const ASSETS = [
   './cloud.js',
   './social.js',
   './chat.js',
+  './push-client.js',
   './firebase-config.js',
   './manifest.json',
   './exercises.json',
@@ -158,6 +160,23 @@ self.addEventListener('message', (event) => {
   } else if (msg.type === 'cancel-rest') {
     clearPending();
   }
+});
+
+// Push-Nachricht vom Server (Cloud Function in functions/): neue Chat-Nachricht, auch bei geschlossener App.
+// Die Daten kommen als { title, body, tag, url } (FCM legt sie unter „data“ ab). Jede Push-Nachricht muss eine
+// sichtbare Mitteilung ergeben (iOS entzieht sonst die Erlaubnis). Gleiche tag = ersetzt die vorige Meldung desselben Chats.
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch (e) { payload = {}; }
+  const d = (payload && payload.data) || payload || {};
+  event.waitUntil(self.registration.showNotification(d.title || 'Anchor', {
+    body: d.body || 'Neue Nachricht',
+    tag: d.tag || 'chat',
+    renotify: true,
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    data: { url: d.url || '#/chat' },
+  }));
 });
 
 // Tipp auf die Benachrichtigung öffnet bzw. fokussiert die App (Chat-Mitteilungen zeigen den jeweiligen Chat).

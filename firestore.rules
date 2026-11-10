@@ -16,6 +16,7 @@ rules_version = '2';
 //                                  Name, Besitzer, Mitglieder (memberIds – nur Freunde des Besitzers, die ihn selbst als Freund haben)
 //   groups/{id}/messages/{id}    → Nachrichten und Gym-Karten der Gruppe (nur Mitglieder)
 //   chatState/{uid}              → Zeitpunkt der letzten Chat-Nachricht (Rate Limit gegen Spam)
+//   pushDevices/{id}             → Geräte, die Push-Mitteilungen für neue Chat-Nachrichten bekommen (nur das eigene Konto)
 //   reports/{id}                 → Meldungen aus dem Chat (nur Administratoren dürfen lesen)
 //
 // Jeder Nutzer darf nur seine eigenen Daten schreiben – solange er nicht gesperrt ist.
@@ -352,6 +353,24 @@ service cloud.firestore {
             || (resource != null && request.resource.data.lastCardAt == resource.data.get('lastCardAt', null)));
       // erst nach dem Löschen des Profils (Konto löschen) – sonst ließe sich das Rate Limit zurücksetzen
       allow delete: if isAdmin() || (isOwner(uid) && !hasProfile(uid));
+    }
+
+    // Geräte für Push-Mitteilungen bei geschlossener App (Cloud Function in functions/ liest sie mit Admin-Rechten).
+    // Die ID ist ein Hash des Geräte-Tokens (nicht erratbar) – so darf ein Konto, das sich auf demselben Gerät
+    // neu anmeldet, den Eintrag übernehmen. Nur Mitglieder mit Profil (sie dürfen den Chat lesen).
+    match /pushDevices/{id} {
+      function deviceOk(d) {
+        return d.keys().hasOnly(['uid', 'token', 'chat', 'blocked', 'platform', 'updatedAt'])
+          && d.uid == request.auth.uid
+          && d.token is string && d.token.size() > 20 && d.token.size() < 4096
+          && d.chat is bool
+          && d.blocked is list && d.blocked.size() <= 500
+          && d.platform is string && d.platform.size() <= 40
+          && d.updatedAt == request.time;
+      }
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create, update: if chatMember() && deviceOk(request.resource.data);
+      allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
     }
 
     // Meldungen: je Melder und Nachricht eine (Dokument-ID), nur Administratoren lesen

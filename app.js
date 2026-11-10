@@ -2291,6 +2291,7 @@
     writeLocal();
     if (engine) engine.schedule();
     Social.schedulePublish(); // geteilte Kennzahlen (nur falls ein Profil besteht)
+    Push.touch();             // Mitteilungen bei geschlossener App: Schalter oder Blockierliste geändert?
   }
 
   /** Für Tipp-Eingaben: gebündelt speichern. */
@@ -2424,6 +2425,81 @@
         new Notification(title, opts); // eslint-disable-line no-new
         return true;
       } catch (e) { return false; }
+    },
+  };
+
+  /* ---------- Push-Mitteilungen bei geschlossener App ---------- */
+
+  /**
+   * Meldet dieses Gerät beim Push-Dienst an (push-client.js), sobald alles stimmt: Konto mit Profil, Mitteilungen erlaubt,
+   * Web-Push-Schlüssel in firebase-config.js. Die Cloud Function in functions/ schickt dann bei neuen Chat-Nachrichten eine
+   * Mitteilung – auch wenn die App geschlossen ist. Der Schalter „Neue Nachrichten“ und die Blockierliste gelten auch dort.
+   */
+  const Push = {
+    sig: '',          // zuletzt eingetragener Stand – so wird nicht bei jedem Speichern geschrieben
+    busy: false,
+    again: false,
+    error: null,
+    registered: false,
+
+    api() { return window.GymCloud && window.GymCloud.push; },
+    available() { const p = this.api(); return !!(p && p.available()); },
+    wanted() { return isUser() && Social.ready() && Notify.permission === 'granted' && this.available(); },
+    chatOn() { return db.settings.chatNotify !== false; },
+    blockedIds() { return (db.settings.chatBlocked || []).map((b) => b.uid); },
+    stateSig() { return account.uid + '|' + this.chatOn() + '|' + this.blockedIds().sort().join(','); },
+
+    /** Läuft bei Änderungen vorbei (Speichern, Profil, Erlaubnis): trägt nur ein, wenn sich etwas geändert hat. */
+    touch() { if (this.wanted() && this.stateSig() !== this.sig) this.sync(); },
+
+    async sync() {
+      if (!this.wanted()) return;
+      if (this.busy) { this.again = true; return; }
+      const sig = this.stateSig();
+      this.busy = true;
+      try {
+        await this.api().register({ chat: this.chatOn(), blocked: this.blockedIds() });
+        this.error = null;
+        this.registered = true;
+      } catch (e) {
+        console.warn('Push-Anmeldung fehlgeschlagen:', e);
+        this.error = e;
+        this.registered = false;
+      } finally {
+        this.sig = sig; // auch nach einem Fehler: nicht bei jedem Speichern neu versuchen (nächster Versuch beim nächsten Start)
+        this.busy = false;
+      }
+      this.renderStatus();
+      if (this.again) { this.again = false; this.touch(); }
+    },
+
+    /** Beim Abmelden: Gerät austragen, damit dieses Konto hier keine Mitteilungen mehr bekommt. */
+    async stop() {
+      this.sig = '';
+      this.registered = false;
+      this.error = null;
+      const p = this.api();
+      if (p) await p.unregister().catch(() => {});
+    },
+
+    /** Zustand in Worten (Einstellungen → Chat) */
+    statusText() {
+      if (!isUser()) return 'Nur mit Konto';
+      const cfg = window.GYM_FIREBASE_CONFIG || {};
+      if (!window.GymCloud) return navigator.onLine ? 'Verbinde …' : 'Offline';
+      if (!this.api() || !(cfg.vapidKey || cfg.useEmulator)) return 'Noch nicht eingerichtet';
+      if (!this.available()) return isIOS && !isStandalone() ? 'Erst zum Home-Bildschirm hinzufügen' : 'Vom Browser nicht unterstützt';
+      if (Notify.permission === 'denied') return 'Mitteilungen blockiert';
+      if (Notify.permission !== 'granted') return 'Erst Mitteilungen erlauben';
+      if (!Social.ready()) return 'Erst ein Profil anlegen';
+      if (!this.chatOn()) return 'Aus';
+      if (this.error) return 'Fehler (' + (this.error.code || 'unbekannt') + ')';
+      return this.registered ? 'An' : 'Wird eingerichtet …';
+    },
+
+    renderStatus() {
+      const el = $('#push-status');
+      if (el) el.textContent = this.statusText();
     },
   };
 
@@ -5656,6 +5732,7 @@
   let renderPending = false;
   function handleRemoteChange() {
     writeLocal();
+    Push.touch(); // Einstellungen von einem anderen Gerät
     Wake.update();
     // Nicht neu zeichnen, während jemand tippt – sonst springt der Cursor.
     if (document.activeElement && document.activeElement.matches('input')) { renderPending = true; return; }
@@ -5690,6 +5767,7 @@
     Social.detach();
     account = null;           // vor signOut, damit onAuthState(null) nichts mehr tut
     saveAccount();
+    await Push.stop(); // solange noch angemeldet: dieses Gerät austragen
     if (window.GymCloud) { try { await window.GymCloud.signOut(); } catch (e) { /* offline egal */ } }
     const guest = loadData(STORAGE_KEY, Core.emptyData);
     const guestWasEmpty = Sync.isEmpty(guest);
@@ -6024,8 +6102,11 @@
         <section class="card flush">
           ${switchRow('chatNotify', 'Neue Nachrichten', 'Im Gym-Chat, in Gruppen und Direktnachrichten – auch wenn jemand einen Besuch plant')}
         </section>
+        <section class="card">
+          <p class="kv"><span>Bei geschlossener App</span><span id="push-status">${esc(Push.statusText())}</span></p>
+        </section>
         ${perm === 'default' ? '<button class="btn soft block" data-action="notif">Mitteilungen erlauben</button>' : ''}
-        <p class="hint">Der Hinweis erscheint, solange die App geöffnet oder im Hintergrund aktiv ist${perm === 'granted' ? '' : ' (im Hintergrund nur mit erlaubten Benachrichtigungen)'}. Auf einem iPhone pausiert iOS Web-Apps im Hintergrund – Mitteilungen bei komplett geschlossener App gibt es erst mit einem Server-Dienst (Firebase Cloud Messaging).</p>
+        <p class="hint">Der Hinweis erscheint in der App und – mit erlaubten Mitteilungen – auch im Hintergrund. Bei geschlossener App kommen neue Nachrichten als Push-Mitteilung an, sobald der Server-Dienst eingerichtet ist (siehe README) und das Gerät angemeldet ist. Auf dem iPhone geht das nur, wenn die App zum Home-Bildschirm hinzugefügt wurde (iOS 16.4 oder neuer).</p>
         <p class="section-label">Blockierte Nutzer</p>
         ${blocked.length ? `<section class="card flush">${blocked.map((b) => `
           <div class="row">
@@ -7327,6 +7408,7 @@
       }
       const p = await Notify.request();
       toast(p === 'granted' ? 'Benachrichtigungen aktiviert ✓' : 'Benachrichtigungen nicht erlaubt');
+      Push.touch();
       render();
     },
     'notif-test': async () => {
@@ -7379,6 +7461,7 @@
     'setup-notif': async () => {
       const p = await Notify.request();
       toast(p === 'granted' ? 'Benachrichtigungen aktiviert ✓' : 'Benachrichtigungen nicht erlaubt');
+      Push.touch();
       render();
     },
     'open-login': () => { ui.authMode = 'login'; go('#/login'); },
@@ -7887,6 +7970,7 @@
     changed() {
       this.badge();
       Chat.sync(); // Profil da → Chat verbinden
+      Push.touch(); // Profil da → Gerät für Mitteilungen bei geschlossener App anmelden
       if (parseRoute().name === 'chat') ChatHome.update(); // Kontakte (Freunde) ändern sich
       if (!SOCIAL_ROUTES.has(parseRoute().name)) return;
       const a = document.activeElement;
@@ -8384,6 +8468,7 @@
       const stats = libLoaded ? sharedStats() : undefined;
       await withTimeout(api.saveProfile({ username: name, photo, stats }), 20000);
       Social.profile = { username: name, photo: photo || null };
+      Push.touch(); // jetzt Chat-Mitglied: Gerät für Mitteilungen bei geschlossener App anmelden
       if (stats) lsSet(SOCIAL_PUB + Social.uid, Sync.hash(Sync.stableStringify(stats)));
       Social.persist();
       Social.schedulePublish(1000);
@@ -10341,6 +10426,8 @@
       if (rn === 'home' || rn === 'settings' || rn === 'profile') render();
       if (SOCIAL_ROUTES.has(rn)) Social.refreshPeople();
       Chat.checkDay();
+      if (Push.error) Push.sig = ''; // nach einem Fehler beim Zurückkehren erneut versuchen
+      Push.touch();
       if (rn === 'chat-room' && ChatView.el) { Chat.sync(); if (ChatView.stick) Chat.markSeen(); }
       // Home-Bildschirm-Apps werden oft nur "aufgeweckt" statt neu gestartet → dabei nach Updates schauen
       if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
@@ -10521,7 +10608,7 @@
 
     // Schnittstelle für cloud.js und für Tests in der Browser-Konsole
     window.GymApp = {
-      Core, TimerCore, Sync, Timer, Social, Chat, save, render, onCloudReady, onAuthState, onBlocked, setAdmin,
+      Core, TimerCore, Sync, Timer, Social, Chat, Push, save, render, onCloudReady, onAuthState, onBlocked, setAdmin,
       /** Fehler bei „Mit Apple anmelden“ per Weiterleitung */
       onAuthError(e) { if (e && !/popup-closed|cancelled-popup|no-auth-event/.test(e.code || '')) toast(authErrorText(e)); },
       get db() { return db; },

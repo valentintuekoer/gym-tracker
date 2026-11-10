@@ -27,9 +27,11 @@ async function resetEmulators() {
 }
 
 /** Neues „Gerät“: eigener Browser-Kontext. cloud=false → Firebase nicht erreichbar (nur offline/ohne Konto). */
-async function device(name, { cloud = true, tz } = {}) {
+async function device(name, { cloud = true, tz, notifications = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', locale: 'de-DE', reducedMotion: 'reduce', ...(tz ? { timezoneId: tz } : {}),
     geolocation: { latitude: 52.5200081, longitude: 13.4049541, accuracy: 12 }, permissions: ['geolocation'] });
+  // Mitteilungen erlaubt (Chromium ohne Oberfläche meldet sonst „denied“)
+  if (notifications) await ctx.addInitScript(() => { Object.defineProperty(window.Notification, 'permission', { configurable: true, get: () => 'granted' }); });
   await ctx.route('https://maps.apple.com/**', (r) => r.fulfill({ contentType: 'text/html', body: 'Apple Karten' }));
   await ctx.route('https://www.google.com/maps/**', (r) => r.fulfill({ contentType: 'text/html', body: 'Google Maps' }));
   await ctx.route('**/firebase-config.js', (r) => r.fulfill({ contentType: 'text/javascript', body: EMU_CONFIG }));
@@ -1160,4 +1162,57 @@ test('Training: Verschiebt iOS die sichtbare Fläche beim Tippen, reicht die Ans
   assert.ok(Math.abs(bottom - (H - 290 + 250)) <= 2, 'Ansicht reicht bis ' + Math.round(bottom) + ' statt ' + (H - 290 + 250));
   await ctx.close();
   assert.deepEqual(errors.filter((e) => /^tastatur/.test(e)), [], JSON.stringify(errors));
+});
+
+/** pushDevices-Einträge im Emulator (mit Admin-Zugriff an den Regeln vorbei) */
+async function pushDevices() {
+  const res = await fetch(`http://127.0.0.1:8080/v1/projects/${PROJECT}/databases/(default)/documents/pushDevices`, { headers: { Authorization: 'Bearer owner' } });
+  const json = await res.json();
+  return (json.documents || []).map((d) => ({
+    id: d.name.split('/').pop(), uid: d.fields.uid.stringValue, token: d.fields.token.stringValue, chat: d.fields.chat.booleanValue,
+    blocked: ((d.fields.blocked.arrayValue || {}).values || []).map((v) => v.stringValue),
+  }));
+}
+
+test('Mitteilungen bei geschlossener App: Gerät wird angemeldet, folgt dem Schalter und der Blockierliste, wird beim Abmelden entfernt', async () => {
+  await resetEmulators();
+  const { ctx, page } = await device('push', { notifications: true });
+  await register(page, 'push1@test.de');
+  await createProfile(page, 'pushanna', false);
+  const uid = await page.evaluate(() => window.GymCloud.currentUser().uid);
+  const mine = async (pred) => {
+    for (let i = 0; i < 80; i++) { const d = (await pushDevices()).filter((x) => x.uid === uid); if (pred(d)) return d; await sleepMs(100); }
+    throw new Error('Zeitüberschreitung: ' + JSON.stringify(await pushDevices()) + ' | Push-Zustand: ' + JSON.stringify(await page.evaluate(() => { const p = window.GymApp.Push; return { wanted: p.wanted(), verfügbar: p.available(), erlaubt: Notification.permission, profil: window.GymApp.Social.ready(), fehler: p.error && (p.error.code || String(p.error)), status: p.statusText() }; })));
+  };
+
+  // Mit Profil und erlaubten Mitteilungen meldet sich das Gerät von selbst an (im Emulator mit Platzhalter-Token)
+  let devs = await mine((d) => d.length === 1);
+  assert.equal(devs[0].chat, true);
+  assert.deepEqual(devs[0].blocked, []);
+  assert.equal(devs[0].token, 'emulator-token-' + uid);
+  await page.goto(base + '/#/settings/chat');
+  await page.locator('#push-status', { hasText: 'An' }).waitFor();
+
+  // Schalter „Neue Nachrichten“ aus → Gerät bekommt nichts mehr (Eintrag bleibt, chat = false)
+  await page.locator('[data-action="toggle-setting"][data-key="chatNotify"]').click();
+  devs = await mine((d) => d.length === 1 && d[0].chat === false);
+  await page.locator('#push-status', { hasText: 'Aus' }).waitFor();
+  await page.locator('[data-action="toggle-setting"][data-key="chatNotify"]').click();
+  await mine((d) => d.length === 1 && d[0].chat === true);
+
+  // Blockierte Nutzer werden mitgegeben (der Server lässt ihre Nachrichten dann aus)
+  await page.evaluate(() => { const a = window.GymApp; a.db.settings.chatBlocked = [{ uid: 'fremd123', name: 'fremd' }]; a.save(); });
+  devs = await mine((d) => d.length === 1 && d[0].blocked.length === 1);
+  assert.deepEqual(devs[0].blocked, ['fremd123']);
+
+  // Abmelden: Gerät wird ausgetragen
+  await page.goto(base + '/#/settings/account');
+  await page.locator('[data-action="logout"]').click();
+  await dlgButton(page, 'Abmelden').click();
+  await waitHash(page, /#\/login/);
+  assert.equal((await pushDevices()).length, 0);
+
+  for (const p of pages) toastLog.push(...await p.page.evaluate(() => window.__toasts || []).catch(() => []));
+  await ctx.close();
+  assert.deepEqual(errors.filter((e) => /^push:/.test(e)), [], JSON.stringify(errors));
 });

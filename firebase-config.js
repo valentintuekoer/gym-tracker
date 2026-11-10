@@ -16,7 +16,11 @@ window.GYM_FIREBASE_CONFIG = {
   storageBucket: "gym-tracker-15439.firebasestorage.app",
   messagingSenderId: "772272950544",
   appId: "1:772272950544:web:2c4b0af8dcacc41e642995",
-  measurementId: "G-9B63QHL4JG"
+  measurementId: "G-9B63QHL4JG",
+  // Web-Push-Schlüssel für Mitteilungen bei geschlossener App (öffentlich, nicht geheim):
+  // Firebase-Konsole → Projekteinstellungen → Cloud Messaging → „Web-Push-Zertifikate“ → „Schlüsselpaar generieren“
+  // → den langen Schlüssel hier einfügen (README: „Mitteilungen bei geschlossener App“). Leer = ausgeschaltet.
+  vapidKey: ""
 };
 
 /* Beispiel – so sieht es ausgefüllt aus:

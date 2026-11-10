@@ -13,9 +13,10 @@ Export-Marker `gym-tracker`, Cache-Name und Repository –, damit bestehende Dat
 | `DESIGN.md` | Designsystem „Liquid Glass“ (Farben, Typografie, Abstände, Glas, Bewegung, Regeln) – Vorlage für neue Bildschirme |
 | `cloud.js` | Anbindung an Firebase (Konto, „Mit Apple anmelden“, Cloud-Speicher) |
 | `social.js` | Freunde: Benutzername, Profilfoto, Anfragen, geteilte Kennzahlen |
+| `push-client.js`, `functions/` | Mitteilungen bei geschlossener App: Geräte-Anmeldung in der App und die Cloud Function, die sie verschickt (siehe 1e) |
 | `firebase-config.js` | **hier trägst du dein Firebase-Projekt ein** |
 | `firestore.rules`, `storage.rules` | Sicherheitsregeln für Datenbank und Profilfotos |
-| `firebase.json` | Regeln-Dateien + Emulator-Einstellungen (für `firebase deploy` / Tests) |
+| `firebase.json`, `.firebaserc` | Regeln, Cloud Functions und Emulator-Einstellungen (für `firebase deploy` / Tests) |
 | `service-worker.js`, `manifest.json`, `icons/` | Offline-Fähigkeit und Home-Bildschirm-App |
 | `vendor/` | ZXing (QR-Scanner für Freunde), qrcode-generator (QR-Code für Einladungen, MIT) |
 | `tests/` | automatische Tests (`node --test tests/*.test.js`) |
@@ -96,6 +97,55 @@ bestätigte Freunde lesbar, Anfragen nur für Absender/Empfänger) und für den 
 Rate Limit, Meldungen). **Nach jedem Update mit neuen Regeln neu veröffentlichen:** Firestore → *Regeln* →
 alles ersetzen → Administrator-ID wieder eintragen (siehe unten) → *Veröffentlichen*.
 Alternativ mit der Firebase-CLI: `firebase deploy --only firestore:rules,storage`.
+
+
+### 1e. Mitteilungen bei geschlossener App (optional, braucht den Blaze-Tarif)
+
+Ohne diesen Schritt melden sich neue Chat-Nachrichten nur, solange die App läuft (Meldung in der App bzw. kurz im Hintergrund).
+Mit ihm kommt bei **jeder neuen Nachricht** (Gym-Chat, Gruppen, Direktnachrichten, Gym-Karten) eine Push-Mitteilung aufs Gerät –
+auch wenn die App geschlossen ist. Ein Tipp darauf öffnet den jeweiligen Chat. Der Schalter *Einstellungen → Chat → Neue Nachrichten*
+und die Blockierliste gelten auch hier; der Absender selbst bekommt nichts.
+
+**Was dafür nötig ist** (einmalig, ca. 15 Minuten):
+
+1. **Blaze-Tarif:** Firebase-Konsole → unten links *Upgrade* (bzw. *Nutzung und Abrechnung*) → Tarif *Blaze (Pay as you go)*.
+   Cloud Functions gibt es nur dort. Für ein paar Nutzer bleibt man in den kostenlosen Kontingenten (2 Mio. Aufrufe/Monat, Push selbst
+   kostet nichts; jede Nachricht im Gym-Chat liest je angemeldetem Gerät einen Eintrag) – trotzdem unter *Nutzung und Abrechnung* eine
+   **Budgetwarnung** setzen (z. B. 1 €).
+2. **Web-Push-Schlüssel:** *Projekteinstellungen (Zahnrad) → Cloud Messaging → Web-Konfiguration → Web-Push-Zertifikate →
+   Schlüsselpaar generieren*. Den langen **Schlüssel** (beginnt mit `B…`) in [`firebase-config.js`](firebase-config.js) bei `vapidKey: ""`
+   zwischen die Anführungszeichen einfügen (er ist öffentlich, nicht geheim) und die App wie gewohnt neu hochladen.
+3. **Regeln neu veröffentlichen** (siehe 1d) – neu ist `pushDevices` (Geräte, die Mitteilungen bekommen; jedes Konto sieht nur die eigenen).
+4. **Funktionen veröffentlichen** (auf einem Computer mit Node.js 22 im Projektordner):
+   ```
+   npm install -g firebase-tools
+   firebase login
+   cd functions && npm install && cd ..
+   firebase deploy --only functions
+   ```
+   `.firebaserc` kennt das Projekt bereits. Beim ersten Mal fragt Firebase, ob es ein paar Dienste aktivieren darf (Cloud Build,
+   Artifact Registry, Eventarc) → mit *Ja* bestätigen. Meldet es danach einen Eventarc-Berechtigungsfehler, ein paar Minuten warten und
+   den Befehl wiederholen. Liegt deine Firestore-Datenbank **nicht** in `europe-west3` (Frankfurt), vorher in `functions/.env` die Zeile
+   `PUSH_REGION=<Standort>` eintragen (z. B. `PUSH_REGION=us-central1`) – die Funktionen müssen am selben Standort laufen wie die Datenbank.
+5. **In der App:** *Einstellungen → Chat* → bei *Bei geschlossener App* soll **An** stehen. Auf dem **iPhone** muss die App zum
+   Home-Bildschirm hinzugefügt sein (iOS 16.4 oder neuer) und *Mitteilungen erlauben* bestätigt werden (Knopf auf derselben Seite).
+   Die Anmeldung braucht ein Konto mit Profil (Benutzername). Auf jedem Gerät einmal öffnen.
+
+**So funktioniert es:** Jedes Gerät trägt seinen Push-Token in `pushDevices/{id}` ein (`push-client.js`, Firebase Cloud Messaging mit
+eigenem Service Worker). Die Funktionen `pushRoomMessage` und `pushGroupMessage` (`functions/index.js`) laufen bei jeder neuen Nachricht,
+suchen die Empfänger (Gym-Chat: alle Geräte mit eingeschaltetem Schalter; Gruppe/Direktchat: nur Mitglieder; nie der Absender, nie Geräte,
+die den Absender blockiert haben) und schicken eine reine Daten-Nachricht (`title`, `body`, `tag`, `url`). Der Service Worker
+(`service-worker.js`, Ereignis `push`) zeigt sie an; Nachrichten desselben Chats ersetzen sich (gleiches `tag`). Abgemeldete Geräte
+(App gelöscht, Erlaubnis entzogen) räumt die Funktion selbst auf; beim Abmelden und beim Löschen des Kontos trägt die App das Gerät aus.
+
+**Datenschutz:** Die Mitteilung enthält Benutzername des Absenders und die ersten 120 Zeichen der Nachricht (bei Gym-Karten Uhrzeit und
+Training) und läuft über die Push-Dienste von Google bzw. Apple. Wer das nicht möchte, schaltet *Neue Nachrichten* aus – dann bekommt das
+Gerät keine Mitteilungen mehr.
+
+**Fehlersuche:** Steht bei *Bei geschlossener App* „Noch nicht eingerichtet“, fehlt der `vapidKey`. „Fehler (…)“ nennt den Code
+(z. B. `messaging/permission-blocked`: Mitteilungen im Browser bzw. in den iPhone-Einstellungen erlauben). Kommt trotz „An“ nichts an:
+Firebase-Konsole → *Functions → Protokolle* – dort steht, ob die Funktion lief und ob das Senden scheiterte. Im Emulator lässt sich
+alles außer dem Versand über FCM selbst testen (siehe Tests); die echte Zustellung muss einmal mit einem echten Gerät ausprobiert werden.
 
 ---
 
@@ -231,8 +281,8 @@ fürs Training zu verabreden), darunter deine **Gruppen** und deine **Kontakte**
 - Fehler sichtbar: offline oder fehlgeschlagen → „Nicht gesendet“ mit **Erneut senden** / **Verwerfen**.
 - Hinweis bei neuen Nachrichten (*Einstellungen → Chat*, abschaltbar): im Gym-Chat, in Gruppen und in Direktnachrichten sowie bei neuen
   Gym-Karten – als Meldung in der App bzw., wenn die App im Hintergrund noch läuft und Benachrichtigungen erlaubt sind, als Mitteilung
-  (ein Tipp darauf öffnet den jeweiligen Chat). **Echte Push-Nachrichten bei geschlossener App gibt es nicht** –
-  dafür braucht es einen Server-Dienst (Firebase Cloud Messaging mit Cloud Functions, kostenpflichtiger Blaze-Tarif).
+  (ein Tipp darauf öffnet den jeweiligen Chat). **Bei geschlossener App** kommen neue Nachrichten als Push-Mitteilung an, sobald
+  der Server-Dienst eingerichtet ist (Abschnitt 1e: Blaze-Tarif, Web-Push-Schlüssel, `firebase deploy --only functions`).
 
 **Einrichtung:** nur die neuen [`firestore.rules`](firestore.rules) veröffentlichen (siehe 1d) – **für Gruppen und Direktnachrichten erneut**
 (neue Regeln für `groups`). Bis dahin zeigt die Chat-Liste bei den Gruppen „noch nicht freigeschaltet“ mit dem Knopf „So schaltest du sie frei“.
@@ -323,10 +373,11 @@ Daten gespeichert und nie mit Freunden geteilt.
 - Liquid Glass der App wie in iOS 27 (Berührung, Tab-Linse, Wischen, Sheet-Morph, Regler; Chromium, ohne Emulator):
   `node --test tests/glass-touch.ui.mjs`
 - Mit dem Firebase-Emulator (Java nötig): `cd tests/emulator && npm install`, dann
-  `npm test` (Sicherheitsregeln + Freunde-, Chat- und Gruppen-Funktionen mit mehreren Nutzern) und
+  `npm test` (Sicherheitsregeln + Freunde-, Chat- und Gruppen-Funktionen mit mehreren Nutzern sowie die Push-Logik der Cloud Function
+  `functions/push.js` – dafür vorher einmal `cd functions && npm install`) und
   `npm run test:ui` (die echte App in Chromium: ohne Konto, Registrierung, Profilfoto, Anfragen, Vergleich,
   Rangliste, offline, Freund entfernen, Abmelden, Konto löschen sowie der Chat und die Gruppen/Direktnachrichten mit zwei Geräten: Echtzeit,
-  Gym-Karte, mitkommen, Fehler mit Erneut-Senden, melden/blockieren, Nachladen, Wiener Zeit).
+  Gym-Karte, mitkommen, Fehler mit Erneut-Senden, melden/blockieren, Nachladen, Wiener Zeit, Geräte-Anmeldung für Mitteilungen).
   Screenshots des Chats: `CHAT_SHOTS=/pfad npm run test:ui`. Einmalig vorher `npx playwright install chromium`.
   Dazu gehören auch die Anmeldeseite (Fehlermeldungen, „Passwort vergessen?“) und ein Layout-Test mit extrem langen Namen und Notizen.
 - Von Hand ausprobieren mit **Playwright MCP** (steht in `.mcp.json`, startet headless): Emulatoren mit

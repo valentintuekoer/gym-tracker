@@ -13,6 +13,7 @@
 import { createSocial } from './social.js';
 import { createChat } from './chat.js';
 import { createPush } from './push-client.js';
+import { createHealth } from './health-client.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/12.3.0/';
 const REDIRECT_KEY = 'gymtracker.appleRedirect'; // „Mit Apple anmelden“ per Weiterleitung gestartet
@@ -114,6 +115,7 @@ async function init() {
   const social = createSocial({ F, fs, auth, storage: cfg.storageBucket ? storage : null });
   const chat = createChat({ F, fs, auth });
   const push = createPush({ SDK, app, auth, F, fs, cfg });
+  const health = createHealth({ F, fs, auth, cfg });
 
   const appleProvider = () => {
     const p = new A.OAuthProvider('apple.com');
@@ -166,6 +168,7 @@ async function init() {
     social,
     chat,
     push,
+    health,
 
     /**
      * „Mit Apple anmelden“. Zuerst als Pop-up (klappt in Safari und in der Home-Bildschirm-App);
@@ -202,6 +205,7 @@ async function init() {
       await social.deleteAll(user.uid);
       await chat.deleteState(user.uid).catch(() => {});
       await push.deleteAll(user.uid).catch(() => {});
+      await health.deleteAll(user.uid).catch(() => {});
       await deleteUserData(user.uid);
       await F.deleteDoc(profileDoc(user.uid)).catch(() => {});
       await A.deleteUser(user);
@@ -292,6 +296,7 @@ async function init() {
       await social.deleteAll(uid).catch(() => {});
       await chat.deleteState(uid).catch(() => {});
       await push.deleteAll(uid).catch(() => {});
+      await health.deleteAll(uid).catch(() => {});
       await deleteUserData(uid);
       await F.deleteDoc(profileDoc(uid));
     },

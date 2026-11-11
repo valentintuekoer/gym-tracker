@@ -1216,3 +1216,79 @@ test('Mitteilungen bei geschlossener App: Gerät wird angemeldet, folgt dem Scha
   await ctx.close();
   assert.deepEqual(errors.filter((e) => /^push:/.test(e)), [], JSON.stringify(errors));
 });
+
+test('Apple Health: Verbindung einrichten, Tageswerte erscheinen in Daily, Gewicht wird übernommen, Trennen', async () => {
+  await resetEmulators();
+  const { ctx, page } = await device('health');
+  await register(page, 'health1@test.de');
+  const uid = await page.evaluate(() => window.GymCloud.currentUser().uid);
+  const today = await page.evaluate(() => window.GymApp.Core.dayKey(Date.now()));
+  const rest = (p) => `http://127.0.0.1:8080/v1/projects/${PROJECT}/databases/(default)/documents/${p}`;
+  const admin = { Authorization: 'Bearer owner', 'Content-Type': 'application/json' };
+  const shots = process.env.HEALTH_SHOTS; // Screenshots: HEALTH_SHOTS=/pfad npm run test:ui
+  const shot = async (name) => { if (shots) { fs.mkdirSync(shots, { recursive: true }); await page.screenshot({ path: path.join(shots, name + '.png'), fullPage: true }); } };
+
+  // Ohne Verbindung: nur ein leiser Hinweis ganz unten in Daily
+  await page.goto(base + '/#/daily');
+  await page.locator('a[href="#/settings/health"]', { hasText: 'Apple Health' }).waitFor();
+  assert.equal(await page.locator('.daily-health').count(), 0);
+
+  // Einrichten: Schlüssel entsteht (in der Datenbank nur als Hash), Adresse und Anleitung erscheinen
+  await page.locator('a[href="#/settings/health"]').click();
+  await waitHash(page, /#\/settings\/health/);
+  await page.locator('[data-action="health-setup"]:not([disabled])').click();
+  await page.locator('[data-action="health-copy"][data-what="key"]').waitFor();
+  const key = await page.evaluate(() => window.GymCloud.health.savedKey());
+  assert.match(key, /^ah_[A-Za-z0-9_-]{43}$/);
+  const { createHash } = await import('node:crypto');
+  const tokens = (await (await fetch(rest('healthTokens'), { headers: admin })).json()).documents || [];
+  assert.deepEqual(tokens.map((d) => d.name.split('/').pop()), [createHash('sha256').update(key).digest('hex')]);
+  assert.equal(tokens[0].fields.uid.stringValue, uid);
+  assert.equal(JSON.stringify(tokens).includes(key), false);                                    // Klartext steht nirgends in der Datenbank
+  await page.locator('.notice', { hasText: 'Kurzbefehl' }).waitFor();
+  await shot('1-einstellungen');
+  assert.match(await page.locator('[data-action="health-copy"][data-what="url"]').innerText(), /^http:\/\/127\.0\.0\.1:5001\/demo-gym\/europe-west3\/healthIngest$/);
+
+  // Der Kurzbefehl (hier: direkt in die Datenbank geschrieben, wie es die Cloud Function tut) liefert Werte → erscheinen live in Daily
+  const fields = {
+    day: { stringValue: today }, steps: { integerValue: '8123' }, activeKcal: { integerValue: '512' }, restingHr: { integerValue: '54' },
+    sleepMin: { integerValue: '444' }, weightKg: { doubleValue: 82.4 }, source: { stringValue: 'shortcut' }, updatedAt: { timestampValue: new Date().toISOString() },
+    workouts: { arrayValue: { values: [{ mapValue: { fields: { type: { stringValue: 'Laufen' }, minutes: { integerValue: '42' }, km: { doubleValue: 6.3 }, kcal: { integerValue: '410' }, avgHr: { integerValue: '152' } } } }] } },
+  };
+  const put = await fetch(rest(`users/${uid}/health/${today}`), { method: 'PATCH', headers: admin, body: JSON.stringify({ fields }) });
+  assert.equal(put.status, 200);
+  await page.goto(base + '/#/daily');
+  const card = page.locator('.daily-health');
+  await card.waitFor();
+  const text = await card.innerText();
+  for (const expected of ['8.123', 'Schritte', '512', 'kcal aktiv', '54', 'Ruhepuls', '7 h 24 min', 'Schlaf', 'Laufen', '42 min · 6,3 km · 410 kcal · Ø 152 bpm', 'Apple Health']) {
+    assert.ok(text.includes(expected), 'Karte enthält „' + expected + '“: ' + text);
+  }
+  assert.equal(await page.locator('a[href="#/settings/health"]', { hasText: 'anzeigen' }).count(), 0);   // Hinweis verschwindet
+  await shot('2-daily');
+  // Gewicht aus Apple Health wurde als Messung übernommen (Tag hatte noch keine)
+  await page.waitForFunction(() => document.querySelector('#weight-form input[name="weight"]').value === '82,4');
+  assert.equal(await page.evaluate((d) => window.GymApp.db.body.filter((b) => b.weight === 82.4 && b.note === 'Apple Health' && b.id === 'hw-' + d).length, today), 1);
+  // Eine eigene Eintragung wird nicht überschrieben: Gewicht ändern, Daten ändern sich → bleibt
+  await page.fill('#weight-form input[name="weight"]', '83,0');
+  await page.locator('#weight-form button[type="submit"]').click();
+  await fetch(rest(`users/${uid}/health/${today}?updateMask.fieldPaths=steps&updateMask.fieldPaths=weightKg`), { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { steps: { integerValue: '9000' }, weightKg: { doubleValue: 80.1 } } }) });
+  await card.locator('b', { hasText: '9.000' }).waitFor();
+  assert.equal(await page.inputValue('#weight-form input[name="weight"]'), '83');
+
+  // Einstellungen: Status, letzte Daten, Trennen (Schlüssel weg, Werte bleiben)
+  await page.goto(base + '/#/settings/health');
+  await page.locator('.kv', { hasText: 'Gespeicherte Tage' }).locator('span').last().waitFor();
+  assert.match(await page.locator('.kv', { hasText: 'Letzte Daten' }).innerText(), /heute, \d\d:\d\d Uhr/);
+  await page.locator('[data-action="health-unlink"]').click();
+  await dlgButton(page, 'Trennen').click();
+  await page.locator('[data-action="health-setup"]').waitFor();
+  assert.equal(((await (await fetch(rest('healthTokens'), { headers: admin })).json()).documents || []).length, 0);
+  assert.equal(await page.evaluate(() => window.GymCloud.health.savedKey()), null);
+  await page.goto(base + '/#/daily');
+  await page.locator('.daily-health').waitFor();                                                // gespeicherte Tageswerte bleiben
+
+  for (const p of pages) toastLog.push(...await p.page.evaluate(() => window.__toasts || []).catch(() => []));
+  await ctx.close();
+  assert.deepEqual(errors.filter((e) => /^health:/.test(e)), [], JSON.stringify(errors));
+});

@@ -14,6 +14,7 @@ Export-Marker `gym-tracker`, Cache-Name und Repository –, damit bestehende Dat
 | `cloud.js` | Anbindung an Firebase (Konto, „Mit Apple anmelden“, Cloud-Speicher) |
 | `social.js` | Freunde: Benutzername, Profilfoto, Anfragen, geteilte Kennzahlen |
 | `push-client.js`, `functions/` | Mitteilungen bei geschlossener App: Geräte-Anmeldung in der App und die Cloud Function, die sie verschickt (siehe 1e) |
+| `health-client.js`, `functions/health.js` | Apple Health & Garmin: Schlüssel, Tageswerte lesen, Cloud Function `healthIngest` (siehe 1f) |
 | `firebase-config.js` | **hier trägst du dein Firebase-Projekt ein** |
 | `firestore.rules`, `storage.rules` | Sicherheitsregeln für Datenbank und Profilfotos |
 | `firebase.json`, `.firebaserc` | Regeln, Cloud Functions und Emulator-Einstellungen (für `firebase deploy` / Tests) |
@@ -146,6 +147,57 @@ Gerät keine Mitteilungen mehr.
 (z. B. `messaging/permission-blocked`: Mitteilungen im Browser bzw. in den iPhone-Einstellungen erlauben). Kommt trotz „An“ nichts an:
 Firebase-Konsole → *Functions → Protokolle* – dort steht, ob die Funktion lief und ob das Senden scheiterte. Im Emulator lässt sich
 alles außer dem Versand über FCM selbst testen (siehe Tests); die echte Zustellung muss einmal mit einem echten Gerät ausprobiert werden.
+
+
+### 1f. Apple Health & Garmin (optional, braucht dieselben Cloud Functions wie 1e)
+
+**Was möglich ist – und was nicht:** Apple Health (HealthKit) lässt sich nur aus iPhone-Apps lesen, nicht aus einer Web-App. Deshalb geht der Weg
+über einen **Kurzbefehl** auf dem iPhone: Er liest Apple Health und schickt die Tageswerte an eine Cloud Function (`healthIngest`), die sie in
+deinem Konto ablegt. **Garmin Connect** kann seine Daten in Apple Health schreiben (Garmin Connect → Einstellungen → Verbundene Apps → Apple Health,
+Datenarten einzeln erlauben; welche Werte Garmin dort ablegt, bestimmt Garmin) – so kommen auch Garmin-Werte an. Eine **direkte** Garmin-Anbindung
+(Connect Developer Program bzw. persönlicher API-Schlüssel von Garmin) ist nicht eingebaut. Das Ganze gibt es nur auf dem iPhone, und Health-Daten
+sind bei gesperrtem iPhone nicht lesbar (der Kurzbefehl muss bei entsperrtem Gerät laufen).
+
+**Was die App damit macht:**
+- *Daily* zeigt für den gewählten Tag die Karte **Aktivität**: Schritte, aktive Kalorien, Ruhepuls, Schlaf und Trainings (z. B. Lauf von der Garmin-Uhr).
+- Ein **Gewicht** aus Apple Health (z. B. von einer Garmin-Waage) wird als Messung übernommen – für die letzten 14 Tage, nur wenn der Tag noch keine hat,
+  und nie über eine eigene Eintragung hinweg (Notiz „Apple Health“).
+- *Einstellungen → Apple Health & Garmin*: Einrichtung, Adresse und Schlüssel zum Kopieren, Status („Letzte Daten“), Neuer Schlüssel, Trennen.
+
+**Einrichtung** (einmalig):
+1. Cloud Functions veröffentlichen wie in 1e (Blaze-Tarif, `firebase deploy --only functions`) und die **Regeln neu veröffentlichen** (neu: `healthTokens`).
+   Läuft die Funktion nicht in `europe-west3`, den Standort auch in [`firebase-config.js`](firebase-config.js) bei `functionsRegion` eintragen
+   (derselbe wie `PUSH_REGION` in `functions/.env`).
+2. In der App *Einstellungen → Apple Health & Garmin → Verbindung einrichten*. Die App erzeugt einen persönlichen **Schlüssel** (in der Datenbank steht nur
+   sein Hash) und zeigt Adresse und Schlüssel zum Kopieren.
+3. Auf dem iPhone in *Kurzbefehle* einen Kurzbefehl namens **Anchor Health** anlegen (die App zeigt dieselbe Anleitung):
+   - je Wert *Health-Stichproben suchen* (Schritte, aktive Energie, Ruhepuls, Schlaf, Körpergewicht; Startdatum *ist heute*) und *Statistik berechnen*
+     (Summe bzw. Durchschnitt; Gewicht: neuester Wert),
+   - *Inhalte von URL abrufen*: URL = die Adresse, Methode **POST**, Header `Authorization: Bearer <Schlüssel>`, Anfragetext **JSON**.
+   - Beim ersten Ausführen den Zugriff auf Health erlauben.
+4. Automatisch ausführen: *Automation → Wecker* („wenn ich einen Wecker stoppe“) → *Kurzbefehl ausführen*, sofort und ohne Rückfrage.
+   Von Hand: in der App auf *Kurzbefehl jetzt ausführen* tippen.
+
+**Der Inhalt der Anfrage** (alle Werte sind optional; Zahlen dürfen auch als Text kommen, z. B. `"82,4"` oder `"8.123"`; angehängte Einheiten wie `"82,4 kg"`
+werden ignoriert):
+```json
+{ "date": "2026-11-11", "steps": 8123, "activeKcal": 512, "restingHr": 54, "sleepHours": 7.4, "weightKg": 82.4,
+  "workouts": [ { "type": "Laufen", "minutes": 42, "km": 6.3, "kcal": 410, "avgHr": 152 } ] }
+```
+`date` (JJJJ-MM-TT, Wiener Zeit; sonst heute) ist der Tag, dem die Werte gehören – Schlaf zählt für den Tag des Aufwachens. Statt `sleepHours` geht auch
+`sleepMin`. Mehrere Tage auf einmal: `{ "days": [ { "date": …, … }, … ] }` (höchstens 31, nicht älter als 400 Tage). `workouts` ersetzt die Trainings dieses Tages
+(höchstens 10). Ein Wert wird nur geändert, wenn er mitgeschickt wird – ein Kurzbefehl nur für das Gewicht lässt die Schritte in Ruhe.
+Antwort: `{"ok":true,"days":["2026-11-11"]}`, bei Fehlern 401 (Schlüssel falsch), 400 (Inhalt ungültig, mit Erklärung) oder 405 (nicht POST).
+
+**Ausprobieren ohne iPhone:**
+```
+curl -X POST "<Adresse>" -H "Authorization: Bearer <Schlüssel>" -H "Content-Type: application/json" -d '{"steps": 8123, "sleepHours": 7.4}'
+```
+Danach sollte in *Daily* die Karte *Aktivität* erscheinen.
+
+**Datenschutz:** Die Tageswerte stehen in deinem Konto (`users/{uid}/health`, nur du liest sie), der Schlüssel nur als Hash (`healthTokens`). Wer den
+Schlüssel kennt, kann Werte in dein Konto schreiben, aber nichts lesen – *Neuer Schlüssel* macht den alten ungültig, *Trennen* löscht ihn.
+Beim Löschen des Kontos verschwinden Schlüssel und Tageswerte.
 
 ---
 
@@ -374,10 +426,11 @@ Daten gespeichert und nie mit Freunden geteilt.
   `node --test tests/glass-touch.ui.mjs`
 - Mit dem Firebase-Emulator (Java nötig): `cd tests/emulator && npm install`, dann
   `npm test` (Sicherheitsregeln + Freunde-, Chat- und Gruppen-Funktionen mit mehreren Nutzern sowie die Push-Logik der Cloud Function
-  `functions/push.js` – dafür vorher einmal `cd functions && npm install`) und
+  `functions/push.js` und der Gesundheitsdaten-Empfang `functions/health.js` – dafür vorher einmal `cd functions && npm install`),
+  `npm run test:functions` (die Funktion `healthIngest` über HTTP im Functions-Emulator) und
   `npm run test:ui` (die echte App in Chromium: ohne Konto, Registrierung, Profilfoto, Anfragen, Vergleich,
   Rangliste, offline, Freund entfernen, Abmelden, Konto löschen sowie der Chat und die Gruppen/Direktnachrichten mit zwei Geräten: Echtzeit,
-  Gym-Karte, mitkommen, Fehler mit Erneut-Senden, melden/blockieren, Nachladen, Wiener Zeit, Geräte-Anmeldung für Mitteilungen).
+  Gym-Karte, mitkommen, Fehler mit Erneut-Senden, melden/blockieren, Nachladen, Wiener Zeit, Geräte-Anmeldung für Mitteilungen, Apple-Health-Verbindung mit Daily-Karte und Gewicht).
   Screenshots des Chats: `CHAT_SHOTS=/pfad npm run test:ui`. Einmalig vorher `npx playwright install chromium`.
   Dazu gehören auch die Anmeldeseite (Fehlermeldungen, „Passwort vergessen?“) und ein Layout-Test mit extrem langen Namen und Notizen.
 - Von Hand ausprobieren mit **Playwright MCP** (steht in `.mcp.json`, startet headless): Emulatoren mit

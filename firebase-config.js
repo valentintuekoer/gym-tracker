@@ -20,7 +20,9 @@ window.GYM_FIREBASE_CONFIG = {
   // Web-Push-Schlüssel für Mitteilungen bei geschlossener App (öffentlich, nicht geheim):
   // Firebase-Konsole → Projekteinstellungen → Cloud Messaging → „Web-Push-Zertifikate“ → „Schlüsselpaar generieren“
   // → den langen Schlüssel hier einfügen (README: „Mitteilungen bei geschlossener App“). Leer = ausgeschaltet.
-  vapidKey: ""
+  vapidKey: "",
+  // Standort der Cloud Functions (Mitteilungen, Apple Health) – derselbe wie PUSH_REGION in functions/.env
+  functionsRegion: "europe-west3"
 };
 
 /* Beispiel – so sieht es ausgefüllt aus:

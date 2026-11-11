@@ -17,6 +17,8 @@ rules_version = '2';
 //   groups/{id}/messages/{id}    → Nachrichten und Gym-Karten der Gruppe (nur Mitglieder)
 //   chatState/{uid}              → Zeitpunkt der letzten Chat-Nachricht (Rate Limit gegen Spam)
 //   pushDevices/{id}             → Geräte, die Push-Mitteilungen für neue Chat-Nachrichten bekommen (nur das eigene Konto)
+//   healthTokens/{sha256}        → persönlicher Schlüssel für den Gesundheits-Import (nur das eigene Konto)
+//   users/{uid}/health/{tag}     → Tageswerte aus Apple Health (Schritte, Schlaf, Ruhepuls …; schreibt die Cloud Function)
 //   reports/{id}                 → Meldungen aus dem Chat (nur Administratoren dürfen lesen)
 //
 // Jeder Nutzer darf nur seine eigenen Daten schreiben – solange er nicht gesperrt ist.
@@ -371,6 +373,17 @@ service cloud.firestore {
       allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
       allow create, update: if chatMember() && deviceOk(request.resource.data);
       allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+    }
+
+    // Schlüssel für den Gesundheits-Import (iPhone-Kurzbefehl → Cloud Function healthIngest). Die ID ist der SHA-256 des
+    // Schlüssels – der Klartext steht nirgends in der Datenbank. Die Tageswerte selbst liegen unter users/{uid}/health.
+    match /healthTokens/{id} {
+      allow read, delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if signedIn() && !isBlocked(request.auth.uid)
+        && id.matches('[0-9a-f]{64}')
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time;
     }
 
     // Meldungen: je Melder und Nachricht eine (Dokument-ID), nur Administratoren lesen

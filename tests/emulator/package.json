@@ -4,8 +4,9 @@
   "description": "Integrationstests gegen den Firebase-Emulator (Auth, Firestore, Storage) – siehe README.md",
   "type": "module",
   "scripts": {
-    "test": "firebase emulators:exec --only auth,firestore,storage --project demo-gym --config ../../firebase.json \"node --test --test-concurrency=1 social.emulator.test.mjs chat.emulator.test.mjs groups.emulator.test.mjs push.emulator.test.mjs\"",
-    "test:ui": "firebase emulators:exec --only auth,firestore,storage --project demo-gym --config ../../firebase.json \"node --test ui.test.mjs\""
+    "test": "firebase emulators:exec --only auth,firestore,storage --project demo-gym --config ../../firebase.json \"node --test --test-concurrency=1 social.emulator.test.mjs chat.emulator.test.mjs groups.emulator.test.mjs push.emulator.test.mjs health.emulator.test.mjs\"",
+    "test:ui": "firebase emulators:exec --only auth,firestore,storage --project demo-gym --config ../../firebase.json \"node --test ui.test.mjs\"",
+    "test:functions": "firebase emulators:exec --only functions,firestore --project demo-gym --config ../../firebase.json \"node --test health.http.test.mjs\""
   },
   "devDependencies": {
     "firebase": "12.3.0",

@@ -1,12 +1,14 @@
 'use strict';
-/* Anchor – Cloud Functions: Push-Mitteilungen bei neuen Chat-Nachrichten.
- * Einrichtung und Kosten: README.md, Abschnitt „Mitteilungen bei geschlossener App“. */
+/* Anchor – Cloud Functions: Push-Mitteilungen bei neuen Chat-Nachrichten und Empfang der Gesundheitsdaten.
+ * Einrichtung und Kosten: README.md, Abschnitte 1e (Mitteilungen) und 1f (Apple Health). */
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onRequest } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
 const { deliver } = require('./push');
+const { handleHealth } = require('./health');
 
 initializeApp();
 
@@ -28,3 +30,17 @@ const run = (roomOf) => async (event) => {
 exports.pushRoomMessage = onDocumentCreated({ document: 'rooms/{room}/messages/{id}', region, maxInstances: 10 }, run((p) => p.room));
 // Gruppen und Direktnachrichten
 exports.pushGroupMessage = onDocumentCreated({ document: 'groups/{gid}/messages/{id}', region, maxInstances: 10 }, run((p) => '@' + p.gid));
+
+// Gesundheitsdaten vom iPhone-Kurzbefehl (Apple Health, Garmin über Apple Health) – siehe health.js und README, Abschnitt 1f.
+// Öffentlich aufrufbar; geschützt durch den persönlichen Schlüssel, den die App erzeugt (Authorization: Bearer …).
+exports.healthIngest = onRequest({ region, invoker: 'public', maxInstances: 5, cors: false }, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (req.method !== 'POST') { res.status(405).set('Allow', 'POST').json({ ok: false, error: 'Nur POST.' }); return; }
+  try {
+    const out = await handleHealth({ db: getFirestore(), headers: req.headers, body: req.body, serverTime: FieldValue.serverTimestamp() });
+    res.status(out.status).json(out.json);
+  } catch (e) {
+    logger.error('healthIngest', e);
+    res.status(500).json({ ok: false, error: 'Interner Fehler.' });
+  }
+});

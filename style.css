@@ -4049,3 +4049,19 @@ svg.i { stroke-width: 1.5; }
 :root:not([data-theme="light"]) .timer-bar.done {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 45%), var(--inv);
 }
+
+/* Gesundheitsdaten (Daily: Karte „Aktivität“) */
+.health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-3) var(--s-4); }
+.health-grid b { display: block; font: 700 20px/1.2 var(--font); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.health-grid small { display: block; margin-top: 2px; color: var(--muted); font-size: 13px; }
+.health-workouts { list-style: none; margin: var(--s-4) 0 0; padding: var(--s-3) 0 0; border-top: 1px solid var(--border); display: grid; gap: var(--s-2); }
+.health-workouts li { display: flex; flex-direction: column; gap: 1px; }
+.health-workouts b { font: 650 15px/1.3 var(--font); }
+.health-workouts span { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.health-field { margin-bottom: var(--s-3); }
+.health-field small { display: block; margin-bottom: 6px; color: var(--muted); font-size: 13px; }
+.health-copy {
+  display: block; width: 100%; min-height: 44px; padding: 10px var(--s-3); text-align: left;
+  border: 1px solid var(--border); border-radius: var(--r-input); background: var(--surface-2); color: var(--text);
+  font: 500 14px/1.35 var(--font); overflow-wrap: anywhere; user-select: all; -webkit-user-select: all;
+}

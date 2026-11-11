@@ -2229,6 +2229,7 @@
     inbox: svgI('<path d="M12 4v10M8 10l4 4 4-4M4.5 15v3.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V15"/>'),
     close: svgI('<path d="M6 6l12 12M18 6 6 18"/>'),
     reload: svgI('<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/>'),
+    pulse: svgI('<path d="M3 12.5h4l2.5-6 4 12 2.5-6H21"/>'),
     mail: svgI('<rect x="3.5" y="5.5" width="17" height="13" rx="3"/><path d="M4.5 8l7.5 5.5L19.5 8"/>'),
   };
 
@@ -2503,6 +2504,170 @@
     },
   };
 
+  /* ---------- Gesundheitsdaten (Apple Health, Garmin über Apple Health) ---------- */
+
+  /**
+   * Ein iPhone-Kurzbefehl liest Apple Health (dorthin schreibt auch Garmin Connect) und schickt die Tageswerte an die Cloud
+   * Function healthIngest (functions/health.js). Sie landen unter users/{uid}/health/{Tag}; hier werden sie live gelesen,
+   * für offline zwischengespeichert und in Daily angezeigt. Ein Gewicht wird als Messung übernommen, wenn der Tag noch keins hat.
+   * Einrichtung: Einstellungen → Apple Health & Garmin (siehe README 1f).
+   */
+  const HEALTH_CACHE = 'gymtracker.health.v1.';      // + uid → zuletzt geladene Tage
+  const HEALTH_APPLIED = 'gymtracker.healthw.v1.';   // + uid → Tage, deren Gewicht schon übernommen wurde
+  const HEALTH_DAYS = 60;                            // so viele Tage hört die App live mit
+  const HEALTH_SHORTCUT = 'Anchor Health';           // Name des Kurzbefehls (für „Jetzt abrufen“)
+
+  const Health = {
+    uid: null,
+    days: new Map(),   // Tag → { day, steps?, activeKcal?, restingHr?, sleepMin?, weightKg?, workouts?, updatedAt }
+    ready: false,
+    unsub: null,
+    linked: null,      // gibt es einen Schlüssel? null = noch nicht gefragt
+    checking: false,
+    checkedAt: 0,
+
+    api() { return window.GymCloud && window.GymCloud.health; },
+
+    /** Live mithören, sobald angemeldet und die Cloud-Anbindung da ist. */
+    connect() {
+      if (!isUser() || !this.api() || this.unsub) return;
+      if (this.uid !== account.uid) this.load(account.uid);
+      try {
+        this.unsub = this.api().watch(HEALTH_DAYS, (list, meta) => this.onData(list, meta), (e) => {
+          console.warn('Gesundheitsdaten:', e);
+          this.unsub = null;
+        });
+      } catch (e) { this.unsub = null; }
+    },
+
+    disconnect() {
+      if (this.unsub) { try { this.unsub(); } catch (e) { /* egal */ } this.unsub = null; }
+    },
+
+    /** Abmelden: nichts von diesem Konto auf dem Gerät lassen. */
+    forget(uid) {
+      this.disconnect();
+      if (uid) { lsDel(HEALTH_CACHE + uid); lsDel(HEALTH_APPLIED + uid); }
+      Object.assign(this, { uid: null, days: new Map(), ready: false, linked: null });
+    },
+
+    load(uid) {
+      this.uid = uid;
+      this.days = new Map();
+      try { for (const d of JSON.parse(lsGet(HEALTH_CACHE + uid)) || []) if (d && d.day) this.days.set(d.day, d); } catch (e) { /* kaputter Cache */ }
+    },
+
+    onData(list) {
+      if (!isUser()) return;
+      this.uid = account.uid;
+      this.days = new Map(list.map((d) => [d.day, d]));
+      this.ready = true;
+      lsSet(HEALTH_CACHE + account.uid, JSON.stringify(list.slice(0, 31)));
+      this.applyWeights();
+      this.changed();
+    },
+
+    changed() {
+      if (!['daily', 'settings'].includes(parseRoute().name)) return;
+      const a = document.activeElement;
+      if (a && a.matches && a.matches('input')) { renderPending = true; return; }
+      render();
+    },
+
+    /** Gewicht aus Apple Health als Messung übernehmen (letzte 14 Tage, nur wenn der Tag noch keins hat, je Tag nur einmal). */
+    applyWeights() {
+      if (!isUser()) return;
+      let done;
+      try { done = new Set(JSON.parse(lsGet(HEALTH_APPLIED + account.uid)) || []); } catch (e) { done = new Set(); }
+      const today = Core.dayKey(Date.now());
+      const from = Core.dayKey(Date.now() - 14 * 86400000);
+      let changed = false;
+      for (const d of this.days.values()) {
+        if (typeof d.weightKg !== 'number' || d.day < from || d.day > today || done.has(d.day)) continue;
+        done.add(d.day);
+        if (Core.weightOn(db, d.day)) continue; // eigene Eintragung geht vor
+        const [y, m, dd] = d.day.split('-').map(Number);
+        // feste ID: zwei Geräte legen dieselbe Messung an statt zwei
+        if (Core.saveBodyEntry(db, { id: 'hw-' + d.day, date: new Date(y, m - 1, dd, 12).getTime(), weight: d.weightKg, note: 'Apple Health' })) changed = true;
+      }
+      lsSet(HEALTH_APPLIED + account.uid, JSON.stringify([...done].sort().slice(-60)));
+      if (changed) save();
+    },
+
+    /** Gibt es einen Schlüssel? (für die Einstellungen) */
+    async check() {
+      if (!isUser() || !this.api() || this.checking || Date.now() - this.checkedAt < 30000) return;
+      this.checking = true;
+      this.checkedAt = Date.now();
+      try { this.linked = await this.api().hasKey(); } catch (e) { /* offline: Zustand bleibt */ }
+      this.checking = false;
+      if (parseRoute().name === 'settings') render();
+    },
+
+    /** Zeitpunkt der letzten Daten vom Kurzbefehl (0 = noch nie) */
+    lastSync() { let t = 0; for (const d of this.days.values()) if (d.updatedAt > t) t = d.updatedAt; return t; },
+
+    /** Einstellungen → Apple Health & Garmin */
+    settingsHTML() {
+      if (!isUser()) return '<div class="notice"><strong>Nur mit Konto</strong>Melde dich an, dann kann die App Schritte, Schlaf, Ruhepuls und Gewicht aus Apple Health übernehmen.</div>';
+      if (!this.api()) return '<div class="notice warn"><strong>Keine Verbindung</strong>Die Cloud-Anbindung ist noch nicht geladen – bitte kurz warten oder neu laden.</div>';
+      this.check();
+      const last = this.lastSync();
+      const key = this.linked ? this.api().savedKey() : null;
+      const status = this.linked === null ? 'Wird geprüft …' : this.linked ? '<span class="accent">eingerichtet</span>' : 'nicht eingerichtet';
+      const head = `
+        <p class="section-label">Status</p>
+        <section class="card">
+          <p class="kv"><span>Verbindung</span><span>${status}</span></p>
+          <p class="kv"><span>Letzte Daten</span><span>${last ? esc(fmtRelative(last, Date.now()) + ', ' + fmtTime(last) + ' Uhr') : 'noch keine'}</span></p>
+          <p class="kv"><span>Gespeicherte Tage</span><span>${this.days.size}</span></p>
+          <p class="hint">Apple Health lässt sich aus einer Web-App nicht direkt auslesen. Stattdessen schickt ein Kurzbefehl auf dem iPhone die Tageswerte
+          an dein Konto – hier erscheinen sie in Daily. <b>Garmin Connect</b> kann seine Daten in Apple Health ablegen (Garmin Connect → Einstellungen →
+          Verbundene Apps → Apple Health); so kommen auch Garmin-Werte an. Welche Werte Garmin dort ablegt, bestimmt Garmin.</p>
+        </section>`;
+      if (!this.linked) {
+        return head + `<button class="btn primary block lg" data-action="health-setup" ${this.linked === null ? 'disabled' : ''}>Verbindung einrichten</button>
+          <p class="hint">Dafür muss die Cloud Function veröffentlicht sein (README, Abschnitt 1f).</p>`;
+      }
+      const shortcut = 'shortcuts://run-shortcut?name=' + encodeURIComponent(HEALTH_SHORTCUT);
+      return head + `
+        <p class="section-label">Kurzbefehl</p>
+        <section class="card">
+          <div class="health-field"><small>Adresse (antippen zum Kopieren)</small>
+            <button class="health-copy" data-action="health-copy" data-what="url" aria-label="Adresse kopieren">${esc(this.api().endpoint())}</button></div>
+          <div class="health-field"><small>Schlüssel${key ? ' (antippen zum Kopieren)' : ''}</small>${key
+            ? `<button class="health-copy" data-action="health-copy" data-what="key" aria-label="Schlüssel kopieren">${esc(key.slice(0, 7))}…${esc(key.slice(-4))}</button>`
+            : '<p class="hint" style="margin:0">Auf diesem Gerät nicht gespeichert – erzeuge unten einen neuen Schlüssel.</p>'}</div>
+          <p class="hint">Der Schlüssel ist wie ein Passwort: Wer ihn hat, kann Werte in dein Konto schreiben (aber nichts lesen).</p>
+          <div class="notice">
+            <strong>So legst du den Kurzbefehl an (einmalig):</strong>
+            <ol>
+              <li>Öffne die <em>Kurzbefehle</em>-App, tippe auf <em>+</em> und nenne den Kurzbefehl genau <em>${esc(HEALTH_SHORTCUT)}</em>.</li>
+              <li>Hole die Werte aus Apple Health: <em>Health-Stichproben suchen</em> (Typ <em>Schritte</em>, Startdatum <em>ist heute</em>) → <em>Statistik berechnen</em> (Summe).
+                Ebenso für <em>Aktive Energie</em> (Summe), <em>Ruhepuls</em> (Durchschnitt), <em>Schlaf</em> (Dauer in Stunden, Summe – zählt für den Tag des Aufwachens)
+                und <em>Körpergewicht</em> (neuester Wert).</li>
+              <li><em>Inhalte von URL abrufen</em>: URL = die Adresse oben · Methode <em>POST</em> · Header <em>Authorization</em> = <em>Bearer </em> und dein Schlüssel ·
+                Anfragetext <em>JSON</em> mit den Feldern <em>steps</em>, <em>activeKcal</em>, <em>restingHr</em>, <em>sleepHours</em>, <em>weightKg</em> (Zahlen, jedes Feld ist optional)
+                und <em>date</em> (JJJJ-MM-TT, sonst heute).</li>
+              <li>Beim ersten Ausführen erlaubst du den Zugriff auf Health. Danach erscheinen die Werte in <em>Daily</em>; ein Gewicht wird als Messung übernommen.</li>
+              <li>Automatisch: <em>Automation</em> → z. B. <em>Wecker</em> („wenn ich einen Wecker stoppe“) → <em>Kurzbefehl ausführen</em> (sofort, ohne Rückfrage).
+                Bei gesperrtem iPhone liest Health keine Daten – die Automation muss bei entsperrtem Gerät laufen.</li>
+              <li>Training (z. B. von Garmin) kommt mit dem Feld <em>workouts</em>: eine Liste mit <em>type</em>, <em>minutes</em>, <em>km</em>, <em>kcal</em>, <em>avgHr</em>.</li>
+            </ol>
+          </div>
+          <a class="btn soft block" href="${shortcut}">Kurzbefehl jetzt ausführen</a>
+        </section>
+        <div class="btn-row">
+          <button class="btn soft" data-action="health-newkey">Neuer Schlüssel</button>
+          <button class="btn danger-soft" data-action="health-unlink">Trennen</button>
+        </div>
+        <p class="hint">Beim Trennen verlieren Kurzbefehle den Zugriff. Bereits gespeicherte Tageswerte bleiben erhalten.</p>`;
+    },
+  };
+
+  /** Schlafdauer: „7 h 24 min“ */
+  const fmtSleep = (min) => Math.floor(min / 60) + ' h' + (min % 60 ? ' ' + (min % 60) + ' min' : '');
+
   /* ---------- Pausentimer (Leiste unten) ---------- */
 
   const Timer = {
@@ -2733,7 +2898,7 @@
    */
   const GlassTouch = (() => {
     const CTRL = '.hdr-btn, .btn:not(.ghost), .icon-btn, .chip, .tbtn, .timer-x, .step, .dstrip-day, .toast-btn, .send-btn, ' +
-      '.avatar-btn, .theme-pick, .setup-opt, .goal-tile, .fav-btn, .tab, .segmented button, .body-tile';
+      '.avatar-btn, .theme-pick, .setup-opt, .goal-tile, .fav-btn, .tab, .segmented button, .body-tile, .health-copy';
     const SURF = '.day-card, .week-card, .list-item, .profile-card';
     const ALL = CTRL + ', ' + SURF;
     const TAPPABLE = 'a[href], button, [data-action], [role="button"], [role="tab"]';
@@ -4782,7 +4947,7 @@
       title: 'Daily', large: true,
       eyebrow: new Date(key + 'T12:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }),
     });
-    view.innerHTML = dailyStripHTML(key, today) + dailyWeightHTML(key) + dailyMealsHTML(key);
+    view.innerHTML = dailyStripHTML(key, today) + dailyWeightHTML(key) + dailyHealthHTML(key) + dailyMealsHTML(key) + dailyHealthTeaser();
   }
 
   /** Die letzten 7 Tage: antippen = Tag wechseln; der Punkt zeigt, wie viel vom Mealplan geschafft ist. */
@@ -4822,6 +4987,34 @@
         ${pts.length > 1 ? `<div class="daily-chart">${chartSVG(pts, 'kg')}</div>` : ''}
         ${db.body.length ? `<button class="btn ghost sm" data-action="open-body">Alle Messungen ${ICON.chevron}</button>` : ''}
       </section>`;
+  }
+
+  /** Schritte, Aktivität, Ruhepuls, Schlaf und Training des Tages aus Apple Health */
+  function dailyHealthHTML(key) {
+    const d = isUser() ? Health.days.get(key) : null;
+    if (!d) return '';
+    const tiles = [
+      d.steps !== undefined ? [fmtInt(d.steps), 'Schritte'] : null,
+      d.activeKcal !== undefined ? [fmtInt(d.activeKcal), 'kcal aktiv'] : null,
+      d.restingHr !== undefined ? [fmtInt(d.restingHr), 'Ruhepuls (bpm)'] : null,
+      d.sleepMin !== undefined ? [fmtSleep(d.sleepMin), 'Schlaf'] : null,
+    ].filter(Boolean);
+    const workouts = (d.workouts || []).map((w) => `
+      <li><b>${esc(w.type)}</b><span>${[w.minutes + ' min', w.km !== undefined ? fmtNum(w.km) + ' km' : '', w.kcal !== undefined ? fmtInt(w.kcal) + ' kcal' : '', w.avgHr !== undefined ? 'Ø ' + w.avgHr + ' bpm' : ''].filter(Boolean).join(' · ')}</span></li>`).join('');
+    if (!tiles.length && !workouts) return '';
+    return `
+      <section class="card daily-health">
+        <div class="daily-head"><h2 class="card-title">Aktivität</h2><span class="count">${ICON.pulse} Apple Health</span></div>
+        ${tiles.length ? `<div class="health-grid">${tiles.map(([v, l]) => `<div><b>${v}</b><small>${l}</small></div>`).join('')}</div>` : ''}
+        ${workouts ? `<ul class="health-workouts">${workouts}</ul>` : ''}
+        <p class="hint daily-sub">Aktualisiert ${d.updatedAt ? fmtRelative(d.updatedAt, Date.now()) + ', ' + fmtTime(d.updatedAt) + ' Uhr' : ''}</p>
+      </section>`;
+  }
+
+  /** Solange noch nichts verbunden ist: ein leiser Hinweis ganz unten */
+  function dailyHealthTeaser() {
+    if (!isUser() || !Health.api() || Health.days.size || Health.linked) return '';
+    return `<a class="btn ghost block sm" href="#/settings/health">${ICON.pulse} Schritte, Schlaf &amp; Puls aus Apple Health anzeigen</a>`;
   }
 
   function mealSub(m) {
@@ -5722,6 +5915,7 @@
     });
     engine.start();
     Social.connect();
+    Health.connect();
   }
 
   function stopSync() {
@@ -5765,6 +5959,7 @@
     const uid = account && account.uid;
     const accountDb = db;
     Social.detach();
+    Health.forget(uid);
     account = null;           // vor signOut, damit onAuthState(null) nichts mehr tut
     saveAccount();
     await Push.stop(); // solange noch angemeldet: dieses Gerät austragen
@@ -5971,6 +6166,7 @@
     training: 'Training & Timer',
     notifications: 'Benachrichtigungen & Ton',
     chat: 'Chat',
+    health: 'Apple Health & Garmin',
     appearance: 'Darstellung',
     backup: 'Datensicherung',
     data: 'Daten',
@@ -6014,6 +6210,7 @@
           ${menuRow('#/settings/training', ICON.dumbbell, 'Training & Timer', fmtRest(st.defaultRest), 'Pause, Gewichtsschritt, Wochenziel')}
           ${menuRow('#/settings/notifications', ICON.clock, 'Benachrichtigungen & Ton', permShort, 'Signalton, Haptik, Pausen-Hinweis')}
           ${isUser() ? menuRow('#/settings/chat', ICON.chat, 'Chat', (st.chatBlocked || []).length ? (st.chatBlocked.length + ' blockiert') : '', 'Hinweise zu Gym-Karten, blockierte Nutzer') : ''}
+          ${isUser() && Health.api() ? menuRow('#/settings/health', ICON.pulse, 'Apple Health &amp; Garmin', Health.lastSync() ? 'Verbunden' : '', 'Schritte, Schlaf, Ruhepuls, Gewicht') : ''}
           ${menuRow('#/settings/appearance', svgI('<circle cx="12" cy="12" r="8"/><path class="fill" d="M12 4a8 8 0 0 1 0 16z"/>'), 'Darstellung', themeLabel)}
         </section>
         <section class="card flush">
@@ -6113,6 +6310,8 @@
             <span class="row-text"><span class="break">@${esc(b.name || 'Nutzer')}</span><small>Du siehst keine Nachrichten von dieser Person.</small></span>
             <button class="btn soft sm" data-action="chat-unblock" data-uid="${esc(b.uid)}">Entsperren</button>
           </div>`).join('')}</section>` : '<div class="empty"><p class="muted">Du hast niemanden blockiert. Im Chat: Nachricht antippen → Blockieren.</p></div>'}`;
+    } else if (sub === 'health') {
+      html = Health.settingsHTML();
     } else if (sub === 'appearance') {
       html = `
         <p class="section-label">Design</p>
@@ -7149,6 +7348,21 @@
       // Läuft dieser Tag schon, direkt zurück ins Training – sonst erst die Vorschau
       if (s && s.dayId === el.dataset.id) go('#/workout');
       else go('#/preview/' + encodeURIComponent(el.dataset.id));
+    },
+    'health-setup': async () => {
+      try { await Health.api().createKey(); Health.linked = true; Haptics.tap(); render(); } catch (e) { toast(authErrorText(e)); }
+    },
+    'health-newkey': async () => {
+      if (!(await confirmAction('Neuen Schlüssel erzeugen?', 'Der bisherige Schlüssel funktioniert dann nicht mehr – trag den neuen im Kurzbefehl ein.', 'Neu erzeugen', false))) return;
+      try { await Health.api().createKey(); Health.linked = true; toast('Neuer Schlüssel erzeugt'); render(); } catch (e) { toast(authErrorText(e)); }
+    },
+    'health-unlink': async () => {
+      if (!(await confirmAction('Verbindung trennen?', 'Kurzbefehle können danach nichts mehr senden. Gespeicherte Tageswerte bleiben erhalten.', 'Trennen'))) return;
+      try { await Health.api().removeKeys(); Health.linked = false; toast('Verbindung getrennt'); render(); } catch (e) { toast(authErrorText(e)); }
+    },
+    'health-copy': async (el) => {
+      const text = el.dataset.what === 'key' ? Health.api().savedKey() : Health.api().endpoint();
+      try { await navigator.clipboard.writeText(text); toast(el.dataset.what === 'key' ? 'Schlüssel kopiert' : 'Adresse kopiert'); } catch (e) { toast('Kopieren nicht möglich'); }
     },
     'copy-uid': async () => {
       try { await navigator.clipboard.writeText(account.uid); toast('Nutzer-ID kopiert'); } catch (e) { toast(account.uid); }
@@ -10426,6 +10640,7 @@
       if (rn === 'home' || rn === 'settings' || rn === 'profile') render();
       if (SOCIAL_ROUTES.has(rn)) Social.refreshPeople();
       Chat.checkDay();
+      Health.connect(); // nach einem Fehler wieder zuhören
       if (Push.error) Push.sig = ''; // nach einem Fehler beim Zurückkehren erneut versuchen
       Push.touch();
       if (rn === 'chat-room' && ChatView.el) { Chat.sync(); if (ChatView.stick) Chat.markSeen(); }
@@ -10487,6 +10702,7 @@
       // Die lokale Kopie bleibt erhalten und wird beim nächsten Anmelden weiter abgeglichen.
       stopSync();
       Social.detach();
+      Health.disconnect();
       ui.authEmail = account.email;
       account = null;
       saveAccount();

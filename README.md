@@ -91,13 +91,38 @@ Ohne diese Einrichtung erscheint beim Tippen auf „Mit Apple anmelden“ ein Hi
    Services ID, Team ID, Key ID und den Inhalt der `.p8`-Datei eintragen → *Speichern*.
 3. Deine App-Domain muss unter *Authentication → Einstellungen → Autorisierte Domains* stehen (Schritt 1.7).
 
-### 1d. Sicherheitsregeln (wichtig nach diesem Update)
+### 1d. Sicherheitsregeln
 
 Die [`firestore.rules`](firestore.rules) enthalten die Regeln für Freunde (Benutzernamen, Profile nur für
-bestätigte Freunde lesbar, Anfragen nur für Absender/Empfänger) und für den **Chat** (Nachrichten, Gym-Karten,
-Rate Limit, Meldungen). **Nach jedem Update mit neuen Regeln neu veröffentlichen:** Firestore → *Regeln* →
-alles ersetzen → Administrator-ID wieder eintragen (siehe unten) → *Veröffentlichen*.
-Alternativ mit der Firebase-CLI: `firebase deploy --only firestore:rules,storage`.
+bestätigte Freunde lesbar, Anfragen nur für Absender/Empfänger), den **Chat** (Nachrichten, Gym-Karten,
+Rate Limit, Meldungen), Push-Geräte und Apple Health. **Ist das automatische Veröffentlichen eingerichtet (nächster Abschnitt), passiert nach
+einem Update nichts mehr von Hand** – Regeln, Storage-Regeln und Cloud Functions gehen nach jedem Merge von selbst raus,
+die Administrator-ID bleibt erhalten.
+Sonst: nach jedem Update mit neuen Regeln Firestore → *Regeln* → alles ersetzen → Administrator-ID wieder eintragen
+(siehe unten) → *Veröffentlichen*, oder mit der Firebase-CLI `firebase deploy --only firestore:rules,storage`.
+
+### Automatisch veröffentlichen (einmal einrichten, danach nie wieder von Hand)
+
+Die GitHub Action [`.github/workflows/deploy-firebase.yml`](.github/workflows/deploy-firebase.yml) veröffentlicht nach **jedem Merge in
+`main`**, der Regeln, Functions oder Firebase-Einstellungen ändert, automatisch:
+- die **Firestore-Regeln** – mit den Administrator-IDs aus den bisher veröffentlichten Regeln (oder aus der Repository-Variable `ADMIN_UIDS`,
+  Komma-getrennt). Lassen sich die bisherigen Regeln nicht lesen, bricht sie ab, statt den Administrator auszusperren;
+- die **Storage-Regeln** (Profilfotos; wird übersprungen, wenn Cloud Storage nicht eingerichtet ist);
+- die **Cloud Functions** (Push-Mitteilungen, Apple Health; nur mit Blaze-Tarif, sonst ein Hinweis).
+
+Dafür braucht GitHub **einmalig** einen Zugang zu deinem Firebase-Projekt (ca. 5 Minuten, alles im Browser):
+1. Firebase-Konsole → *Projekteinstellungen (Zahnrad) → Dienstkonten* → *Neuen privaten Schlüssel generieren* → JSON-Datei wird heruntergeladen.
+   Oben auf derselben Seite steht die E-Mail des Dienstkontos (`firebase-adminsdk-…@….iam.gserviceaccount.com`).
+2. Rechte geben: <https://console.cloud.google.com/iam-admin/iam> (Projekt `gym-tracker-15439` wählen) → beim Dienstkonto auf den Stift →
+   *Weitere Rolle hinzufügen*: **Bearbeiter** (Editor), **Cloud Functions-Administrator**, **Cloud Run-Administrator** und
+   **Dienstkontonutzer** (Service Account User) → *Speichern*. Ohne Cloud Functions (kein Blaze) reicht **Bearbeiter**.
+3. GitHub → Repository → *Settings → Secrets and variables → Actions → New repository secret*: Name **`FIREBASE_SERVICE_ACCOUNT`**,
+   Inhalt = der **gesamte Text** der JSON-Datei → *Add secret*. Die JSON-Datei danach löschen (sie ist wie ein Passwort).
+4. Einmal anstoßen: GitHub → *Actions → Firebase veröffentlichen → Run workflow*. Danach läuft es nach jedem Merge von selbst.
+
+Ohne das Secret macht die Action nichts (nur ein Hinweis im Protokoll). Was nicht automatisch geht, weil Google es nur im Browser anbietet:
+der Blaze-Tarif (1e, Schritt 1) und der Web-Push-Schlüssel (1e, Schritt 2) – beides nur einmal. Läuft die Datenbank nicht in
+`europe-west3`, gehört die Datei `functions/.env` mit `PUSH_REGION=…` ins Repository (sie enthält nichts Geheimes).
 
 
 ### 1e. Mitteilungen bei geschlossener App (optional, braucht den Blaze-Tarif)
@@ -116,8 +141,8 @@ und die Blockierliste gelten auch hier; der Absender selbst bekommt nichts.
 2. **Web-Push-Schlüssel:** *Projekteinstellungen (Zahnrad) → Cloud Messaging → Web-Konfiguration → Web-Push-Zertifikate →
    Schlüsselpaar generieren*. Den langen **Schlüssel** (beginnt mit `B…`) in [`firebase-config.js`](firebase-config.js) bei `vapidKey: ""`
    zwischen die Anführungszeichen einfügen (er ist öffentlich, nicht geheim) und die App wie gewohnt neu hochladen.
-3. **Regeln neu veröffentlichen** (siehe 1d) – neu ist `pushDevices` (Geräte, die Mitteilungen bekommen; jedes Konto sieht nur die eigenen).
-4. **Funktionen veröffentlichen** (auf einem Computer mit Node.js 22 im Projektordner):
+3. **Regeln neu veröffentlichen** (siehe 1d; automatisch, wenn eingerichtet) – neu ist `pushDevices` (Geräte, die Mitteilungen bekommen; jedes Konto sieht nur die eigenen).
+4. **Funktionen veröffentlichen** – automatisch nach dem nächsten Merge, wenn „Automatisch veröffentlichen“ eingerichtet ist (oder *Run workflow*). Sonst auf einem Computer mit Node.js 22 im Projektordner:
    ```
    npm install -g firebase-tools
    firebase login
@@ -165,7 +190,7 @@ sind bei gesperrtem iPhone nicht lesbar (der Kurzbefehl muss bei entsperrtem Ger
 - *Einstellungen → Apple Health & Garmin*: Einrichtung, Adresse und Schlüssel zum Kopieren, Status („Letzte Daten“), Neuer Schlüssel, Trennen.
 
 **Einrichtung** (einmalig):
-1. Cloud Functions veröffentlichen wie in 1e (Blaze-Tarif, `firebase deploy --only functions`) und die **Regeln neu veröffentlichen** (neu: `healthTokens`).
+1. Cloud Functions veröffentlichen wie in 1e (Blaze-Tarif; Veröffentlichen geht automatisch, siehe „Automatisch veröffentlichen“) und die **Regeln** (ebenso) (neu: `healthTokens`).
    Läuft die Funktion nicht in `europe-west3`, den Standort auch in [`firebase-config.js`](firebase-config.js) bei `functionsRegion` eintragen
    (derselbe wie `PUSH_REGION` in `functions/.env`).
 2. In der App *Einstellungen → Apple Health & Garmin → Verbindung einrichten*. Die App erzeugt einen persönlichen **Schlüssel** (in der Datenbank steht nur
@@ -230,6 +255,10 @@ entfernen**. Wer Administrator ist, steht in den Sicherheitsregeln – die prüf
    z. B. `request.auth.uid in ['qqBl3gZsjYxl8Cn83ClIKkavnDL3']`. Mehrere Admins: `['ID1', 'ID2']`.
 4. Firebase-Konsole → *Firestore Database → Regeln* → alles durch die geänderte Datei ersetzen → *Veröffentlichen*.
 5. App neu öffnen → *Profil → Einstellungen → Nutzerverwaltung*.
+
+Mit „Automatisch veröffentlichen“ reicht das **einmal**: Jede spätere Veröffentlichung übernimmt die IDs aus den aktuell
+veröffentlichten Regeln. Alternativ die IDs als Repository-Variable `ADMIN_UIDS` eintragen (GitHub → *Settings → Secrets and variables →
+Actions → Variables*, z. B. `ID1,ID2`) – dann gelten diese.
 
 Gut zu wissen:
 - Nutzer erscheinen in der Liste, sobald sie die App (in dieser Version) einmal geöffnet haben.
@@ -419,7 +448,7 @@ Daten gespeichert und nie mit Freunden geteilt.
 
 ## Tests
 
-- Logik (ohne Browser, ohne Firebase): `node --test tests/*.test.js`
+- Logik (ohne Browser, ohne Firebase): `node --test tests/*.test.js` und `node --test tests/deploy-rules.test.mjs` (Administrator-IDs beim automatischen Veröffentlichen)
 - Liquid-Glass-Demo (eigenständig, siehe [`liquid-glass/`](liquid-glass/README.md)): `node --test tests/liquid-glass.test.mjs`
   (Logik, auch Regler-Tokens der App) und `node --test tests/liquid-glass.ui.mjs` (Chromium)
 - Liquid Glass der App wie in iOS 27 (Berührung, Tab-Linse, Wischen, Sheet-Morph, Regler; Chromium, ohne Emulator):

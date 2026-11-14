@@ -1,0 +1,96 @@
+# Veröffentlicht nach jedem Merge in main automatisch alles, was sonst von Hand in Firebase passieren müsste:
+# Firestore-Regeln (mit den bisherigen Administrator-IDs), Storage-Regeln und die Cloud Functions.
+# Einmalige Einrichtung: README, Abschnitt „Automatisch veröffentlichen“ (Secret FIREBASE_SERVICE_ACCOUNT).
+name: Firebase veröffentlichen
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - firestore.rules
+      - storage.rules
+      - firebase.json
+      - .firebaserc
+      - 'functions/**'
+      - 'scripts/deploy/**'
+      - .github/workflows/deploy-firebase.yml
+  workflow_dispatch: {}
+
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      ADMIN_UIDS: ${{ vars.ADMIN_UIDS }}
+    steps:
+      - name: Eingerichtet?
+        id: check
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::warning title=Firebase nicht verbunden::Secret FIREBASE_SERVICE_ACCOUNT fehlt – nichts veröffentlicht. Einrichtung: README, Abschnitt „Automatisch veröffentlichen“."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.ready == 'true'
+        with:
+          node-version: 22
+
+      - name: Zugang (Dienstkonto)
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+
+      - name: Abhängigkeiten der Functions
+        if: steps.check.outputs.ready == 'true'
+        run: npm ci --prefix functions --no-audit --no-fund
+
+      - name: Administrator-IDs in die Regeln übernehmen
+        if: steps.check.outputs.ready == 'true'
+        run: node scripts/deploy/prepare-rules.mjs
+
+      - name: Firestore-Regeln veröffentlichen
+        if: steps.check.outputs.ready == 'true'
+        run: npx --yes firebase-tools@14 deploy --only firestore:rules --non-interactive
+
+      # Profilfotos sind optional (README 1b) – ohne Storage-Bucket schlägt das fehl, ohne den Rest aufzuhalten
+      - name: Storage-Regeln veröffentlichen
+        id: storage
+        if: steps.check.outputs.ready == 'true'
+        continue-on-error: true
+        run: npx --yes firebase-tools@14 deploy --only storage --non-interactive
+
+      # Cloud Functions brauchen den Blaze-Tarif (README 1e)
+      - name: Cloud Functions veröffentlichen
+        id: functions
+        if: steps.check.outputs.ready == 'true'
+        continue-on-error: true
+        run: npx --yes firebase-tools@14 deploy --only functions --non-interactive --force
+
+      - name: Hinweise
+        if: always() && steps.check.outputs.ready == 'true'
+        run: |
+          if [ "${{ steps.storage.outcome }}" = "failure" ]; then
+            echo "::warning title=Storage-Regeln nicht veröffentlicht::Meist ist Cloud Storage nicht eingerichtet (README 1b) – nur für Profilfotos nötig. Details im Schritt darüber."
+          fi
+          if [ "${{ steps.functions.outcome }}" = "failure" ]; then
+            echo "::warning title=Cloud Functions nicht veröffentlicht::Meist fehlt der Blaze-Tarif (README 1e) oder dem Dienstkonto eine Rolle (README „Automatisch veröffentlichen“). Details im Schritt darüber."
+          fi
+
+      - name: Zugang entfernen
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa.json"
